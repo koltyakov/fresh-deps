@@ -39,7 +39,7 @@ range, and a link to npm, pkg.go.dev, crates.io, PyPI, Maven Central, or NuGet.
 
 | Ecosystem | File | Source of truth |
 |---|---|---|
-| npm | `package.json` - `dependencies`, `devDependencies`, `peerDependencies`, `optionalDependencies` | the npm registry (`.npmrc`-aware, including scoped registries and auth tokens) |
+| npm | `package.json` - `dependencies`, `devDependencies`, `peerDependencies`, `optionalDependencies`, `volta` | the npm registry (`.npmrc`-aware, including scoped registries and auth tokens) |
 | Go | `go.mod` - `require`, single-line and block form | the Go module proxy (`GOPROXY`-aware) |
 | Rust | `Cargo.toml` - dependency, dev-dependency, build-dependency, workspace and target-specific tables | crates.io |
 | Python | `pyproject.toml` - PEP 621 `[project]`, PEP 735 `[dependency-groups]` and the Poetry tables; `Pipfile`; `requirements.txt` and its conventional variants | the PyPI simple index (`PIP_INDEX_URL`/`UV_INDEX_URL`- and `pip.conf`-aware) |
@@ -61,6 +61,12 @@ colours are themeable: `freshDeps.commentForeground`, `freshDeps.majorForeground
 When the latest version falls outside the declared range, both are shown: `↑ 18.19.130 → 26.5.0`
 means the newest version your range already allows is `18.19.130`, while `26.5.0` needs the range
 widened. A single number means the update is a straight upgrade.
+
+### Volta specifics
+
+- The `volta` block in `package.json` checks `node`, `npm`, `yarn`, and `pnpm` pins using their npm registry versions.
+- `extends` paths are not followed. Only pins declared in the current file are checked.
+- If you have customized `freshDeps.npm.sections`, add `"volta"` to enable these hints. Remove it to disable them.
 
 ### Go specifics
 
@@ -148,7 +154,7 @@ query the audit provider. Both refresh and Clear Version Cache discard audit res
 | `freshDeps.includePrerelease` | `false` | Treat prereleases as updates |
 | `freshDeps.npm.enabled` | `true` | Check `package.json` |
 | `freshDeps.npm.registry` | `""` | Registry override; empty reads `.npmrc` |
-| `freshDeps.npm.sections` | the four dependency sections | Which sections to inspect |
+| `freshDeps.npm.sections` | the four dependency sections plus `volta` | Which sections to inspect |
 | `freshDeps.go.enabled` | `true` | Check `go.mod` |
 | `freshDeps.go.proxy` | `""` | Proxy override; empty reads `GOPROXY` |
 | `freshDeps.go.includeIndirect` | `false` | Also check `// indirect` modules |

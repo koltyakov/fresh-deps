@@ -112,6 +112,10 @@ export function parsePackageJson(text: string, sections: string[]): DependencyRe
     }
 
     if (section !== undefined && depth === sectionDepth && value.type === 'string') {
+      // Volta's other fields, such as extends, are not package declarations.
+      if (section === 'volta' && !['node', 'npm', 'yarn', 'pnpm'].includes(token.value)) {
+        continue;
+      }
       const normalized = normalizeNpmSpec(token.value, value.value);
       if (normalized) {
         deps.push({

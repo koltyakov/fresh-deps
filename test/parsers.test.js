@@ -4,7 +4,7 @@ const { parsePackageJson } = require('../out/parsers/packageJson');
 const { parseGoMod } = require('../out/parsers/goMod');
 const { parseCargoToml } = require('../out/parsers/cargoToml');
 
-const SECTIONS = ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'];
+const SECTIONS = require('../package.json').contributes.configuration.properties['freshDeps.npm.sections'].default;
 
 test('package.json: reads the configured sections', () => {
   const text = [
@@ -91,6 +91,40 @@ test('package.json: tolerates comments and ignores nested objects', () => {
   ].join('\n');
   const deps = parsePackageJson(text, SECTIONS);
   assert.deepStrictEqual(deps.map((d) => d.name), ['lodash']);
+});
+
+test('package.json: reads Volta pins with comments and multi-line values', () => {
+  const text = [
+    '{',
+    '  "devDependencies": { "typescript": "5.3.3" },',
+    '  "volta": {',
+    '    "node": "20.5.0", // runtime',
+    '    "npm": "10.0.0",',
+    '    "yarn": "1.22.19",',
+    '    "pnpm":',
+    '      "9.0.0",',
+    '    "extends": "../package.json",',
+    '    "unknown": "1.0.0",',
+    '    "nested": { "node": "18.0.0" }',
+    '  },',
+    '  "config": { "volta": { "node": "16.0.0" } }',
+    '}',
+  ].join('\n');
+  assert.deepStrictEqual(parsePackageJson(text, SECTIONS), [
+    { name: 'typescript', spec: '5.3.3', section: 'devDependencies', line: 1 },
+    { name: 'node', spec: '20.5.0', section: 'volta', line: 3 },
+    { name: 'npm', spec: '10.0.0', section: 'volta', line: 4 },
+    { name: 'yarn', spec: '1.22.19', section: 'volta', line: 5 },
+    { name: 'pnpm', spec: '9.0.0', section: 'volta', line: 7 },
+  ]);
+  assert.deepStrictEqual(parsePackageJson(text, ['dependencies']), []);
+});
+
+test('package.json: skips non-version Volta values and never treats extends as a package', () => {
+  const text = JSON.stringify({ volta: {
+    node: 'latest', npm: null, yarn: false, pnpm: 'file:../pnpm', extends: '1.2.3',
+  } });
+  assert.deepStrictEqual(parsePackageJson(text, SECTIONS), []);
 });
 
 test('go.mod: reads block and single-line requires', () => {

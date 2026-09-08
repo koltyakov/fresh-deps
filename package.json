@@ -2,7 +2,7 @@
   "name": "fresh-deps",
   "displayName": "Fresh Deps",
   "description": "Highlights dependencies that have newer versions available, inline in your manifest files.",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "license": "MIT",
   "publisher": "koltyakov",
   "repository": {
@@ -141,9 +141,10 @@
             "dependencies",
             "devDependencies",
             "peerDependencies",
-            "optionalDependencies"
+            "optionalDependencies",
+            "volta"
           ],
-          "description": "package.json sections to inspect."
+          "description": "package.json sections to inspect, including Volta tool pins in volta."
         },
         "freshDeps.go.enabled": {
           "type": "boolean",

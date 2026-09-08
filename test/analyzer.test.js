@@ -4,6 +4,41 @@ const { analyze } = require('../out/analyzer');
 const { VersionCache } = require('../out/cache');
 const npmrc = require('../out/npmrc');
 
+test('npm checks Volta pins through the configured registry and reuses cached updates', async (t) => {
+  t.mock.method(npmrc, 'readNpmConfig', () => new Map());
+  const calls = [];
+  t.mock.method(globalThis, 'fetch', async (url) => {
+    calls.push(url);
+    assert.equal(url, 'https://registry.example/node/latest');
+    return Response.json({ version: '22.0.0' });
+  });
+  const request = {
+    fsPath: '/review/package.json',
+    text: '{\n  "volta": {\n    "node": "20.5.0",\n    "extends": "../package.json"\n  }\n}',
+    settings: {
+      concurrency: 8, requestTimeoutMs: 1000, includePrerelease: false, showSatisfyingUpdates: true,
+      npm: {
+        enabled: true, registry: 'https://registry.example',
+        sections: require('../package.json').contributes.configuration.properties['freshDeps.npm.sections'].default,
+      },
+    },
+    cache: new VersionCache(60_000), allowNetwork: true,
+  };
+  const result = await analyze(request);
+  assert.equal(result.failures.size, 0);
+  assert.equal(result.incomplete, false);
+  assert.equal(result.updates.length, 1);
+  const [update] = result.updates;
+  assert.deepEqual(update.dep, { name: 'node', spec: '20.5.0', section: 'volta', line: 2 });
+  assert.equal(update.current, '20.5.0');
+  assert.equal(update.latest, '22.0.0');
+  assert.equal(update.kind, 'major');
+  assert.equal(update.inRange, false);
+  assert.equal(update.satisfying, undefined);
+  assert.deepEqual((await analyze({ ...request, allowNetwork: false })).updates, result.updates);
+  assert.equal(calls.length, 1);
+});
+
 for (const cached of [false, true]) {
   for (const spec of ['1.0.0', '^1.0.0']) {
     test(`npm discovers prereleases for ${spec} with latest-only cache ${cached}`, async (t) => {

@@ -1,7 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.2.0
 
+- Volta support: inline update hints for `node`, `npm`, `yarn`, and `pnpm` pins in the
+  `package.json` `volta` block, enabled by default through `freshDeps.npm.sections`.
 - Java support: inline Maven update hints for dependencies and dependency management in `pom.xml`,
   including POM properties, Maven version ordering, interval ranges, and configurable repositories.
 - .NET support: inline NuGet update hints in SDK project files, `Directory.Packages.props`,

@@ -50,7 +50,7 @@ export function readSettings(scope?: vscode.Uri): Settings {
     npm: {
       enabled: cfg.get('npm.enabled', true),
       registry: cfg.get('npm.registry', ''),
-      sections: cfg.get('npm.sections', ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies']),
+      sections: cfg.get('npm.sections', ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies', 'volta']),
     },
     go: {
       enabled: cfg.get('go.enabled', true),

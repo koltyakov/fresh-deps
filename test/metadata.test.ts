@@ -1,10 +1,10 @@
-const test = require('node:test');
-const assert = require('node:assert');
-const { display, relativeTime, publishedOn, formatSize, escapeMarkdown } = require('../out/format');
-const { metaOf: npmMetaOf, repositoryOf } = require('../out/registries/npm');
-const { metaOf: goMetaOf } = require('../out/registries/go');
-const { metaOf: pypiMetaOf, uploadTimes, isWarehouse } = require('../out/registries/pypi');
-const { versionsOf: crateVersionsOf } = require('../out/registries/crates');
+import test from 'node:test';
+import assert from 'node:assert';
+import { display, relativeTime, publishedOn, formatSize, escapeMarkdown } from '../src/format';
+import { metaOf as npmMetaOf, repositoryOf } from '../src/registries/npm';
+import { metaOf as goMetaOf } from '../src/registries/go';
+import { metaOf as pypiMetaOf, uploadTimes, isWarehouse } from '../src/registries/pypi';
+import { versionsOf as crateVersionsOf } from '../src/registries/crates';
 
 const NOW = Date.parse('2026-09-08T12:00:00Z');
 
@@ -18,6 +18,7 @@ test('relativeTime picks the largest unit that fits', () => {
 
 test('publishedOn pairs the exact date with how long ago it was', () => {
   const rendered = publishedOn('2026-05-13T23:47:36.171Z', NOW);
+  assert.ok(rendered);
   assert.match(rendered, /2026/);
   assert.match(rendered, /\(4 months ago\)$/);
   assert.strictEqual(publishedOn(undefined, NOW), undefined);
@@ -139,6 +140,7 @@ test('crates.io ignores yanked releases and keeps metadata for the latest stable
   });
   assert.strictEqual(versions.latest, '1.0.219');
   assert.deepStrictEqual(versions.all, ['2.0.0-beta.1', '1.0.219']);
+  assert.ok(versions.meta);
   assert.strictEqual(versions.meta.license, 'MIT OR Apache-2.0');
   assert.strictEqual(versions.meta.latestPublishedAt, '2026-07-01T00:00:00Z');
   assert.strictEqual(versions.meta.repository, 'https://github.com/serde-rs/serde');

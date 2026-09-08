@@ -1,13 +1,29 @@
-const test = require('node:test');
-const assert = require('node:assert/strict');
-const Module = require('node:module');
+import test, { type TestContext } from 'node:test';
+import assert from 'node:assert/strict';
+import type { ExtensionContext } from 'vscode';
 
-function setup(t) {
-  const events = {};
-  const calls = [];
-  const pending = [];
+const Module = require('node:module') as {
+  _load: (id: string, parent: NodeModule | null | undefined, isMain?: boolean) => unknown;
+};
+
+type MockEditor = { document: { uri: { fsPath: string; toString(): string }; getText(): string } };
+type Events = {
+  active: (editor: MockEditor) => void;
+  close: (document: MockEditor['document']) => void;
+  config: (event: { affectsConfiguration(): boolean }) => void;
+};
+
+function setup(t: TestContext) {
+  // Activation registers these listeners before setup returns.
+  const events = {} as Events;
+  const calls: string[] = [];
+  const pending: {
+    request: { isCancelled(): boolean };
+    resolve: (value: ReturnType<typeof result> | undefined) => void;
+    reject: (reason: Error) => void;
+  }[] = [];
   const settings = { enabled: true, cacheDurationMinutes: 60 };
-  const editor = (name) => ({ document: {
+  const editor = (name: string): MockEditor => ({ document: {
     uri: { fsPath: `/${name}/package.json`, toString: () => `file:///${name}/package.json` },
     getText: () => '{}',
   } });
@@ -18,45 +34,46 @@ function setup(t) {
       activeTextEditor: editors[0], visibleTextEditors: editors,
       createOutputChannel: () => ({ appendLine: noop }),
       createStatusBarItem: () => ({ hide: noop, show: () => calls.push('status') }),
-      onDidChangeActiveTextEditor: (cb) => { events.active = cb; },
+      onDidChangeActiveTextEditor: (cb: Events['active']) => { events.active = cb; },
     },
     workspace: {
-      onDidCloseTextDocument: (cb) => { events.close = cb; },
+      onDidCloseTextDocument: (cb: Events['close']) => { events.close = cb; },
       onDidSaveTextDocument: noop, onDidChangeTextDocument: noop,
-      onDidChangeConfiguration: (cb) => { events.config = cb; },
+      onDidChangeConfiguration: (cb: Events['config']) => { events.config = cb; },
     },
     commands: { executeCommand: noop, registerCommand: noop },
     languages: { registerHoverProvider: noop },
     StatusBarAlignment: { Right: 1 }, MarkdownString: class {},
   };
-  const mocks = {
+  const mocks: Record<string, unknown> = {
     vscode,
     './config': { readSettings: () => settings },
     './analyzer': {
       ecosystemOf: () => 'npm',
-      analyze: (request) => new Promise((resolve, reject) => pending.push({ request, resolve, reject })),
+      analyze: (request: { isCancelled(): boolean }) => new Promise<ReturnType<typeof result> | undefined>((resolve, reject) => pending.push({ request, resolve, reject })),
     },
     './decorations': { DecorationRenderer: class {
-      clear(editor) { calls.push(`clear:${editor.document.uri.fsPath}`); }
-      render(editor) { calls.push(`render:${editor.document.uri.fsPath}`); }
+      clear(editor: MockEditor) { calls.push(`clear:${editor.document.uri.fsPath}`); }
+      render(editor: MockEditor) { calls.push(`render:${editor.document.uri.fsPath}`); }
     } },
     './details': { DetailsResolver: class {}, DependencyHoverProvider: class {} },
   };
   const load = Module._load;
-  t.mock.method(Module, '_load', function (id, parent, ...args) {
-    if (parent?.filename === require.resolve('../out/extension') && mocks[id]) return mocks[id];
+  t.mock.method(Module, '_load', function (this: typeof Module, id: string, parent: NodeModule | null | undefined, ...args: [isMain?: boolean]) {
+    if (parent?.filename === require.resolve('../src/extension') && mocks[id]) return mocks[id];
     return load.call(this, id, parent, ...args);
   });
-  const filename = require.resolve('../out/extension');
+  const filename = require.resolve('../src/extension');
   delete require.cache[filename];
   t.after(() => { delete require.cache[filename]; });
-  require(filename).activate({ subscriptions: [], globalState: { get: noop, update: noop } });
+  const { activate } = require(filename) as typeof import('../src/extension');
+  activate({ subscriptions: [], globalState: { get: noop, update: noop } } as unknown as ExtensionContext);
   const configure = () => events.config({ affectsConfiguration: () => true });
   return { calls, pending, settings, editors, events, configure };
 }
 
 const result = () => ({ ecosystem: 'npm', updates: [{}], failures: new Map(), incomplete: false });
-const flush = () => new Promise((resolve) => setImmediate(resolve));
+const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
 
 for (const reject of [false, true]) {
   test(`disabling hints cancels in-flight ${reject ? 'failures' : 'results'} and clears all editors`, async (t) => {

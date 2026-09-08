@@ -1,13 +1,17 @@
-const test = require('node:test');
-const assert = require('node:assert/strict');
-const { NpmClient } = require('../out/registries/npm');
-const { PyPiClient } = require('../out/registries/pypi');
-const { fetchJson, HttpError } = require('../out/http');
-const npmrc = require('../out/npmrc');
+import test, { type Mock } from 'node:test';
+import assert from 'node:assert/strict';
+import { NpmClient } from '../src/registries/npm';
+import { PyPiClient } from '../src/registries/pypi';
+import { fetchJson, HttpError } from '../src/http';
+import npmrc = require('../src/npmrc');
+
+type FetchOptions = RequestInit & { headers: Record<string, string>; body?: string };
+let network: Mock<typeof fetch>;
 
 test.beforeEach((t) => {
-  t.mock.method(globalThis, 'fetch', () => assert.fail('unexpected network request'));
-  t.mock.method(npmrc, 'readNpmConfig', () => ({ get: () => undefined }));
+  assert.ok('mock' in t);
+  network = t.mock.method(globalThis, 'fetch', () => assert.fail('unexpected network request'));
+  t.mock.method(npmrc, 'readNpmConfig', () => new Map<string, string>());
 });
 
 const npm = () => new NpmClient({ cwd: '/', registryOverride: 'https://private.example/npm/', timeoutMs: 1000 });
@@ -22,9 +26,10 @@ test('npm audit posts to the scoped registry with its existing auth', async (t) 
     ['//private.example/npm/:_auth', 'dXNlcjpwYXNz'],
   ]);
   t.mock.method(npmrc, 'readNpmConfig', () => config);
-  t.mock.method(globalThis, 'fetch', async (url, options) => {
+  const fetch = t.mock.method(globalThis, 'fetch', async (url: string, options: FetchOptions) => {
     assert.equal(url, 'https://private.example/npm/-/npm/v1/security/advisories/bulk');
     assert.equal(options.method, 'POST');
+    assert.ok(typeof options.body === 'string');
     assert.deepEqual(JSON.parse(options.body), { '@private/pkg': ['1.0.0'] });
     assert.equal(options.headers.authorization, 'Basic dXNlcjpwYXNz');
     assert.equal(options.headers['content-type'], 'application/json');
@@ -36,19 +41,21 @@ test('npm audit posts to the scoped registry with its existing auth', async (t) 
   assert.deepEqual(await client.fetchAudit('@private/pkg', '1.0.0'), {
     status: 'checked', advisories: [{ id: '123', title: npmEntry.title, severity: 'high', url: npmEntry.url }],
   });
-  assert.equal(globalThis.fetch.mock.callCount(), 1);
+  assert.equal(fetch.mock.callCount(), 1);
 });
 
 test('npm filters unaffected ranges and includes affected prereleases', async (t) => {
   t.mock.method(globalThis, 'fetch', async () => Response.json({ pkg: [
     npmEntry, { ...npmEntry, id: 456, vulnerable_versions: '>=3.0.0' },
   ] }));
-  assert.deepEqual((await npm().fetchAudit('pkg', '1.5.0-beta.1')).advisories.map(a => a.id), ['123']);
+  const result = await npm().fetchAudit('pkg', '1.5.0-beta.1');
+  assert.equal(result.status, 'checked');
+  assert.deepEqual(result.advisories.map(a => a.id), ['123']);
   assert.deepEqual(await npm().fetchAudit('pkg', '2.5.0'), { status: 'checked', advisories: [] });
 });
 
 test('PyPI reads release vulnerabilities and excludes withdrawn advisories', async (t) => {
-  t.mock.method(globalThis, 'fetch', async (url, options) => {
+  t.mock.method(globalThis, 'fetch', async (url: string, options: FetchOptions) => {
     assert.equal(url, 'https://pypi.org/pypi/my-package/1.0%2Blocal/json');
     assert.equal(options.method, undefined);
     assert.equal(options.body, undefined);
@@ -64,7 +71,9 @@ test('PyPI titles fall back to details or ID when summary is absent', async (t) 
   t.mock.method(globalThis, 'fetch', async () => Response.json({ vulnerabilities: [
     { id: 'one', summary: null, details: 'Description' }, { id: 'two' },
   ] }));
-  assert.deepEqual((await pypi().fetchAudit('pkg', '1.0')).advisories, [
+  const result = await pypi().fetchAudit('pkg', '1.0');
+  assert.equal(result.status, 'checked');
+  assert.deepEqual(result.advisories, [
     { id: 'one', title: 'Description' }, { id: 'two', title: 'two' },
   ]);
 });
@@ -73,7 +82,7 @@ for (const index of ['https://private.example/simple', 'https://pypi.org.evil/si
   test(`PyPI does not send private package names from ${index} to public PyPI`, async () => {
     const client = new PyPiClient({ indexOverride: index, timeoutMs: 1000 });
     assert.deepEqual(await client.fetchAudit('private-package', '1.0'), { status: 'unsupported' });
-    assert.equal(globalThis.fetch.mock.callCount(), 0);
+    assert.equal(network.mock.callCount(), 0);
   });
 }
 
@@ -84,7 +93,7 @@ for (const [provider, client, clean, malformed] of [
   ['PyPI', pypi, { vulnerabilities: [] }, [null, [], {}, { vulnerabilities: null }, { vulnerabilities: [null] },
     ...[{ id: 1 }, { summary: {} }, { details: [] }, { withdrawn: false }, { fixed_in: '2.0' },
       { fixed_in: [2] }, { link: {} }].map(fields => ({ vulnerabilities: [{ ...pyEntry, ...fields }] }))]],
-]) {
+] satisfies [string, () => NpmClient | PyPiClient, unknown, unknown[]][]) {
   test(`${provider} accepts an explicitly clean response`, async (t) => {
     t.mock.method(globalThis, 'fetch', async () => Response.json(clean));
     assert.deepEqual(await client().fetchAudit('pkg', '1.0.0'), { status: 'checked', advisories: [] });
@@ -101,12 +110,12 @@ for (const [provider, client, clean, malformed] of [
 
   for (const status of [404, 410, 405, 501]) {
     test(`${provider} treats HTTP ${status} as unsupported without fallback`, async (t) => {
-      t.mock.method(globalThis, 'fetch', async (url) => {
+      const fetch = t.mock.method(globalThis, 'fetch', async (url: string) => {
         assert.ok(url.startsWith(provider === 'npm' ? 'https://private.example/npm/' : 'https://pypi.org/'));
         return new Response('', { status });
       });
       assert.deepEqual(await client().fetchAudit('pkg', '1.0.0'), { status: 'unsupported' });
-      assert.equal(globalThis.fetch.mock.callCount(), 1);
+      assert.equal(fetch.mock.callCount(), 1);
     });
   }
 
@@ -124,7 +133,7 @@ for (const [provider, client, clean, malformed] of [
 }
 
 test('fetchJson preserves existing GET request options', async (t) => {
-  t.mock.method(globalThis, 'fetch', async (url, options) => {
+  t.mock.method(globalThis, 'fetch', async (url: string, options: FetchOptions) => {
     assert.equal(url, 'https://example.com/metadata');
     assert.equal(Object.hasOwn(options, 'method'), false);
     assert.equal(Object.hasOwn(options, 'body'), false);

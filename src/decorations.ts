@@ -19,7 +19,7 @@ const COMMENT_TOKEN: Record<Ecosystem, string> = {
 };
 
 /**
- * Shared look for both halves of a hint: lighter than the surrounding code and
+ * Hints are lighter than the surrounding code and
  * muted, so it reads as an annotation rather than as part of the manifest. The
  * decoration API exposes no opacity, so it rides along on textDecoration, which
  * VSCode inlines into the generated rule verbatim.
@@ -34,15 +34,12 @@ const ANNOTATION = {
 } as const;
 
 /**
- * The comment token is drawn as a `before` attachment and the version as an
- * `after` one, which is what lets the two carry different colours: the token
- * stays the neutral grey of a real comment while the version keeps its severity
- * hue. Both hang off a single decoration type, so `before` is guaranteed to
- * render ahead of `after` rather than depending on decoration ordering.
+ * The gray marker paints into space reserved by `after`. Its zero width and
+ * cancelling margins keep `before` from shifting the line-end caret.
  */
 function decorationFor(kind: HintKind): vscode.TextEditorDecorationType {
   return vscode.window.createTextEditorDecorationType({
-    before: { ...ANNOTATION, color: new vscode.ThemeColor('freshDeps.commentForeground') },
+    before: { ...ANNOTATION, width: '0', color: new vscode.ThemeColor('freshDeps.commentForeground') },
     after: { ...ANNOTATION, color: new vscode.ThemeColor(kind === 'audit' ? 'editorWarning.foreground' : `freshDeps.${kind}Foreground`) },
     rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed,
   });
@@ -87,11 +84,18 @@ export class DecorationRenderer implements vscode.Disposable {
       // past the closing comma or an existing comment - and reads as one.
       const line = editor.document.lineAt(Math.min(update.dep.line, editor.document.lineCount - 1));
       const padding = (columnOf.get(update.dep.section) ?? 0) - (lineWidth.get(update.dep.line) ?? 0);
+      const token = COMMENT_TOKEN[ecosystem];
       byKind.get(update.kind)?.push({
         range: new vscode.Range(line.range.end, line.range.end),
         renderOptions: {
-          before: { contentText: COMMENT_TOKEN[ecosystem], margin: `0 0 0 ${padding + 1}ch` },
-          after: { contentText: update.text + (ecosystem === 'dotnet' || ecosystem === 'java' ? ' -->' : '') },
+          before: {
+            contentText: token,
+            margin: `0 -${padding + 1}ch 0 ${padding + 1}ch`,
+          },
+          after: {
+            contentText: update.text + (ecosystem === 'dotnet' || ecosystem === 'java' ? ' -->' : ''),
+            margin: `0 0 0 ${padding + token.length + 2}ch`,
+          },
         },
       });
     }

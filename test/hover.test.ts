@@ -1,28 +1,37 @@
-const test = require('node:test');
-const assert = require('node:assert/strict');
-const Module = require('node:module');
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import type { CancellationToken, Position, TextDocument } from 'vscode';
+import type { AnalyzeResult } from '../src/analyzer';
+import type { Settings } from '../src/config';
+import type { DetailsResolver } from '../src/details';
+import type { DependencyAudit, DependencyUpdate } from '../src/types';
+
+const Module = require('node:module') as {
+  _load: (id: string, parent: NodeModule | null | undefined, isMain?: boolean) => unknown;
+};
 
 class MarkdownString {
   value = '';
-  appendMarkdown(text) { this.value += text; }
-  appendText(text) { this.value += text.replace(/[\\`*_{}\[\]()<>!]/g, '\\$&'); }
+  appendMarkdown(text: string) { this.value += text; }
+  appendText(text: string) { this.value += text.replace(/[\\`*_{}\[\]()<>!]/g, '\\$&'); }
 }
 class Range {
-  constructor(...args) { this.args = args; }
+  args: number[];
+  constructor(...args: number[]) { this.args = args; }
 }
 class Hover {
-  constructor(contents, range) { this.contents = contents; this.range = range; }
+  constructor(public contents: MarkdownString[], public range: Range) {}
 }
 
 const load = Module._load;
 Module._load = function (id, ...args) {
   return id === 'vscode' ? { MarkdownString, Range, Hover } : load.call(this, id, ...args);
 };
-const { DependencyHoverProvider } = require('../out/details');
-const { buildAuditHover, buildHover } = require('../out/hover');
+const { DependencyHoverProvider } = require('../src/details') as typeof import('../src/details');
+const { buildAuditHover, buildHover } = require('../src/hover') as typeof import('../src/hover');
 Module._load = load;
 
-const update = {
+const update: DependencyUpdate = {
   dep: { name: '@types/vscode', spec: '1.120.0', line: 0, section: 'devDependencies' },
   current: '1.120.0', latest: '1.136.0', kind: 'minor', inRange: false,
 };
@@ -54,23 +63,23 @@ test('declaration and inline hint both resolve publication dates', async () => {
   const document = {
     uri: { fsPath: '/project/package.json' },
     lineAt: () => ({ text, firstNonWhitespaceCharacterIndex: 2, range: { end: { character: text.length } } }),
-  };
+  } as unknown as TextDocument;
   let calls = 0;
   const provider = new DependencyHoverProvider(
-    () => ({ ecosystem: 'npm', updates: [update], audits: [] }),
-    () => ({}),
-    { resolve: async () => { calls++; return dates; } },
+    () => ({ ecosystem: 'npm', updates: [update], audits: [] } as unknown as AnalyzeResult),
+    () => ({} as Settings),
+    { resolve: async () => { calls++; return dates; } } as unknown as DetailsResolver,
   );
   for (const character of [5, text.length]) {
-    const hover = await provider.provideHover(document, { line: 0, character }, { isCancellationRequested: false });
+    const hover = await provider.provideHover(document, { line: 0, character } as Position, { isCancellationRequested: false } as CancellationToken) as unknown as Hover;
     assert.match(hover.contents[0].value, /Declared \| `1\.120\.0` .*published/);
     assert.match(hover.contents[0].value, /Latest \| `1\.136\.0` .*published/);
     assert.match(hover.contents[0].value, /2026/);
   }
   assert.equal(calls, 2);
-  assert.equal(await provider.provideHover(document, { line: 0, character: 0 }, {}), undefined);
+  assert.equal(await provider.provideHover(document, { line: 0, character: 0 } as Position, {} as CancellationToken), undefined);
   assert.equal(calls, 2);
-  assert.equal(await provider.provideHover(document, { line: 0, character: 5 }, { isCancellationRequested: true }), undefined);
+  assert.equal(await provider.provideHover(document, { line: 0, character: 5 } as Position, { isCancellationRequested: true } as CancellationToken), undefined);
 });
 
 test('ranges date the current baseline without dating the declared range', () => {
@@ -108,15 +117,15 @@ test('audit-only declarations show advisories without resolving update details',
   const document = {
     uri: { fsPath: '/project/package.json' },
     lineAt: () => ({ text, firstNonWhitespaceCharacterIndex: 2, range: { end: { character: text.length } } }),
-  };
-  const audit = { dep: update.dep, version: '1.120.0', baseline: false,
+  } as unknown as TextDocument;
+  const audit: DependencyAudit = { dep: update.dep, version: '1.120.0', baseline: false,
     result: { status: 'checked', advisories: [{ id: 'GHSA-test', title: 'Unsafe input' }] } };
   const provider = new DependencyHoverProvider(
-    () => ({ ecosystem: 'npm', updates: [], audits: [audit] }), () => ({}),
-    { resolve: () => assert.fail('audit-only hover must not fetch update details') },
+    () => ({ ecosystem: 'npm', updates: [], audits: [audit] } as unknown as AnalyzeResult), () => ({} as Settings),
+    { resolve: () => assert.fail('audit-only hover must not fetch update details') } as unknown as DetailsResolver,
   );
   for (const character of [5, text.length]) {
-    const hover = await provider.provideHover(document, { line: 0, character }, {});
+    const hover = await provider.provideHover(document, { line: 0, character } as Position, {} as CancellationToken) as unknown as Hover;
     assert.match(hover.contents[0].value, /GHSA-test: Unsafe input/);
     assert.match(hover.contents[0].value, /declared version 1\.120\.0/);
   }

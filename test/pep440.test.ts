@@ -1,12 +1,13 @@
-const test = require('node:test');
-const assert = require('node:assert');
-const pep440 = require('../out/pep440');
-const { classifyPep440 } = require('../out/schemes');
+import test from 'node:test';
+import assert from 'node:assert';
+import * as pep440 from '../src/pep440';
+import { classifyPep440 } from '../src/schemes';
 
-const sorted = (versions) => versions.slice().sort(pep440.compare);
+const sorted = (versions: string[]) => versions.slice().sort(pep440.compare);
 
 test('parses every part of a PEP 440 version', () => {
   const version = pep440.parseVersion('1!2.3.4rc2.post5.dev6+ubuntu.1');
+  assert.ok(version);
   assert.strictEqual(version.epoch, 1);
   assert.deepStrictEqual(version.release, [2, 3, 4]);
   assert.deepStrictEqual(version.pre, { letter: 'rc', num: 2 });
@@ -16,13 +17,13 @@ test('parses every part of a PEP 440 version', () => {
 });
 
 test('normalises the spellings the spec allows', () => {
-  assert.strictEqual(pep440.parseVersion('1.0ALPHA1').text, '1.0a1');
-  assert.strictEqual(pep440.parseVersion('1.0-beta.2').text, '1.0b2');
-  assert.strictEqual(pep440.parseVersion('1.0_preview_3').text, '1.0rc3');
-  assert.strictEqual(pep440.parseVersion('1.0-1').text, '1.0.post1');
-  assert.strictEqual(pep440.parseVersion('1.0.rev2').text, '1.0.post2');
-  assert.strictEqual(pep440.parseVersion('v1.0').text, '1.0');
-  assert.strictEqual(pep440.parseVersion('1.0.dev').text, '1.0.dev0');
+  assert.strictEqual(pep440.parseVersion('1.0ALPHA1')?.text, '1.0a1');
+  assert.strictEqual(pep440.parseVersion('1.0-beta.2')?.text, '1.0b2');
+  assert.strictEqual(pep440.parseVersion('1.0_preview_3')?.text, '1.0rc3');
+  assert.strictEqual(pep440.parseVersion('1.0-1')?.text, '1.0.post1');
+  assert.strictEqual(pep440.parseVersion('1.0.rev2')?.text, '1.0.post2');
+  assert.strictEqual(pep440.parseVersion('v1.0')?.text, '1.0');
+  assert.strictEqual(pep440.parseVersion('1.0.dev')?.text, '1.0.dev0');
   assert.strictEqual(pep440.parseVersion('not-a-version'), undefined);
 });
 

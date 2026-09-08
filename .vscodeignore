@@ -6,7 +6,7 @@ out/**
 scripts/**
 node_modules/**
 esbuild.js
-tsconfig.json
+tsconfig*.json
 **/*.map
 **/*.ts
 !dist/extension.js

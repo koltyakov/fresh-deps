@@ -1,13 +1,14 @@
-const test = require('node:test');
-const assert = require('node:assert');
-const { parsePyProject, poetryToPep440 } = require('../out/parsers/pyproject');
-const { parsePipfile } = require('../out/parsers/pipfile');
-const { parseRequirementsTxt } = require('../out/parsers/requirementsTxt');
-const { parseRequirement } = require('../out/parsers/pep508');
-const { normalizeName, versionFromFilename, yankedVersions } = require('../out/registries/pypi');
-const { resolveIndexUrl, splitCredentials } = require('../out/pipconf');
+import test from 'node:test';
+import assert from 'node:assert';
+import { parsePyProject, poetryToPep440 } from '../src/parsers/pyproject';
+import { parsePipfile } from '../src/parsers/pipfile';
+import { parseRequirementsTxt } from '../src/parsers/requirementsTxt';
+import { parseRequirement } from '../src/parsers/pep508';
+import { normalizeName, versionFromFilename, yankedVersions } from '../src/registries/pypi';
+import { resolveIndexUrl, splitCredentials, type PipConfig } from '../src/pipconf';
+import type { DependencyRef } from '../src/types';
 
-const summary = (deps) => deps.map((d) => [d.name, d.spec, d.section, d.line]);
+const summary = (deps: DependencyRef[]) => deps.map((d) => [d.name, d.spec, d.section, d.line]);
 
 test('pep508: splits name, extras, specifier and marker', () => {
   assert.deepStrictEqual(parseRequirement('requests>=2.28,<3'), {
@@ -15,8 +16,8 @@ test('pep508: splits name, extras, specifier and marker', () => {
     spec: '>=2.28,<3',
     specOffset: 8,
   });
-  assert.strictEqual(parseRequirement('celery[redis] >= 5.3 ; python_version >= "3.9"').spec, '>= 5.3');
-  assert.strictEqual(parseRequirement('  django (>=4.2)  ').spec, '>=4.2');
+  assert.strictEqual(parseRequirement('celery[redis] >= 5.3 ; python_version >= "3.9"')?.spec, '>= 5.3');
+  assert.strictEqual(parseRequirement('  django (>=4.2)  ')?.spec, '>=4.2');
   // A direct reference names no registry version.
   assert.strictEqual(parseRequirement('mylib @ https://example.com/mylib.whl'), undefined);
 });
@@ -182,7 +183,7 @@ test('pypi: a release is withdrawn only when all of its files are yanked', () =>
 });
 
 test('pip config: setting beats environment beats config file beats PyPI', () => {
-  const config = { get: (key) => (key === 'global.index-url' ? 'https://from-file.example/simple' : undefined) };
+  const config: PipConfig = { get: (key) => (key === 'global.index-url' ? 'https://from-file.example/simple' : undefined) };
   const empty = { get: () => undefined };
 
   delete process.env.PIP_INDEX_URL;

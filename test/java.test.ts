@@ -1,12 +1,13 @@
-const test = require('node:test');
-const assert = require('node:assert');
-const { parsePomXml } = require('../out/parsers/pomXml');
-const maven = require('../out/mavenVersion');
-const { versionsFromMetadata } = require('../out/registries/maven');
-const { computeUpdate } = require('../out/versions');
-const { schemeFor } = require('../out/schemes');
+import test from 'node:test';
+import assert from 'node:assert';
+import { parsePomXml } from '../src/parsers/pomXml';
+import * as maven from '../src/mavenVersion';
+import { versionsFromMetadata } from '../src/registries/maven';
+import { computeUpdate } from '../src/versions';
+import { schemeFor } from '../src/schemes';
+import type { DependencyRef } from '../src/types';
 
-const summary = (deps) => deps.map((dep) => [dep.name, dep.spec, dep.section, dep.line]);
+const summary = (deps: DependencyRef[]) => deps.map((dep) => [dep.name, dep.spec, dep.section, dep.line]);
 
 test('pom.xml: reads direct and managed dependencies', () => {
   const text = [
@@ -156,6 +157,7 @@ test('computeUpdate uses Maven ranges rather than semver ranges', () => {
   const versions = { latest: '2.1.Final', all: ['1.0', '1.8.2', '2.1.Final'] };
   const opts = { includePrerelease: false, showSatisfyingUpdates: true, scheme: schemeFor('java') };
   const update = computeUpdate(dep, versions, opts);
+  assert.ok(update);
   assert.strictEqual(update.latest, '2.1.Final');
   assert.strictEqual(update.satisfying, '1.8.2');
   assert.strictEqual(update.inRange, false);

@@ -1,10 +1,11 @@
-const test = require('node:test');
-const assert = require('node:assert');
-const { parsePackageJson } = require('../out/parsers/packageJson');
-const { parseGoMod } = require('../out/parsers/goMod');
-const { parseCargoToml } = require('../out/parsers/cargoToml');
+import test from 'node:test';
+import assert from 'node:assert';
+import { parsePackageJson } from '../src/parsers/packageJson';
+import { parseGoMod } from '../src/parsers/goMod';
+import { parseCargoToml } from '../src/parsers/cargoToml';
+import packageJson from '../package.json';
 
-const SECTIONS = require('../package.json').contributes.configuration.properties['freshDeps.npm.sections'].default;
+const SECTIONS = packageJson.contributes.configuration.properties['freshDeps.npm.sections'].default;
 
 test('package.json: reads the configured sections', () => {
   const text = [

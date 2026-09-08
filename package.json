@@ -2,7 +2,7 @@
   "name": "fresh-deps",
   "displayName": "Fresh Deps",
   "description": "Highlights dependencies that have newer versions available, inline in your manifest files.",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "license": "MIT",
   "publisher": "koltyakov",
   "repository": {
@@ -265,8 +265,8 @@
     "vscode:prepublish": "npm run check && npm run build",
     "build": "node esbuild.js --production",
     "watch": "node esbuild.js --watch",
-    "check": "tsc --noEmit",
-    "test": "tsc -p tsconfig.json && node --test test/*.test.js",
+    "check": "tsc --noEmit && tsc -p tsconfig.test.json --noEmit",
+    "test": "tsc -p tsconfig.test.json && node --test out/test-build/test/*.test.js",
     "package": "npm run build && vsce package",
     "vscode:install": "node scripts/vscode-install.mjs"
   },

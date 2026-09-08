@@ -1,12 +1,13 @@
-const test = require('node:test');
-const assert = require('node:assert');
-const { computeUpdate, needsFullVersionList, normalizeNpmSpec, normalizePythonSpec } = require('../out/versions');
-const { baselineOf, cargoRange, classifyUpdate, isPinned, schemeFor } = require('../out/schemes');
+import test from 'node:test';
+import assert from 'node:assert';
+import { computeUpdate, needsFullVersionList, normalizeNpmSpec, normalizePythonSpec } from '../src/versions';
+import { baselineOf, cargoRange, classifyUpdate, isPinned, schemeFor } from '../src/schemes';
+import type { DependencyRef } from '../src/types';
 
 const OPTS = { includePrerelease: false, showSatisfyingUpdates: true, scheme: schemeFor('npm') };
 const PY_OPTS = { includePrerelease: false, showSatisfyingUpdates: true, scheme: schemeFor('python') };
 const CARGO_OPTS = { includePrerelease: false, showSatisfyingUpdates: true, scheme: schemeFor('rust') };
-const dep = (spec, name = 'pkg') => ({ name, spec, line: 0, section: 'dependencies' });
+const dep = (spec: string, name = 'pkg'): DependencyRef => ({ name, spec, line: 0, section: 'dependencies' });
 
 test('baselineOf takes the floor of a range', () => {
   assert.strictEqual(baselineOf('^1.2.3'), '1.2.3');
@@ -36,6 +37,7 @@ test('computeUpdate stays quiet when the floor is already the latest', () => {
 
 test('computeUpdate reports an in-range update', () => {
   const update = computeUpdate(dep('^4.17.0'), { latest: '4.17.21' }, OPTS);
+  assert.ok(update);
   assert.strictEqual(update.latest, '4.17.21');
   assert.strictEqual(update.kind, 'patch');
   assert.strictEqual(update.inRange, true);
@@ -43,6 +45,7 @@ test('computeUpdate reports an in-range update', () => {
 
 test('computeUpdate flags a major update as out of range', () => {
   const update = computeUpdate(dep('^4.17.0'), { latest: '5.0.0' }, OPTS);
+  assert.ok(update);
   assert.strictEqual(update.kind, 'major');
   assert.strictEqual(update.inRange, false);
 });
@@ -50,6 +53,7 @@ test('computeUpdate flags a major update as out of range', () => {
 test('computeUpdate reports the newest in-range version alongside the latest', () => {
   const versions = { latest: '5.0.0', all: ['4.17.0', '4.17.21', '4.18.0', '5.0.0'] };
   const update = computeUpdate(dep('^4.17.0'), versions, OPTS);
+  assert.ok(update);
   assert.strictEqual(update.satisfying, '4.18.0');
   assert.strictEqual(update.latest, '5.0.0');
 });
@@ -59,11 +63,13 @@ test('computeUpdate leaves prereleases alone unless asked', () => {
   assert.strictEqual(computeUpdate(dep('^1.0.0'), versions, OPTS), undefined);
 
   const opted = computeUpdate(dep('^1.0.0'), versions, { ...OPTS, includePrerelease: true });
+  assert.ok(opted);
   assert.strictEqual(opted.latest, '2.0.0-beta.1');
 });
 
 test('computeUpdate treats a newer prerelease as an update for prerelease users', () => {
   const update = computeUpdate(dep('2.0.0-beta.1'), { latest: '2.0.0-beta.5' }, OPTS);
+  assert.ok(update);
   assert.strictEqual(update.latest, '2.0.0-beta.5');
   assert.strictEqual(update.kind, 'prerelease');
 });
@@ -74,6 +80,7 @@ test('computeUpdate carries a moved Go import path', () => {
     { latest: '3.1.0', path: 'github.com/foo/bar/v3' },
     OPTS,
   );
+  assert.ok(update);
   assert.strictEqual(update.alternatePath, 'github.com/foo/bar/v3');
   assert.strictEqual(update.kind, 'major');
 });
@@ -110,14 +117,16 @@ test('normalizePythonSpec keeps only specifiers with a floor to measure from', (
 });
 
 test('computeUpdate compares Python declarations by PEP 440 rules', () => {
-  const dep = (spec) => ({ name: 'requests', spec, line: 0, section: 'project.dependencies' });
+  const dep = (spec: string): DependencyRef => ({ name: 'requests', spec, line: 0, section: 'project.dependencies' });
 
   const inRange = computeUpdate(dep('>=2.28'), { latest: '2.32.3', all: ['2.28.0', '2.32.3'] }, PY_OPTS);
+  assert.ok(inRange);
   assert.strictEqual(inRange.latest, '2.32.3');
   assert.strictEqual(inRange.kind, 'minor');
   assert.strictEqual(inRange.inRange, true);
 
   const capped = computeUpdate(dep('>=2.28,<3'), { latest: '3.1.0', all: ['2.28.0', '2.32.3', '3.1.0'] }, PY_OPTS);
+  assert.ok(capped);
   assert.strictEqual(capped.inRange, false);
   assert.strictEqual(capped.kind, 'major');
   assert.strictEqual(capped.satisfying, '2.32.3');
@@ -126,6 +135,7 @@ test('computeUpdate compares Python declarations by PEP 440 rules', () => {
 test('computeUpdate treats a Python post-release as a patch move', () => {
   const dep = { name: 'pkg', spec: '==1.0', line: 0, section: 'requirements' };
   const update = computeUpdate(dep, { latest: '1.0.post1', all: ['1.0', '1.0.post1'] }, PY_OPTS);
+  assert.ok(update);
   assert.strictEqual(update.latest, '1.0.post1');
   assert.strictEqual(update.kind, 'patch');
 });
@@ -134,7 +144,7 @@ test('computeUpdate hides Python prereleases unless asked', () => {
   const dep = { name: 'pkg', spec: '>=1.0', line: 0, section: 'requirements' };
   const versions = { latest: '1.0', all: ['1.0', '2.0b1'] };
   assert.strictEqual(computeUpdate(dep, versions, PY_OPTS), undefined);
-  assert.strictEqual(computeUpdate(dep, versions, { ...PY_OPTS, includePrerelease: true }).latest, '2.0b1');
+  assert.strictEqual(computeUpdate(dep, versions, { ...PY_OPTS, includePrerelease: true })?.latest, '2.0b1');
 });
 
 test('Cargo requirements use implicit caret semantics and comma intersections', () => {
@@ -144,8 +154,10 @@ test('Cargo requirements use implicit caret semantics and comma intersections', 
   assert.strictEqual(cargoRange('*'), undefined);
 
   const compatible = computeUpdate(dep('1.2.3'), { latest: '1.9.0', all: ['1.2.3', '1.9.0'] }, CARGO_OPTS);
+  assert.ok(compatible);
   assert.strictEqual(compatible.inRange, true);
   const major = computeUpdate(dep('1.2.3'), { latest: '2.0.0', all: ['1.9.0', '2.0.0'] }, CARGO_OPTS);
+  assert.ok(major);
   assert.strictEqual(major.inRange, false);
   assert.strictEqual(major.satisfying, '1.9.0');
 });

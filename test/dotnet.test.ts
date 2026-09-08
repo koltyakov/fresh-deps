@@ -1,10 +1,11 @@
-const test = require('node:test');
-const assert = require('node:assert');
-const { parseNugetManifest } = require('../out/parsers/nuget');
-const { compareNuget, nugetScheme } = require('../out/nuget');
-const { computeUpdate } = require('../out/versions');
+import test from 'node:test';
+import assert from 'node:assert';
+import { parseNugetManifest } from '../src/parsers/nuget';
+import { compareNuget, nugetScheme } from '../src/nuget';
+import { computeUpdate } from '../src/versions';
+import type { DependencyRef } from '../src/types';
 
-const summary = (deps) => deps.map((dep) => [dep.name, dep.spec, dep.section, dep.line]);
+const summary = (deps: DependencyRef[]) => deps.map((dep) => [dep.name, dep.spec, dep.section, dep.line]);
 const opts = { includePrerelease: false, showSatisfyingUpdates: true, scheme: nugetScheme };
 
 test('NuGet parser reads project package references and central versions', () => {
@@ -63,6 +64,7 @@ test('NuGet project minimums and installed packages.config versions produce dist
   for (const tag of ['PackageReference', 'PackageVersion']) {
     const [dep] = parseNugetManifest(`<${tag} Include="Package" Version="2.10.0" />`);
     const update = computeUpdate(dep, versions, opts);
+    assert.ok(update);
     assert.strictEqual(update.current, '2.10.0');
     assert.strictEqual(update.inRange, true);
   }
@@ -72,6 +74,7 @@ test('NuGet project minimums and installed packages.config versions produce dist
   ]) {
     const [dep] = parseNugetManifest(manifest);
     const update = computeUpdate(dep, versions, opts);
+    assert.ok(update);
     assert.strictEqual(update.current, '2.10.0');
     assert.strictEqual(update.inRange, false);
     assert.strictEqual(update.satisfying, undefined);
@@ -80,12 +83,14 @@ test('NuGet project minimums and installed packages.config versions produce dist
 });
 
 test('NuGet interval and floating ranges report compatible updates', () => {
-  const dep = (spec) => ({ name: 'Package', spec, section: 'PackageReference', line: 0 });
+  const dep = (spec: string): DependencyRef => ({ name: 'Package', spec, section: 'PackageReference', line: 0 });
   const versions = { latest: '3.1.0', all: ['2.10.0', '2.12.0', '3.1.0'] };
   const ranged = computeUpdate(dep('[2.10.0,3.0.0)'), versions, opts);
+  assert.ok(ranged);
   assert.strictEqual(ranged.inRange, false);
   assert.strictEqual(ranged.satisfying, '2.12.0');
 
   const floating = computeUpdate(dep('2.*'), versions, opts);
+  assert.ok(floating);
   assert.strictEqual(floating.satisfying, '2.12.0');
 });

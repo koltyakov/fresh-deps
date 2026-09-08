@@ -1,0 +1,213 @@
+{
+  "name": "fresh-deps",
+  "displayName": "Fresh Deps",
+  "description": "Highlights dependencies that have newer versions available, inline in package.json and go.mod",
+  "version": "0.1.0",
+  "license": "MIT",
+  "publisher": "koltyakov",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/koltyakov/vscode-fresh-deps.git"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "npm",
+    "go",
+    "dependencies",
+    "updates",
+    "versions"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onLanguage:json",
+    "onLanguage:jsonc",
+    "onLanguage:go.mod",
+    "onLanguage:gomod",
+    "workspaceContains:**/package.json",
+    "workspaceContains:**/go.mod"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "freshDeps.refresh",
+        "title": "Fresh Deps: Check for Updates",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "freshDeps.toggle",
+        "title": "Fresh Deps: Toggle Inline Hints"
+      },
+      {
+        "command": "freshDeps.clearCache",
+        "title": "Fresh Deps: Clear Version Cache"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "freshDeps.refresh",
+          "when": "freshDeps.supportedFile",
+          "group": "navigation@10"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Fresh Deps",
+      "properties": {
+        "freshDeps.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show inline hints for dependencies that have newer versions."
+        },
+        "freshDeps.cacheDurationMinutes": {
+          "type": "number",
+          "default": 60,
+          "minimum": 0,
+          "description": "How long resolved versions are cached before the registry is queried again."
+        },
+        "freshDeps.concurrency": {
+          "type": "number",
+          "default": 8,
+          "minimum": 1,
+          "maximum": 32,
+          "description": "Maximum number of parallel registry requests."
+        },
+        "freshDeps.requestTimeoutMs": {
+          "type": "number",
+          "default": 10000,
+          "minimum": 1000,
+          "description": "Timeout for a single registry request, in milliseconds."
+        },
+        "freshDeps.showSatisfyingUpdates": {
+          "type": "boolean",
+          "default": true,
+          "description": "When the latest version is outside the declared range, also report the newest version that still satisfies it."
+        },
+        "freshDeps.includePrerelease": {
+          "type": "boolean",
+          "default": false,
+          "description": "Consider prerelease versions (for example 2.0.0-beta.1) as updates."
+        },
+        "freshDeps.npm.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Check npm dependencies in package.json."
+        },
+        "freshDeps.npm.registry": {
+          "type": "string",
+          "default": "",
+          "description": "npm registry URL. Leave empty to read it from .npmrc, falling back to https://registry.npmjs.org."
+        },
+        "freshDeps.npm.sections": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "dependencies",
+            "devDependencies",
+            "peerDependencies",
+            "optionalDependencies"
+          ],
+          "description": "package.json sections to inspect."
+        },
+        "freshDeps.go.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Check Go modules in go.mod."
+        },
+        "freshDeps.go.proxy": {
+          "type": "string",
+          "default": "",
+          "description": "Go module proxy URL. Leave empty to read GOPROXY, falling back to https://proxy.golang.org."
+        },
+        "freshDeps.go.includeIndirect": {
+          "type": "boolean",
+          "default": false,
+          "description": "Also check modules marked as // indirect."
+        },
+        "freshDeps.go.checkMajorVersions": {
+          "type": "boolean",
+          "default": true,
+          "description": "Probe for newer major versions (/v2, /v3, ...) of Go modules."
+        }
+      }
+    },
+    "colors": [
+      {
+        "id": "freshDeps.commentForeground",
+        "description": "Colour of the leading comment token on an inline hint.",
+        "defaults": {
+          "dark": "editorCodeLens.foreground",
+          "light": "editorCodeLens.foreground",
+          "highContrast": "editorCodeLens.foreground",
+          "highContrastLight": "editorCodeLens.foreground"
+        }
+      },
+      {
+        "id": "freshDeps.majorForeground",
+        "description": "Inline hint colour for major updates \u2014 the ones that need a range bump or a new import path.",
+        "defaults": {
+          "dark": "editorWarning.foreground",
+          "light": "editorWarning.foreground",
+          "highContrast": "editorWarning.foreground",
+          "highContrastLight": "editorWarning.foreground"
+        }
+      },
+      {
+        "id": "freshDeps.minorForeground",
+        "description": "Inline hint colour for minor updates.",
+        "defaults": {
+          "dark": "editorInfo.foreground",
+          "light": "editorInfo.foreground",
+          "highContrast": "editorInfo.foreground",
+          "highContrastLight": "editorInfo.foreground"
+        }
+      },
+      {
+        "id": "freshDeps.patchForeground",
+        "description": "Inline hint colour for patch updates.",
+        "defaults": {
+          "dark": "editorCodeLens.foreground",
+          "light": "editorCodeLens.foreground",
+          "highContrast": "editorCodeLens.foreground",
+          "highContrastLight": "editorCodeLens.foreground"
+        }
+      },
+      {
+        "id": "freshDeps.prereleaseForeground",
+        "description": "Inline hint colour for prerelease updates.",
+        "defaults": {
+          "dark": "editorCodeLens.foreground",
+          "light": "editorCodeLens.foreground",
+          "highContrast": "editorCodeLens.foreground",
+          "highContrastLight": "editorCodeLens.foreground"
+        }
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run check && npm run build",
+    "build": "node esbuild.js --production",
+    "watch": "node esbuild.js --watch",
+    "check": "tsc --noEmit",
+    "test": "tsc -p tsconfig.json && node --test test/*.test.js",
+    "package": "npm run build && vsce package"
+  },
+  "dependencies": {
+    "semver": "^7.8.5"
+  },
+  "devDependencies": {
+    "@types/node": "^26.5.0",
+    "@types/semver": "^7.8.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.9.2",
+    "esbuild": "^0.28.2",
+    "typescript": "7.0.2"
+  }
+}

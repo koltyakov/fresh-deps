@@ -89,7 +89,7 @@ export function resolveIndexUrl(override: string | undefined, config: PipConfig)
 }
 
 /**
- * Splits credentials out of an index URL into a Basic auth header — the form
+ * Splits credentials out of an index URL into a Basic auth header - the form
  * pip accepts, and the one `fetch` drops on the floor if it is left in place.
  */
 export function splitCredentials(indexUrl: string): { url: string; auth?: string } {

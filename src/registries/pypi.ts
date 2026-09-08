@@ -204,7 +204,7 @@ export function metaOf(info: NonNullable<ProjectJson['info']>): PackageMeta {
   return meta;
 }
 
-/** Latest upload of each version — a release is only complete once every file is up. */
+/** Latest upload of each version - a release is only complete once every file is up. */
 export function uploadTimes(files: SimpleFile[]): Map<string, string> {
   const times = new Map<string, string>();
   for (const file of files) {
@@ -228,7 +228,7 @@ export function normalizeName(name: string): string {
 }
 
 /**
- * A release counts as withdrawn only when every one of its files is yanked —
+ * A release counts as withdrawn only when every one of its files is yanked -
  * yanking a single broken wheel does not retract the version.
  */
 export function yankedVersions(files: SimpleFile[]): Set<string> {

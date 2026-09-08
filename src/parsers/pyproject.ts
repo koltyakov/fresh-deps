@@ -88,7 +88,7 @@ export interface PyProjectOptions {
 
 /**
  * Reads dependencies from a pyproject.toml: PEP 621 `[project]` lists, PEP 735
- * `[dependency-groups]`, the Poetry tables, and — on request — the build
+ * `[dependency-groups]`, the Poetry tables, and - on request - the build
  * requirements.
  */
 export function parsePyProject(text: string, options: PyProjectOptions): DependencyRef[] {

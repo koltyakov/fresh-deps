@@ -10,7 +10,7 @@ export interface Requirement {
 const REQUIREMENT_RE = /^(\s*)([A-Za-z0-9][A-Za-z0-9._-]*)\s*(\[[^\]]*\])?\s*/;
 
 /**
- * Parses a PEP 508 requirement — `name[extras] >=1.0,<2 ; marker`. Direct
+ * Parses a PEP 508 requirement - `name[extras] >=1.0,<2 ; marker`. Direct
  * references (`name @ https://…`) name no registry version, so they are dropped.
  */
 export function parseRequirement(text: string): Requirement | undefined {

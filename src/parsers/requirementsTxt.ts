@@ -51,7 +51,7 @@ function lineAt(logical: LogicalLine, offset: number): number {
 
 /**
  * Extracts pinned requirements from a pip requirements file. Options (`-r`,
- * `-e`, `--index-url`) and unconstrained requirements are skipped — neither
+ * `-e`, `--index-url`) and unconstrained requirements are skipped - neither
  * gives a version to measure an update from.
  */
 export function parseRequirementsTxt(text: string): DependencyRef[] {

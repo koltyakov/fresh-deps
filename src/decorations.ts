@@ -83,8 +83,8 @@ export class DecorationRenderer implements vscode.Disposable {
     }
 
     for (const update of hints) {
-      // Anchored at the end of the line so the hint trails the whole declaration —
-      // past the closing comma or an existing comment — and reads as one.
+      // Anchored at the end of the line so the hint trails the whole declaration -
+      // past the closing comma or an existing comment - and reads as one.
       const line = editor.document.lineAt(Math.min(update.dep.line, editor.document.lineCount - 1));
       const padding = (columnOf.get(update.dep.section) ?? 0) - (lineWidth.get(update.dep.line) ?? 0);
       byKind.get(update.kind)?.push({

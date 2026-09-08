@@ -31,7 +31,7 @@ export function relativeTime(iso: string, now = Date.now()): string | undefined 
   return format.format(0, 'day');
 }
 
-/** "13 May 2026 (3 months ago)" — the exact date, plus how long ago that was. */
+/** "13 May 2026 (3 months ago)" - the exact date, plus how long ago that was. */
 export function publishedOn(iso: string | undefined, now = Date.now()): string | undefined {
   if (!iso) {
     return undefined;
@@ -59,7 +59,7 @@ export function formatSize(bytes: number): string {
 
 /**
  * Registry prose is arbitrary text. Only the characters that would break the card
- * are escaped — a table cell, emphasis, code, a link, or a `$(icon)` reference —
+ * are escaped - a table cell, emphasis, code, a link, or a `$(icon)` reference -
  * so that URLs in a description still come out as URLs.
  */
 export function escapeMarkdown(text: string): string {

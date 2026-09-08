@@ -39,7 +39,7 @@ export function buildAuditHover(audit: DependencyAudit): vscode.MarkdownString {
 
 /**
  * The hover shown for one outdated dependency. `dates` is filled in only where the
- * publish dates have already been resolved — everything else on the card comes from
+ * publish dates have already been resolved - everything else on the card comes from
  * the lookup that produced the hint, so the card is complete either way.
  */
 export function buildHover(
@@ -52,7 +52,7 @@ export function buildHover(
 
   const name = update.alternatePath ?? update.dep.name;
   const meta = { ...update.meta, ...details.meta };
-  md.appendMarkdown(`**${name}** — ${update.kind} update available\n\n`);
+  md.appendMarkdown(`**${name}** - ${update.kind} update available\n\n`);
   if (meta.description) {
     md.appendMarkdown(`${escapeMarkdown(meta.description)}\n\n`);
   }
@@ -77,7 +77,7 @@ export function buildHover(
     md.appendMarkdown(`| Newest in range | \`${display(update.satisfying, ecosystem)}\` |\n`);
   } else if (!update.inRange && ecosystem !== 'go') {
     const constraint = ecosystem === 'python' ? 'specifier' : 'range';
-    md.appendMarkdown(`| In range | no — the ${constraint} needs to be widened |\n`);
+    md.appendMarkdown(`| In range | no - the ${constraint} needs to be widened |\n`);
   }
   if (meta.license) {
     md.appendMarkdown(`| License | ${escapeMarkdown(meta.license)} |\n`);
@@ -103,7 +103,7 @@ export function buildHover(
   }
 
   if (meta.deprecated) {
-    md.appendMarkdown(`\n$(warning) **Deprecated** — ${escapeMarkdown(meta.deprecated)}\n`);
+    md.appendMarkdown(`\n$(warning) **Deprecated** - ${escapeMarkdown(meta.deprecated)}\n`);
   }
 
   md.appendMarkdown(`\n${links(update, ecosystem, meta.homepage, meta.repository)}`);

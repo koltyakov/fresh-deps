@@ -52,7 +52,7 @@ export class NpmClient {
       return { error: 'not found' };
     }
     // The document describing the newest release is already on the wire, so the
-    // descriptive fields on it are free — only the publish date is missing.
+    // descriptive fields on it are free - only the publish date is missing.
     return { latest: body.version, meta: metaOf(body) };
   }
 
@@ -76,7 +76,7 @@ export class NpmClient {
   /**
    * Publish dates for specific versions. Only the unabbreviated packument carries
    * the `time` map, and for a long-lived package that document runs to megabytes,
-   * so this is never part of a normal check — it is fetched when someone actually
+   * so this is never part of a normal check - it is fetched when someone actually
    * asks to see the dates, and answers for every version at once.
    */
   async fetchPublishDates(name: string, versions: string[]): Promise<Map<string, string>> {

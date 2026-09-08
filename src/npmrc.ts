@@ -35,7 +35,7 @@ function parse(content: string, into: Map<string, string>): void {
 
 /**
  * Reads .npmrc files from the manifest directory upwards, then the user's home
- * directory — the same precedence npm itself applies.
+ * directory - the same precedence npm itself applies.
  */
 export function readNpmConfig(startDir: string): NpmConfig {
   const values = new Map<string, string>();

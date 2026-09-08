@@ -59,8 +59,8 @@ export function normalizeGoVersion(version: string): string {
 
 /**
  * Resolves what should be queried for a Python requirement. A specifier that
- * states no floor — an unconstrained `requests`, or one that only rules
- * versions out — has nothing to compare against, so it is dropped before it
+ * states no floor - an unconstrained `requests`, or one that only rules
+ * versions out - has nothing to compare against, so it is dropped before it
  * costs a request.
  */
 export function normalizePythonSpec(name: string, rawSpec: string): NormalizedSpec | undefined {

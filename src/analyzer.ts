@@ -235,7 +235,7 @@ export interface Lookup {
   fetchAll?(dep: DependencyRef): Promise<RegistryVersions>;
   fetchAudit?(dep: DependencyRef, version: string): Promise<AuditResponse>;
   /**
-   * Detail worth a request of its own — publish dates, prose the version lookup
+   * Detail worth a request of its own - publish dates, prose the version lookup
    * does not carry. Fetched only when someone asks to see it, so a check never
    * pays for it, and absent where no registry answer is cheap enough to be worth it.
    */
@@ -314,7 +314,7 @@ function goLookup(settings: Settings): Lookup | undefined {
     key: (dep) => `go|${client.proxy}|${dep.name}|${settings.go.checkMajorVersions ? 'major' : 'base'}`,
     fetch: (dep) => client.fetchLatest(dep.name),
     // The proxy dated the latest version on the response that resolved it, so only
-    // the declared one is still unknown — one small request under its own path,
+    // the declared one is still unknown - one small request under its own path,
     // which is where it lives even when the module has since moved to a new major.
     fetchDetails: async (dep, versions) => ({
       currentPublishedAt: await client.fetchPublishDate(dep.name, versions.current),

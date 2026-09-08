@@ -280,7 +280,7 @@ export function isPinned(spec: string): boolean {
 }
 
 /**
- * The lowest version the specifier allows — the baseline an update is measured
+ * The lowest version the specifier allows - the baseline an update is measured
  * from. Specifiers that only rule versions out (`!=`, `<`) have no floor.
  */
 export function baselineOf(spec: string): string | undefined {
@@ -304,7 +304,7 @@ function withoutLocal(version: Pep440Version): Pep440Version {
   return version.local ? { ...version, local: undefined } : version;
 }
 
-/** Epoch and release only — what the spec calls the base version. */
+/** Epoch and release only - what the spec calls the base version. */
 function sameBase(a: Pep440Version, b: Pep440Version): boolean {
   return a.epoch === b.epoch && compareRelease(a.release, b.release) === 0;
 }
@@ -373,7 +373,7 @@ function satisfiesClauses(version: string, clauses: Clause[], opts: MatchOptions
     return false;
   }
   // Prereleases are invisible unless asked for, or unless the specifier itself
-  // names one — the rule pip applies when resolving.
+  // names one - the rule pip applies when resolving.
   if (
     isPrereleaseParsed(parsed) &&
     !opts.includePrerelease &&

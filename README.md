@@ -39,14 +39,14 @@ range, and a link to npm, pkg.go.dev, crates.io, PyPI, Maven Central, or NuGet.
 
 | Ecosystem | File | Source of truth |
 |---|---|---|
-| npm | `package.json` — `dependencies`, `devDependencies`, `peerDependencies`, `optionalDependencies` | the npm registry (`.npmrc`-aware, including scoped registries and auth tokens) |
-| Go | `go.mod` — `require`, single-line and block form | the Go module proxy (`GOPROXY`-aware) |
-| Rust | `Cargo.toml` — dependency, dev-dependency, build-dependency, workspace and target-specific tables | crates.io |
-| Python | `pyproject.toml` — PEP 621 `[project]`, PEP 735 `[dependency-groups]` and the Poetry tables; `Pipfile`; `requirements.txt` and its conventional variants | the PyPI simple index (`PIP_INDEX_URL`/`UV_INDEX_URL`- and `pip.conf`-aware) |
+| npm | `package.json` - `dependencies`, `devDependencies`, `peerDependencies`, `optionalDependencies` | the npm registry (`.npmrc`-aware, including scoped registries and auth tokens) |
+| Go | `go.mod` - `require`, single-line and block form | the Go module proxy (`GOPROXY`-aware) |
+| Rust | `Cargo.toml` - dependency, dev-dependency, build-dependency, workspace and target-specific tables | crates.io |
+| Python | `pyproject.toml` - PEP 621 `[project]`, PEP 735 `[dependency-groups]` and the Poetry tables; `Pipfile`; `requirements.txt` and its conventional variants | the PyPI simple index (`PIP_INDEX_URL`/`UV_INDEX_URL`- and `pip.conf`-aware) |
 | Java | Maven `pom.xml` dependencies and dependency management | Maven Central, or a configured Maven repository |
 | .NET | `*.csproj`, `*.fsproj`, `*.vbproj`, `Directory.Packages.props`, `Directory.Build.props`, and `packages.config` | a NuGet V3 feed (nuget.org by default) |
 
-Hints are drawn at the end of the line — after any trailing comma or existing comment — in the
+Hints are drawn at the end of the line - after any trailing comma or existing comment - in the
 manifest's own comment syntax, and lined up on a common column within each block. They should read
 as a note about the code, never as part of it.
 
@@ -64,7 +64,7 @@ widened. A single number means the update is a straight upgrade.
 
 ### Go specifics
 
-- Modules covered by a `replace` directive are skipped — their version no longer comes from the proxy.
+- Modules covered by a `replace` directive are skipped - their version no longer comes from the proxy.
 - Modules excluded by the extension process's `GONOPROXY` environment variable, or `GOPRIVATE`
   when `GONOPROXY` is unset or empty, are never sent to a proxy. These modules are skipped rather
   than fetched directly. Settings persisted only through `go env -w` are not read.
@@ -74,14 +74,14 @@ widened. A single number means the update is a straight upgrade.
 
 ### Python specifics
 
-- Versions are compared by PEP 440, not semver — epochs (`1!2.0`), post-releases (`1.0.post1`), dev
+- Versions are compared by PEP 440, not semver - epochs (`1!2.0`), post-releases (`1.0.post1`), dev
   releases and calendar versions all order the way pip orders them.
 - Poetry's `^` and `~` constraints are expanded into the bounds they stand for, so `^0.2.3` is read
   as `>=0.2.3,<0.3.0` rather than as a caret range from another ecosystem.
 - Yanked releases are ignored: a version counts as withdrawn only when every one of its files is
   yanked, which is the rule pip applies.
-- Requirements with nothing to measure against — a bare `requests`, a `!=` or `<` only, a `@` direct
-  reference, an `-e` or `-r` line — are skipped before they cost a request.
+- Requirements with nothing to measure against - a bare `requests`, a `!=` or `<` only, a `@` direct
+  reference, an `-e` or `-r` line - are skipped before they cost a request.
 - Recognised requirements files are `requirements.txt` and its `-`, `.` or `_` suffixed variants,
   `constraints.txt`, `*-requirements.txt`, and any `.txt` inside a `requirements/` directory.
 
@@ -163,7 +163,7 @@ query the audit provider. Both refresh and Clear Version Cache discard audit res
 | `freshDeps.dotnet.indexUrl` | `""` | NuGet V3 service index; empty uses nuget.org |
 
 Requests are cached for an hour and persisted across window reloads, and typing never triggers a
-lookup — only opening, saving, or an explicit check does.
+lookup - only opening, saving, or an explicit check does.
 
 ## Development
 

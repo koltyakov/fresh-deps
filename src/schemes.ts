@@ -17,7 +17,7 @@ export interface VersionScheme {
   compare(a: string, b: string): number;
   /** True for versions hidden from users who did not ask for them. */
   isPrerelease(version: string): boolean;
-  /** The lowest version the declared range allows — what an update is measured from. */
+  /** The lowest version the declared range allows - what an update is measured from. */
   baseline(spec: string): string | undefined;
   /** True when the spec admits exactly one version. */
   isPinned(spec: string): boolean;

@@ -95,7 +95,7 @@ export function activate(context: vscode.ExtensionContext): void {
       status.tooltip = new vscode.MarkdownString(
         [
           count === 0 ? 'All dependencies are up to date.' : `${count} dependencies have newer versions.`,
-          result.failures.size ? `\n\n${result.failures.size} lookups failed — see the Fresh Deps output channel.` : '',
+          result.failures.size ? `\n\n${result.failures.size} lookups failed - see the Fresh Deps output channel.` : '',
           settings.auditEnabled ? `\n\nAudit: ${checked}/${result.audits.length} declarations checked; ${affected} with warnings; ${auditFailed} failed. Checks declared versions or range baselines, not installed dependencies. Unsupported or uncached declarations are not checked.` : '',
           '\n\nClick to re-check.',
         ].join(''),

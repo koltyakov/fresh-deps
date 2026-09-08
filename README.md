@@ -1,4 +1,4 @@
-<img src="assets/logo.png" alt="Fresh Deps" width="128" align="right">
+<img src="https://raw.githubusercontent.com/koltyakov/fresh-deps/main/assets/logo.png" alt="Fresh Deps" width="128" align="right">
 
 # Fresh Deps
 

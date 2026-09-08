@@ -1,8 +1,9 @@
 import * as vscode from 'vscode';
-import { analyze, ecosystemOf } from './analyzer';
+import { analyze, ecosystemOf, type AnalyzeResult } from './analyzer';
 import { VersionCache } from './cache';
 import { readSettings } from './config';
 import { DecorationRenderer } from './decorations';
+import { DependencyHoverProvider, DetailsResolver } from './details';
 
 const CACHE_STATE_KEY = 'freshDeps.cache';
 const TYPING_DEBOUNCE_MS = 400;
@@ -19,6 +20,10 @@ export function activate(context: vscode.ExtensionContext): void {
   let hintsEnabled = readSettings().enabled;
   const timers = new Map<string, NodeJS.Timeout>();
   const generations = new Map<string, number>();
+  // What each open manifest last resolved to, so the hover can answer for a line
+  // without analysing the document again.
+  const results = new Map<string, AnalyzeResult>();
+  const details = new DetailsResolver();
 
   context.subscriptions.push(renderer, output, status);
 
@@ -33,6 +38,7 @@ export function activate(context: vscode.ExtensionContext): void {
     const ecosystem = ecosystemOf(document.uri.fsPath);
 
     if (!ecosystem || !hintsEnabled) {
+      results.delete(key);
       renderer.clear(editor);
       status.hide();
       return;
@@ -61,10 +67,13 @@ export function activate(context: vscode.ExtensionContext): void {
 
       if (isCancelled() || !result) {
         if (!result) {
+          results.delete(key);
           status.hide();
         }
         return;
       }
+
+      results.set(key, result);
 
       // The editor may have been closed or replaced while requests were in flight.
       const target = vscode.window.visibleTextEditors.find((e) => e.document.uri.toString() === key);
@@ -119,7 +128,26 @@ export function activate(context: vscode.ExtensionContext): void {
     );
   }
 
+  // Every language a supported manifest can be opened as. The provider itself only
+  // answers on a line the last check reported an update for.
+  const MANIFEST_SELECTOR: vscode.DocumentSelector = [
+    { scheme: 'file', pattern: '**/package.json' },
+    { scheme: 'file', pattern: '**/go.mod' },
+    { scheme: 'file', pattern: '**/pyproject.toml' },
+    { scheme: 'file', pattern: '**/Pipfile' },
+    { scheme: 'file', pattern: '**/*.txt' },
+  ];
+
   context.subscriptions.push(
+    vscode.languages.registerHoverProvider(
+      MANIFEST_SELECTOR,
+      new DependencyHoverProvider(
+        (uri) => results.get(uri.toString()),
+        (uri) => readSettings(uri),
+        details,
+      ),
+    ),
+    vscode.workspace.onDidCloseTextDocument((document) => results.delete(document.uri.toString())),
     vscode.window.onDidChangeActiveTextEditor((editor) => {
       updateContext(editor);
       void refresh(editor, true);
@@ -135,6 +163,7 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
     vscode.commands.registerCommand('freshDeps.refresh', async () => {
       cache.clear();
+      details.clear();
       await vscode.window.withProgress(
         { location: vscode.ProgressLocation.Window, title: 'Fresh Deps: checking for updates' },
         () => refresh(vscode.window.activeTextEditor, true),
@@ -147,6 +176,7 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
     vscode.commands.registerCommand('freshDeps.clearCache', async () => {
       cache.clear();
+      details.clear();
       await context.globalState.update(CACHE_STATE_KEY, undefined);
       vscode.window.showInformationMessage('Fresh Deps: version cache cleared.');
     }),

@@ -4,7 +4,8 @@
 
 VSCode extension that highlights, inline, which of your dependencies have newer versions available.
 
-Open a `package.json` or a `go.mod` and every dependency that is behind gets an annotation at the end of its line:
+Open a `package.json`, a `go.mod` or a Python manifest and every dependency that is behind gets an
+annotation at the end of its line:
 
 ```jsonc
 {
@@ -23,8 +24,16 @@ require (
 )
 ```
 
+```toml
+[project]
+dependencies = [
+  "requests>=2.20",   # ↑ 2.34.2
+  "django>=4.2,<5",   # ↑ 4.2.30 → 6.1.1
+]
+```
+
 Hovering an annotation shows the declared range, the latest version, whether it still satisfies the
-range, and a link to npm or pkg.go.dev.
+range, and a link to npm, pkg.go.dev or PyPI.
 
 ## What it reads
 
@@ -32,6 +41,7 @@ range, and a link to npm or pkg.go.dev.
 |---|---|---|
 | npm | `package.json` — `dependencies`, `devDependencies`, `peerDependencies`, `optionalDependencies` | the npm registry (`.npmrc`-aware, including scoped registries and auth tokens) |
 | Go | `go.mod` — `require`, single-line and block form | the Go module proxy (`GOPROXY`-aware) |
+| Python | `pyproject.toml` — PEP 621 `[project]`, PEP 735 `[dependency-groups]` and the Poetry tables; `Pipfile`; `requirements.txt` and its conventional variants | the PyPI simple index (`PIP_INDEX_URL`/`UV_INDEX_URL`- and `pip.conf`-aware) |
 
 Hints are drawn at the end of the line — after any trailing comma or existing comment — in the
 manifest's own comment syntax, and lined up on a common column within each block. They should read
@@ -55,6 +65,19 @@ widened. A single number means the update is a straight upgrade.
 - `// indirect` modules are hidden by default (`freshDeps.go.includeIndirect`).
 - New major versions live under a new import path, so `/v2`, `/v3`, … and the `gopkg.in` `.vN` form are
   probed and reported with the path you would have to import.
+
+### Python specifics
+
+- Versions are compared by PEP 440, not semver — epochs (`1!2.0`), post-releases (`1.0.post1`), dev
+  releases and calendar versions all order the way pip orders them.
+- Poetry's `^` and `~` constraints are expanded into the bounds they stand for, so `^0.2.3` is read
+  as `>=0.2.3,<0.3.0` rather than as a caret range from another ecosystem.
+- Yanked releases are ignored: a version counts as withdrawn only when every one of its files is
+  yanked, which is the rule pip applies.
+- Requirements with nothing to measure against — a bare `requests`, a `!=` or `<` only, a `@` direct
+  reference, an `-e` or `-r` line — are skipped before they cost a request.
+- Recognised requirements files are `requirements.txt` and its `-`, `.` or `_` suffixed variants,
+  `constraints.txt`, `*-requirements.txt`, and any `.txt` inside a `requirements/` directory.
 
 ## Commands
 
@@ -81,6 +104,9 @@ widened. A single number means the update is a straight upgrade.
 | `freshDeps.go.proxy` | `""` | Proxy override; empty reads `GOPROXY` |
 | `freshDeps.go.includeIndirect` | `false` | Also check `// indirect` modules |
 | `freshDeps.go.checkMajorVersions` | `true` | Probe for `/v2`, `/v3`, … |
+| `freshDeps.python.enabled` | `true` | Check `pyproject.toml`, `Pipfile` and requirements files |
+| `freshDeps.python.indexUrl` | `""` | Index override; empty reads `PIP_INDEX_URL`, `UV_INDEX_URL` and `pip.conf` |
+| `freshDeps.python.includeBuildRequires` | `false` | Also check `[build-system]` requires |
 
 Requests are cached for an hour and persisted across window reloads, and typing never triggers a
 lookup — only opening, saving, or an explicit check does.
@@ -99,11 +125,12 @@ installs it with `code --install-extension --force`; reload the window afterward
 `FRESH_DEPS_VSCODE_CLI` to target another CLI (`code-insiders`, `cursor`, an absolute path).
 
 Registry lookups are network-dependent, so the test suite covers the pure parts: manifest parsing,
-position anchoring, version comparison, `.npmrc` resolution and Go path handling.
+position anchoring, version comparison, PEP 440 ordering and specifier matching, `.npmrc` and
+`pip.conf` resolution, and Go path handling.
 
 ## Roadmap
 
-Cargo, Maven, and PyPI; a code action to apply an update in place.
+Cargo and Maven; a code action to apply an update in place.
 
 ## License
 

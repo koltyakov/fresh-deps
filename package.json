@@ -2,7 +2,7 @@
   "name": "fresh-deps",
   "displayName": "Fresh Deps",
   "description": "Highlights dependencies that have newer versions available, inline in your manifest files.",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "license": "MIT",
   "publisher": "koltyakov",
   "repository": {
@@ -24,7 +24,11 @@
     "semver",
     "npm",
     "go",
-    "package.json"
+    "python",
+    "pypi",
+    "package.json",
+    "pyproject.toml",
+    "requirements.txt"
   ],
   "main": "./dist/extension.js",
   "icon": "assets/logo.png",
@@ -37,8 +41,13 @@
     "onLanguage:jsonc",
     "onLanguage:go.mod",
     "onLanguage:gomod",
+    "onLanguage:toml",
+    "onLanguage:pip-requirements",
     "workspaceContains:**/package.json",
-    "workspaceContains:**/go.mod"
+    "workspaceContains:**/go.mod",
+    "workspaceContains:**/pyproject.toml",
+    "workspaceContains:**/Pipfile",
+    "workspaceContains:**/requirements*.txt"
   ],
   "contributes": {
     "commands": [
@@ -144,6 +153,21 @@
           "type": "boolean",
           "default": true,
           "description": "Probe for newer major versions (/v2, /v3, ...) of Go modules."
+        },
+        "freshDeps.python.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Check Python dependencies in pyproject.toml, Pipfile and requirements files."
+        },
+        "freshDeps.python.indexUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Python package index URL. Leave empty to read PIP_INDEX_URL, UV_INDEX_URL or pip's configuration, falling back to https://pypi.org/simple."
+        },
+        "freshDeps.python.includeBuildRequires": {
+          "type": "boolean",
+          "default": false,
+          "description": "Also check [build-system] requires in pyproject.toml."
         }
       }
     },

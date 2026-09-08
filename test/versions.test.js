@@ -1,15 +1,10 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const {
-  baselineOf,
-  classifyUpdate,
-  computeUpdate,
-  isPinned,
-  needsFullVersionList,
-  normalizeNpmSpec,
-} = require('../out/versions');
+const { computeUpdate, needsFullVersionList, normalizeNpmSpec, normalizePythonSpec } = require('../out/versions');
+const { baselineOf, classifyUpdate, isPinned, schemeFor } = require('../out/schemes');
 
-const OPTS = { includePrerelease: false, showSatisfyingUpdates: true };
+const OPTS = { includePrerelease: false, showSatisfyingUpdates: true, scheme: schemeFor('npm') };
+const PY_OPTS = { includePrerelease: false, showSatisfyingUpdates: true, scheme: schemeFor('python') };
 const dep = (spec, name = 'pkg') => ({ name, spec, line: 0, section: 'dependencies' });
 
 test('baselineOf takes the floor of a range', () => {
@@ -94,4 +89,40 @@ test('normalizeNpmSpec rejects non-registry specs', () => {
   assert.strictEqual(normalizeNpmSpec('a', 'https://example.com/a.tgz'), undefined);
   assert.strictEqual(normalizeNpmSpec('a', 'not a version'), undefined);
   assert.deepStrictEqual(normalizeNpmSpec('a', ' ^1.0.0 '), { name: 'a', spec: '^1.0.0' });
+});
+
+test('normalizePythonSpec keeps only specifiers with a floor to measure from', () => {
+  assert.strictEqual(normalizePythonSpec('requests', ''), undefined);
+  assert.strictEqual(normalizePythonSpec('requests', '*'), undefined);
+  assert.strictEqual(normalizePythonSpec('requests', '!=2.0'), undefined);
+  assert.strictEqual(normalizePythonSpec('requests', '<3'), undefined);
+  assert.deepStrictEqual(normalizePythonSpec('requests', ' >=2.28,<3 '), { name: 'requests', spec: '>=2.28,<3' });
+});
+
+test('computeUpdate compares Python declarations by PEP 440 rules', () => {
+  const dep = (spec) => ({ name: 'requests', spec, line: 0, section: 'project.dependencies' });
+
+  const inRange = computeUpdate(dep('>=2.28'), { latest: '2.32.3', all: ['2.28.0', '2.32.3'] }, PY_OPTS);
+  assert.strictEqual(inRange.latest, '2.32.3');
+  assert.strictEqual(inRange.kind, 'minor');
+  assert.strictEqual(inRange.inRange, true);
+
+  const capped = computeUpdate(dep('>=2.28,<3'), { latest: '3.1.0', all: ['2.28.0', '2.32.3', '3.1.0'] }, PY_OPTS);
+  assert.strictEqual(capped.inRange, false);
+  assert.strictEqual(capped.kind, 'major');
+  assert.strictEqual(capped.satisfying, '2.32.3');
+});
+
+test('computeUpdate treats a Python post-release as a patch move', () => {
+  const dep = { name: 'pkg', spec: '==1.0', line: 0, section: 'requirements' };
+  const update = computeUpdate(dep, { latest: '1.0.post1', all: ['1.0', '1.0.post1'] }, PY_OPTS);
+  assert.strictEqual(update.latest, '1.0.post1');
+  assert.strictEqual(update.kind, 'patch');
+});
+
+test('computeUpdate hides Python prereleases unless asked', () => {
+  const dep = { name: 'pkg', spec: '>=1.0', line: 0, section: 'requirements' };
+  const versions = { latest: '1.0', all: ['1.0', '2.0b1'] };
+  assert.strictEqual(computeUpdate(dep, versions, PY_OPTS), undefined);
+  assert.strictEqual(computeUpdate(dep, versions, { ...PY_OPTS, includePrerelease: true }).latest, '2.0b1');
 });

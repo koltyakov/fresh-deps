@@ -18,6 +18,11 @@ export interface Settings {
     includeIndirect: boolean;
     checkMajorVersions: boolean;
   };
+  python: {
+    enabled: boolean;
+    indexUrl: string;
+    includeBuildRequires: boolean;
+  };
 }
 
 export function readSettings(scope?: vscode.Uri): Settings {
@@ -39,6 +44,11 @@ export function readSettings(scope?: vscode.Uri): Settings {
       proxy: cfg.get('go.proxy', ''),
       includeIndirect: cfg.get('go.includeIndirect', false),
       checkMajorVersions: cfg.get('go.checkMajorVersions', true),
+    },
+    python: {
+      enabled: cfg.get('python.enabled', true),
+      indexUrl: cfg.get('python.indexUrl', ''),
+      includeBuildRequires: cfg.get('python.includeBuildRequires', false),
     },
   };
 }

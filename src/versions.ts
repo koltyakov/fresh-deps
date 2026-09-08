@@ -1,5 +1,6 @@
 import * as semver from 'semver';
-import type { DependencyRef, DependencyUpdate, RegistryVersions, ResolveOptions, UpdateKind } from './types';
+import * as pep440 from './pep440';
+import type { DependencyRef, DependencyUpdate, RegistryVersions, ResolveOptions } from './types';
 
 const LOOSE = { loose: true } as const;
 
@@ -56,39 +57,18 @@ export function normalizeGoVersion(version: string): string {
   return version.trim().replace(/^v/, '').replace(/\+incompatible$/, '');
 }
 
-/** The lowest version the declared range allows — what an update is measured from. */
-export function baselineOf(spec: string): string | undefined {
-  const range = semver.validRange(spec, LOOSE);
-  if (!range || range === '*') {
+/**
+ * Resolves what should be queried for a Python requirement. A specifier that
+ * states no floor — an unconstrained `requests`, or one that only rules
+ * versions out — has nothing to compare against, so it is dropped before it
+ * costs a request.
+ */
+export function normalizePythonSpec(name: string, rawSpec: string): NormalizedSpec | undefined {
+  const spec = rawSpec.trim();
+  if (spec === '' || spec === '*') {
     return undefined;
   }
-  try {
-    return semver.minVersion(range, LOOSE)?.version;
-  } catch {
-    return undefined;
-  }
-}
-
-/** True when the spec pins one exact version, as Go modules always do. */
-export function isPinned(spec: string): boolean {
-  return semver.valid(spec.trim().replace(/^v/, ''), LOOSE) !== null;
-}
-
-export function classifyUpdate(current: string, latest: string): UpdateKind {
-  const diff = semver.diff(current, latest);
-  switch (diff) {
-    case 'major':
-    case 'premajor':
-      return 'major';
-    case 'minor':
-    case 'preminor':
-      return 'minor';
-    case 'patch':
-    case 'prepatch':
-      return 'patch';
-    default:
-      return 'prerelease';
-  }
+  return pep440.baselineOf(spec) ? { name, spec } : undefined;
 }
 
 /**
@@ -96,14 +76,11 @@ export function classifyUpdate(current: string, latest: string): UpdateKind {
  * the declared range, so the newest in-range version is worth a second lookup.
  */
 export function needsFullVersionList(spec: string, latest: string, opts: ResolveOptions): boolean {
-  if (!opts.showSatisfyingUpdates || isPinned(spec)) {
+  const { scheme } = opts;
+  if (!opts.showSatisfyingUpdates || scheme.isPinned(spec) || !scheme.isRange(spec)) {
     return false;
   }
-  const range = semver.validRange(spec, LOOSE);
-  if (!range) {
-    return false;
-  }
-  return !semver.satisfies(latest, range, { includePrerelease: true });
+  return !scheme.satisfies(latest, spec, { includePrerelease: true });
 }
 
 /** Compares a declaration against what the registry offers. Returns undefined when up to date. */
@@ -112,29 +89,32 @@ export function computeUpdate(
   versions: RegistryVersions,
   opts: ResolveOptions,
 ): DependencyUpdate | undefined {
-  const current = baselineOf(dep.spec);
+  const { scheme } = opts;
+
+  const current = scheme.baseline(dep.spec);
   if (!current) {
     return undefined;
   }
 
   const latest = pickLatest(versions, opts);
-  if (!latest || !semver.gt(latest, current, LOOSE)) {
+  if (!latest || scheme.compare(latest, current) <= 0) {
     return undefined;
   }
 
   // A prerelease is only an update for someone already on a prerelease.
-  if (semver.prerelease(latest) && !opts.includePrerelease && !semver.prerelease(current)) {
+  if (scheme.isPrerelease(latest) && !opts.includePrerelease && !scheme.isPrerelease(current)) {
     return undefined;
   }
 
-  const range = semver.validRange(dep.spec, LOOSE) ?? current;
-  const inRange = semver.satisfies(latest, range, { includePrerelease: true });
+  const inRange = scheme.isRange(dep.spec)
+    ? scheme.satisfies(latest, dep.spec, { includePrerelease: true })
+    : scheme.compare(latest, current) === 0;
 
   const update: DependencyUpdate = {
     dep,
     current,
     latest,
-    kind: classifyUpdate(current, latest),
+    kind: scheme.classify(current, latest),
     inRange,
   };
 
@@ -142,13 +122,17 @@ export function computeUpdate(
     update.latestRaw = versions.latestRaw;
   }
 
+  if (versions.meta) {
+    update.meta = versions.meta;
+  }
+
   if (versions.path && versions.path !== dep.name) {
     update.alternatePath = versions.path;
   }
 
-  if (!inRange && opts.showSatisfyingUpdates && versions.all?.length && !isPinned(dep.spec)) {
-    const best = semver.maxSatisfying(versions.all, range, { includePrerelease: opts.includePrerelease });
-    if (best && semver.gt(best, current, LOOSE)) {
+  if (!inRange && opts.showSatisfyingUpdates && versions.all?.length && !scheme.isPinned(dep.spec)) {
+    const best = scheme.maxSatisfying(versions.all, dep.spec, { includePrerelease: opts.includePrerelease });
+    if (best && scheme.compare(best, current) > 0) {
       update.satisfying = best;
     }
   }
@@ -157,11 +141,12 @@ export function computeUpdate(
 }
 
 function pickLatest(versions: RegistryVersions, opts: ResolveOptions): string | undefined {
+  const { scheme } = opts;
   if (opts.includePrerelease && versions.all?.length) {
-    const max = semver.maxSatisfying(versions.all, '*', { includePrerelease: true });
+    const max = scheme.max(versions.all, { includePrerelease: true });
     if (max) {
       return max;
     }
   }
-  return versions.latest && semver.valid(versions.latest, LOOSE) ? versions.latest : undefined;
+  return versions.latest && scheme.isVersion(versions.latest) ? versions.latest : undefined;
 }

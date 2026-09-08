@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- Python support: inline update hints in `pyproject.toml` (PEP 621 `[project]`, PEP 735
+  `[dependency-groups]`, `[build-system]` requires and the Poetry tables), `Pipfile`, and
+  `requirements.txt` and its conventional variants.
+- Versions are compared by PEP 440 rather than semver, so epochs, post-releases, dev releases and
+  calendar versions order the way pip orders them.
+- Poetry's `^` and `~` constraints are expanded into the PEP 440 bounds they stand for.
+- Yanked PyPI releases are ignored unless every file of a version is yanked.
+- PyPI index resolution honours `freshDeps.python.indexUrl`, `PIP_INDEX_URL`, `UV_INDEX_URL` and
+  pip's own configuration files, including credentials embedded in the index URL.
+
 ## 0.1.0
 
 First release.

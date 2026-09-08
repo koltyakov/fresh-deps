@@ -1,4 +1,6 @@
 import * as vscode from 'vscode';
+import { display } from './format';
+import { buildHover } from './hover';
 import type { DependencyUpdate, Ecosystem, UpdateKind } from './types';
 
 const KINDS: UpdateKind[] = ['major', 'minor', 'patch', 'prerelease'];
@@ -10,6 +12,7 @@ const KINDS: UpdateKind[] = ['major', 'minor', 'patch', 'prerelease'];
 const COMMENT_TOKEN: Record<Ecosystem, string> = {
   npm: '//',
   go: '//',
+  python: '#',
 };
 
 /**
@@ -74,7 +77,7 @@ export class DecorationRenderer implements vscode.Disposable {
           before: { contentText: COMMENT_TOKEN[ecosystem], margin: `0 0 0 ${padding + 1}ch` },
           after: { contentText: version(update, ecosystem) },
         },
-        hoverMessage: hover(update, ecosystem),
+        hoverMessage: buildHover(update, ecosystem),
       });
     }
 
@@ -110,56 +113,18 @@ function visualWidth(text: string, tabSize: number): number {
   return width;
 }
 
-function display(version: string, ecosystem: Ecosystem): string {
-  return ecosystem === 'go' && !version.startsWith('v') ? `v${version}` : version;
-}
-
 function version(update: DependencyUpdate, ecosystem: Ecosystem): string {
   const latest = display(update.latestRaw ?? update.latest, ecosystem);
   if (update.satisfying) {
-    return `↑ ${display(update.satisfying, ecosystem)} → ${latest}`;
+    return `\u2191 ${display(update.satisfying, ecosystem)} \u2192 ${latest}`;
   }
   if (update.alternatePath) {
-    return `↑ ${latest} (${majorSuffix(update.alternatePath)})`;
+    return `\u2191 ${latest} (${majorSuffix(update.alternatePath)})`;
   }
-  return `↑ ${latest}`;
+  return `\u2191 ${latest}`;
 }
 
 /** The `/v3` or `.v3` tail a Go module gained, or the whole path if it is neither. */
 function majorSuffix(modulePath: string): string {
   return modulePath.match(/(\/v\d+)$/)?.[1] ?? modulePath.match(/(\.v\d+)$/)?.[1] ?? modulePath;
-}
-
-function hover(update: DependencyUpdate, ecosystem: Ecosystem): vscode.MarkdownString {
-  const md = new vscode.MarkdownString();
-  md.supportThemeIcons = true;
-
-  const name = update.alternatePath ?? update.dep.name;
-  md.appendMarkdown(`**${name}** — ${update.kind} update available\n\n`);
-  md.appendMarkdown(`| | |\n|---|---|\n`);
-  md.appendMarkdown(`| Declared | \`${update.dep.spec}\` |\n`);
-  md.appendMarkdown(`| Latest | \`${display(update.latestRaw ?? update.latest, ecosystem)}\` |\n`);
-  if (update.satisfying) {
-    md.appendMarkdown(`| Newest in range | \`${display(update.satisfying, ecosystem)}\` |\n`);
-  } else if (!update.inRange && ecosystem === 'npm') {
-    md.appendMarkdown(`| In range | no — the range needs to be widened |\n`);
-  }
-  if (update.dep.alias) {
-    md.appendMarkdown(`| Aliased as | \`${update.dep.alias}\` |\n`);
-  }
-  if (update.alternatePath) {
-    md.appendMarkdown(`| New import path | \`${update.alternatePath}\` |\n`);
-  }
-
-  md.appendMarkdown(`\n${links(update, ecosystem)}`);
-  return md;
-}
-
-function links(update: DependencyUpdate, ecosystem: Ecosystem): string {
-  if (ecosystem === 'npm') {
-    const name = update.dep.name;
-    return `[npm](https://www.npmjs.com/package/${name}/v/${update.latest})`;
-  }
-  const modulePath = update.alternatePath ?? update.dep.name;
-  return `[pkg.go.dev](https://pkg.go.dev/${modulePath}@v${update.latest})`;
 }

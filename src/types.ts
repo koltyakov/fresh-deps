@@ -1,4 +1,6 @@
-export type Ecosystem = 'npm' | 'go';
+import type { VersionScheme } from './schemes';
+
+export type Ecosystem = 'npm' | 'go' | 'python';
 
 /** A dependency declaration found in a manifest, with its position in the document. */
 export interface DependencyRef {
@@ -8,12 +10,33 @@ export interface DependencyRef {
   spec: string;
   /** Zero-based line of the declaration, where the hint is anchored. */
   line: number;
-  /** `dependencies`, `devDependencies`, `require`, ... */
+  /** `dependencies`, `devDependencies`, `require`, `project.dependencies`, ... */
   section: string;
   /** Go modules flagged with `// indirect`. */
   indirect?: boolean;
   /** Original text when the name was rewritten (npm aliases). */
   alias?: string;
+}
+
+/**
+ * Descriptive detail about a package. Every field is optional and every one of
+ * them rides along on a response the version lookup already makes, so gathering
+ * them costs no extra request.
+ */
+export interface PackageMeta {
+  description?: string;
+  license?: string;
+  /** Deprecation notice, when the registry marks the package as deprecated. */
+  deprecated?: string;
+  /** Whoever published the latest release. */
+  publisher?: string;
+  homepage?: string;
+  repository?: string;
+  /** Installed footprint of the latest release, in bytes. */
+  unpackedSize?: number;
+  fileCount?: number;
+  /** When the latest version was published, ISO 8601. */
+  latestPublishedAt?: string;
 }
 
 export interface RegistryVersions {
@@ -26,6 +49,8 @@ export interface RegistryVersions {
   /** Package path the versions came from, when it differs from the declared one
    *  (a Go module that moved to a /vN suffix). */
   path?: string;
+  /** Whatever the lookup happened to learn about the package along the way. */
+  meta?: PackageMeta;
   error?: string;
 }
 
@@ -45,9 +70,12 @@ export interface DependencyUpdate {
   satisfying?: string;
   /** Import path the update lives under, when the package moved (Go major versions). */
   alternatePath?: string;
+  meta?: PackageMeta;
 }
 
 export interface ResolveOptions {
   includePrerelease: boolean;
   showSatisfyingUpdates: boolean;
+  /** Version arithmetic of the ecosystem the declaration came from. */
+  scheme: VersionScheme;
 }

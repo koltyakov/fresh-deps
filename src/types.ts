@@ -6,8 +6,10 @@ export type Ecosystem = 'npm' | 'go' | 'python' | 'rust' | 'dotnet' | 'java';
 export interface DependencyRef {
   /** Package name as it must be requested from the registry. */
   name: string;
-  /** Version range exactly as written in the manifest. */
+  /** Version requirement used for comparison. */
   spec: string;
+  /** Original declaration when its comparison requirement was rewritten. */
+  specRaw?: string;
   /** Zero-based line of the declaration, where the hint is anchored. */
   line: number;
   /** `dependencies`, `devDependencies`, `require`, `project.dependencies`, ... */
@@ -55,6 +57,26 @@ export interface RegistryVersions {
 }
 
 export type UpdateKind = 'major' | 'minor' | 'patch' | 'prerelease';
+
+export interface SecurityAdvisory {
+  id: string;
+  title: string;
+  severity?: string;
+  url?: string;
+  fixedVersions?: string[];
+}
+
+export type AuditResponse =
+  | { status: 'checked'; advisories: SecurityAdvisory[] }
+  | { status: 'unsupported' }
+  | { status: 'failed'; error: string };
+
+export interface DependencyAudit {
+  dep: DependencyRef;
+  version?: string;
+  baseline: boolean;
+  result: AuditResponse | { status: 'pending' | 'unchecked' };
+}
 
 export interface DependencyUpdate {
   dep: DependencyRef;

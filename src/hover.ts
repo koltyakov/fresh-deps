@@ -1,7 +1,41 @@
 import * as vscode from 'vscode';
 import type { PackageDetails } from './analyzer';
 import { display, escapeMarkdown, formatSize, publishedOn } from './format';
-import type { DependencyUpdate, Ecosystem } from './types';
+import type { DependencyAudit, DependencyUpdate, Ecosystem } from './types';
+
+export function buildAuditHover(audit: DependencyAudit): vscode.MarkdownString {
+  const md = new vscode.MarkdownString();
+  md.appendText(`Security audit: ${audit.dep.name}`);
+  md.appendMarkdown('\n\n');
+  if (audit.result.status !== 'checked') {
+    const message = audit.result.status === 'failed' ? `Audit failed: ${audit.result.error}`
+      : audit.result.status === 'unsupported' ? 'Security audits are not supported for this ecosystem or registry.'
+      : audit.result.status === 'pending' ? 'Audit not cached. Save or refresh to check.'
+      : 'No concrete version could be determined from this declaration.';
+    md.appendText(message);
+    return md;
+  }
+  md.appendText(`Checked ${audit.baseline ? 'range baseline' : 'declared version'} ${audit.version}. This is not an installed-dependency or transitive audit.`);
+  md.appendMarkdown('\n\n');
+  if (!audit.result.advisories.length) md.appendText('No advisories reported for the checked version.');
+  for (const advisory of audit.result.advisories) {
+    md.appendText(`${advisory.id}: ${advisory.title}${advisory.severity ? ` (${advisory.severity})` : ''}`);
+    md.appendMarkdown('\n\n');
+    if (advisory.fixedVersions?.length) {
+      md.appendText(`Fixed versions: ${advisory.fixedVersions.join(', ')}`);
+      md.appendMarkdown('\n\n');
+    }
+    if (advisory.url) {
+      try {
+        const url = new URL(advisory.url);
+        if (url.protocol === 'https:' || url.protocol === 'http:') {
+          md.appendMarkdown(`[Advisory](<${url.href.replace(/[<>]/g, encodeURIComponent)}>)\n\n`);
+        }
+      } catch { /* Ignore invalid advisory links. */ }
+    }
+  }
+  return md;
+}
 
 /**
  * The hover shown for one outdated dependency. `dates` is filled in only where the
@@ -30,8 +64,9 @@ export function buildHover(
   md.appendMarkdown(`| | |\n|---|---|\n`);
   // A pinned declaration already spells out the version in use, so the date goes
   // on that row rather than repeating the same number twice.
-  const declaredIsCurrent = update.dep.spec.trim() === currentDisplay;
-  md.appendMarkdown(`| Declared | ${row(update.dep.spec, declaredIsCurrent ? currentDate : undefined)} |\n`);
+  const declared = update.dep.specRaw ?? update.dep.spec;
+  const declaredIsCurrent = declared.trim() === currentDisplay;
+  md.appendMarkdown(`| Declared | ${row(declared, declaredIsCurrent ? currentDate : undefined)} |\n`);
   if (!declaredIsCurrent) {
     md.appendMarkdown(`| Current | ${row(currentDisplay, currentDate)} |\n`);
   }
@@ -49,6 +84,12 @@ export function buildHover(
   }
   if (meta.publisher) {
     md.appendMarkdown(`| Published by | ${escapeMarkdown(meta.publisher)} |\n`);
+  }
+  const projectUrl = meta.homepage || meta.repository;
+  if (projectUrl && /^https?:\/\//i.test(projectUrl)) {
+    const target = projectUrl.replace(/[\s<>|()]/g, (char) => encodeURIComponent(char)
+      .replace(/\(/g, '%28').replace(/\)/g, '%29'));
+    md.appendMarkdown(`| Project | [${escapeMarkdown(projectUrl)}](${target}) |\n`);
   }
   if (meta.unpackedSize) {
     const files = meta.fileCount ? ` in ${meta.fileCount} file${meta.fileCount === 1 ? '' : 's'}` : '';
@@ -96,11 +137,8 @@ function links(
     parts.push(`[npm](https://www.npmjs.com/package/${update.dep.name}/v/${update.latest})`);
   }
   // The homepage is often the repository read differently; showing it twice is noise.
-  if (repository && repository !== homepage) {
+  if (repository && homepage && repository !== homepage) {
     parts.push(`[Repository](${repository})`);
-  }
-  if (homepage) {
-    parts.push(`[Homepage](${homepage})`);
   }
   return parts.join(' · ');
 }

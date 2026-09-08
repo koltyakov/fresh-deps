@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { analyze, ecosystemOf, type AnalyzeResult } from './analyzer';
 import { VersionCache } from './cache';
+import { AuditCache } from './audit';
 import { readSettings } from './config';
 import { DecorationRenderer } from './decorations';
 import { DependencyHoverProvider, DetailsResolver } from './details';
@@ -10,6 +11,7 @@ const TYPING_DEBOUNCE_MS = 400;
 
 export function activate(context: vscode.ExtensionContext): void {
   const cache = new VersionCache(readSettings().cacheDurationMinutes * 60_000);
+  const auditCache = new AuditCache();
   cache.restore(context.globalState.get(CACHE_STATE_KEY));
 
   const renderer = new DecorationRenderer();
@@ -36,6 +38,9 @@ export function activate(context: vscode.ExtensionContext): void {
     const document = editor.document;
     const key = document.uri.toString();
     const ecosystem = ecosystemOf(document.uri.fsPath);
+    const generation = (generations.get(key) ?? 0) + 1;
+    generations.set(key, generation);
+    const isCancelled = () => generations.get(key) !== generation;
 
     if (!ecosystem || !hintsEnabled) {
       results.delete(key);
@@ -47,10 +52,6 @@ export function activate(context: vscode.ExtensionContext): void {
     const settings = readSettings(document.uri);
     cache.setTtl(settings.cacheDurationMinutes * 60_000);
 
-    const generation = (generations.get(key) ?? 0) + 1;
-    generations.set(key, generation);
-    const isCancelled = () => generations.get(key) !== generation;
-
     status.text = '$(sync~spin) Checking dependencies…';
     status.tooltip = 'Fresh Deps is querying the registry';
     status.show();
@@ -61,15 +62,18 @@ export function activate(context: vscode.ExtensionContext): void {
         text: document.getText(),
         settings,
         cache,
+        auditCache,
         allowNetwork,
         isCancelled,
       });
 
-      if (isCancelled() || !result) {
-        if (!result) {
-          results.delete(key);
-          status.hide();
-        }
+      if (isCancelled() || !hintsEnabled) {
+        return;
+      }
+      if (!result) {
+        results.delete(key);
+        renderer.clear(editor);
+        status.hide();
         return;
       }
 
@@ -78,15 +82,21 @@ export function activate(context: vscode.ExtensionContext): void {
       // The editor may have been closed or replaced while requests were in flight.
       const target = vscode.window.visibleTextEditors.find((e) => e.document.uri.toString() === key);
       if (target) {
-        renderer.render(target, result.updates, result.ecosystem);
+        renderer.render(target, result.updates, result.ecosystem, result.audits);
       }
 
       const count = result.updates.length;
+      const affected = result.audits.filter((audit) => audit.result.status === 'checked' && audit.result.advisories.length > 0).length;
+      const checked = result.audits.filter((audit) => audit.result.status === 'checked').length;
+      const auditFailed = result.audits.filter((audit) => audit.result.status === 'failed').length;
       status.text = count === 0 ? '$(check) Deps up to date' : `$(arrow-up) ${count} update${count === 1 ? '' : 's'}`;
+      if (affected) status.text += ` | $(warning) ${affected} audited deps with warnings`;
+      else if (auditFailed) status.text += ' | $(warning) Audit incomplete';
       status.tooltip = new vscode.MarkdownString(
         [
           count === 0 ? 'All dependencies are up to date.' : `${count} dependencies have newer versions.`,
           result.failures.size ? `\n\n${result.failures.size} lookups failed — see the Fresh Deps output channel.` : '',
+          settings.auditEnabled ? `\n\nAudit: ${checked}/${result.audits.length} declarations checked; ${affected} with warnings; ${auditFailed} failed. Checks declared versions or range baselines, not installed dependencies. Unsupported or uncached declarations are not checked.` : '',
           '\n\nClick to re-check.',
         ].join(''),
       );
@@ -95,9 +105,17 @@ export function activate(context: vscode.ExtensionContext): void {
       for (const [name, error] of result.failures) {
         output.appendLine(`[${new Date().toISOString()}] ${name}: ${error}`);
       }
+      for (const audit of result.audits) {
+        if (audit.result.status === 'failed') {
+          output.appendLine(`[${new Date().toISOString()}] ${audit.dep.name} audit: ${audit.result.error}`);
+        }
+      }
 
       void context.globalState.update(CACHE_STATE_KEY, cache.serialize());
     } catch (error) {
+      if (isCancelled() || !hintsEnabled) {
+        return;
+      }
       output.appendLine(`[${new Date().toISOString()}] ${document.uri.fsPath}: ${String(error)}`);
       status.text = '$(warning) Dependency check failed';
       status.show();
@@ -152,7 +170,13 @@ export function activate(context: vscode.ExtensionContext): void {
         details,
       ),
     ),
-    vscode.workspace.onDidCloseTextDocument((document) => results.delete(document.uri.toString())),
+    vscode.workspace.onDidCloseTextDocument((document) => {
+      const key = document.uri.toString();
+      results.delete(key);
+      generations.set(key, (generations.get(key) ?? 0) + 1);
+      clearTimeout(timers.get(key));
+      timers.delete(key);
+    }),
     vscode.window.onDidChangeActiveTextEditor((editor) => {
       updateContext(editor);
       void refresh(editor, true);
@@ -164,10 +188,18 @@ export function activate(context: vscode.ExtensionContext): void {
         return;
       }
       hintsEnabled = readSettings().enabled;
-      void refresh(vscode.window.activeTextEditor, true);
+      // Invalidate checks for hidden documents too, before refreshing visible ones.
+      for (const [key, generation] of generations) {
+        generations.set(key, generation + 1);
+      }
+      results.clear();
+      for (const editor of vscode.window.visibleTextEditors) {
+        void refresh(editor, true);
+      }
     }),
     vscode.commands.registerCommand('freshDeps.refresh', async () => {
       cache.clear();
+      auditCache.clear();
       details.clear();
       await vscode.window.withProgress(
         { location: vscode.ProgressLocation.Window, title: 'Fresh Deps: checking for updates' },
@@ -181,6 +213,7 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
     vscode.commands.registerCommand('freshDeps.clearCache', async () => {
       cache.clear();
+      auditCache.clear();
       details.clear();
       await context.globalState.update(CACHE_STATE_KEY, undefined);
       vscode.window.showInformationMessage('Fresh Deps: version cache cleared.');

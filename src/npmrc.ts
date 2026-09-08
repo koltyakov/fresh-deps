@@ -63,8 +63,8 @@ export function readNpmConfig(startDir: string): NpmConfig {
   return { get: (key) => values.get(key) };
 }
 
-/** Finds the auth token configured for a registry, matching npm's longest-prefix rule. */
-export function authTokenFor(config: NpmConfig, registry: string): string | undefined {
+/** Builds the auth header for a registry, matching npm's longest-prefix rule. */
+export function authHeaderFor(config: NpmConfig, registry: string): string | undefined {
   let url: URL;
   try {
     url = new URL(registry);
@@ -74,14 +74,14 @@ export function authTokenFor(config: NpmConfig, registry: string): string | unde
 
   const segments = url.pathname.split('/').filter(Boolean);
   for (let n = segments.length; n >= 0; n--) {
-    const prefix = `//${url.host}${segments.length ? '/' + segments.slice(0, n).join('/') : ''}`;
-    const token =
-      config.get(`${prefix}/:_authToken`) ??
-      config.get(`${prefix}:_authToken`) ??
-      config.get(`${prefix}/:_auth`) ??
-      config.get(`${prefix}:_auth`);
+    const prefix = `//${url.host}${n ? '/' + segments.slice(0, n).join('/') : ''}`;
+    const token = config.get(`${prefix}/:_authToken`) ?? config.get(`${prefix}:_authToken`);
     if (token) {
-      return token;
+      return `Bearer ${token}`;
+    }
+    const auth = config.get(`${prefix}/:_auth`) ?? config.get(`${prefix}:_auth`);
+    if (auth) {
+      return `Basic ${auth}`;
     }
   }
   return undefined;

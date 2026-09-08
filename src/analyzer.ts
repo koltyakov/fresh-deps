@@ -1,4 +1,5 @@
 import * as path from 'path';
+import { AuditCache } from './audit';
 import type { VersionCache } from './cache';
 import type { Settings } from './config';
 import { parseCargoToml } from './parsers/cargoToml';
@@ -18,6 +19,8 @@ import { normalizeName, PyPiClient } from './registries/pypi';
 import { schemeFor } from './schemes';
 import type {
   DependencyRef,
+  DependencyAudit,
+  AuditResponse,
   DependencyUpdate,
   Ecosystem,
   PackageMeta,
@@ -31,6 +34,7 @@ export interface AnalyzeRequest {
   text: string;
   settings: Settings;
   cache: VersionCache;
+  auditCache: AuditCache;
   /** When false only cached versions are used, so typing never hits the network. */
   allowNetwork: boolean;
   isCancelled?: () => boolean;
@@ -39,6 +43,7 @@ export interface AnalyzeRequest {
 export interface AnalyzeResult {
   ecosystem: Ecosystem;
   updates: DependencyUpdate[];
+  audits: DependencyAudit[];
   /** Dependencies whose lookup failed, by name. */
   failures: Map<string, string>;
   /** True while some dependency has no cached answer yet. */
@@ -125,7 +130,7 @@ export async function analyze(request: AnalyzeRequest): Promise<AnalyzeResult | 
   }
 
   const { settings } = request;
-  const result: AnalyzeResult = { ecosystem, updates: [], failures: new Map(), incomplete: false };
+  const result: AnalyzeResult = { ecosystem, updates: [], audits: [], failures: new Map(), incomplete: false };
   const opts: ResolveOptions = {
     includePrerelease: settings.includePrerelease,
     showSatisfyingUpdates: settings.showSatisfyingUpdates,
@@ -138,6 +143,23 @@ export async function analyze(request: AnalyzeRequest): Promise<AnalyzeResult | 
     }
 
     const key = lookup.key(dep);
+    if (settings.auditEnabled) {
+      const version = opts.scheme.baseline(dep.spec);
+      const audit: DependencyAudit = {
+        dep, version, baseline: !opts.scheme.isPinned(dep.spec),
+        result: { status: lookup.fetchAudit ? 'unchecked' : 'unsupported' },
+      };
+      if (lookup.fetchAudit && version) {
+        const auditKey = `${key}|audit|${version}`;
+        const cached = request.auditCache.get(auditKey, settings.cacheDurationMinutes * 60_000);
+        audit.result = cached ?? (request.allowNetwork
+          ? await request.auditCache.resolve(auditKey, () => lookup.fetchAudit!(dep, version))
+          : { status: 'pending' });
+        if (audit.result.status === 'pending') result.incomplete = true;
+      }
+      result.audits.push(audit);
+    }
+    if (request.isCancelled?.()) return;
     let versions = request.cache.get(key);
     const wantsAll = versions?.latest ? needsFullVersionList(dep.spec, versions.latest, opts) : false;
 
@@ -211,6 +233,7 @@ export interface Lookup {
   key(dep: DependencyRef): string;
   fetch(dep: DependencyRef): Promise<RegistryVersions>;
   fetchAll?(dep: DependencyRef): Promise<RegistryVersions>;
+  fetchAudit?(dep: DependencyRef, version: string): Promise<AuditResponse>;
   /**
    * Detail worth a request of its own — publish dates, prose the version lookup
    * does not carry. Fetched only when someone asks to see it, so a check never
@@ -265,6 +288,7 @@ function npmLookup(fsPath: string, settings: Settings): Lookup {
     key: (dep) => `npm|${client.registryFor(dep.name)}|${dep.name}`,
     fetch: (dep) => client.fetchLatest(dep.name),
     fetchAll: (dep) => client.fetchAll(dep.name),
+    fetchAudit: (dep, version) => client.fetchAudit(dep.name, version),
     // The descriptive fields already came back with the version; only the dates
     // are missing, and they live in a document big enough to be worth deferring.
     async fetchDetails(dep, versions) {
@@ -306,6 +330,7 @@ function pythonLookup(settings: Settings): Lookup {
   return {
     key: (dep) => `python|${client.index}|${normalizeName(dep.name)}`,
     fetch: (dep) => client.fetchVersions(dep.name),
+    fetchAudit: (dep, version) => client.fetchAudit(dep.name, version),
     // The index already dated every file it listed, so only the prose costs a request.
     async fetchDetails(dep, versions) {
       const [dates, meta] = await Promise.all([

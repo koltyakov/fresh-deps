@@ -85,6 +85,15 @@ test('needsFullVersionList only asks for the full list when it can add something
   assert.ok(!needsFullVersionList('^4.17.0', '5.0.0', { ...OPTS, showSatisfyingUpdates: false }));
 });
 
+test('prerelease discovery needs the full list even for pins and in-range stable versions', () => {
+  for (const spec of ['1.0.0', '^1.0.0']) {
+    assert.ok(needsFullVersionList(spec, '1.0.0', { ...OPTS, includePrerelease: true }));
+    assert.ok(needsFullVersionList(spec, '1.0.0', {
+      ...OPTS, includePrerelease: true, showSatisfyingUpdates: false,
+    }));
+  }
+});
+
 test('normalizeNpmSpec rejects non-registry specs', () => {
   assert.strictEqual(normalizeNpmSpec('a', 'file:../a'), undefined);
   assert.strictEqual(normalizeNpmSpec('a', 'https://example.com/a.tgz'), undefined);

@@ -48,6 +48,28 @@ test('requirements.txt: anchors a continued requirement on the specifier line', 
   assert.strictEqual(dep.line, 1);
 });
 
+test('requirements.txt: hash options preserve pins and physical specifier lines', () => {
+  const text = [
+    'requests==2.28.0 --hash=sha256:abc --hash sha256:def # wheels',
+    'django==4.2 \\',
+    '    --hash=sha256:abc \\',
+    '    --hash=sha256:def',
+    'celery[redis] \\',
+    '    ==5.3 \\',
+    '    --hash sha256:abc',
+    'urllib3==2.0 ; python_version >= "3.9" --hash=sha256:abc',
+    '--require-hashes',
+    'unpinned --hash=sha256:abc',
+    'local @ https://example.com/local.whl#sha256=abc --hash=sha256:abc',
+  ].join('\r\n');
+  assert.deepStrictEqual(summary(parseRequirementsTxt(text)), [
+    ['requests', '==2.28.0', 'requirements', 0],
+    ['django', '==4.2', 'requirements', 1],
+    ['celery', '==5.3', 'requirements', 5],
+    ['urllib3', '==2.0', 'requirements', 7],
+  ]);
+});
+
 test('pyproject: reads PEP 621 dependencies and optional groups', () => {
   const text = [
     '[project]',

@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 
 export interface Settings {
   enabled: boolean;
+  auditEnabled: boolean;
   cacheDurationMinutes: number;
   concurrency: number;
   requestTimeoutMs: number;
@@ -40,6 +41,7 @@ export function readSettings(scope?: vscode.Uri): Settings {
   const cfg = vscode.workspace.getConfiguration('freshDeps', scope ?? null);
   return {
     enabled: cfg.get('enabled', true),
+    auditEnabled: cfg.get('audit.enabled', false),
     cacheDurationMinutes: cfg.get('cacheDurationMinutes', 60),
     concurrency: cfg.get('concurrency', 8),
     requestTimeoutMs: cfg.get('requestTimeoutMs', 10000),

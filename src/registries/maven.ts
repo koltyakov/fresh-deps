@@ -35,5 +35,5 @@ export function versionsFromMetadata(xml: string): RegistryVersions {
   const latest = release && mavenVersion.isValid(release) && !mavenVersion.isPrerelease(release)
     ? release
     : mavenVersion.max(all, { includePrerelease: false });
-  return latest ? { latest, all } : { error: 'no comparable versions found' };
+  return latest || all.length ? { ...(latest ? { latest } : {}), all } : { error: 'no comparable versions found' };
 }

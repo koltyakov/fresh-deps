@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { lookupFor, type AnalyzeResult, type PackageDetails, type VersionPair } from './analyzer';
 import type { Settings } from './config';
-import { buildHover } from './hover';
+import { buildAuditHover, buildHover } from './hover';
 import type { DependencyUpdate, Ecosystem } from './types';
 
 /**
@@ -65,11 +65,7 @@ function versionsOf(update: DependencyUpdate, ecosystem: Ecosystem): VersionPair
   };
 }
 
-/**
- * Hovering the declaration itself, which is where the eye goes — the inline hint
- * past the end of the line keeps its own hover, built from what the check already
- * knew, so the card is never empty while the extra detail is on its way.
- */
+/** One on-demand hover for both the declaration and its inline update hint. */
 export class DependencyHoverProvider implements vscode.HoverProvider {
   constructor(
     private readonly resultFor: (uri: vscode.Uri) => AnalyzeResult | undefined,
@@ -84,20 +80,21 @@ export class DependencyHoverProvider implements vscode.HoverProvider {
   ): Promise<vscode.Hover | undefined> {
     const result = this.resultFor(document.uri);
     const update = result?.updates.find((candidate) => candidate.dep.line === position.line);
-    if (!result || !update) {
+    const audit = result?.audits.find((candidate) => candidate.dep.line === position.line);
+    const dep = update?.dep ?? audit?.dep;
+    if (!result || !dep) {
       return undefined;
     }
 
     const line = document.lineAt(position.line);
-    // Past the last character sits the inline hint, which carries its own hover.
-    // Answering there as well would print the same card twice in one popup.
-    if (position.character >= line.range.end.character || position.character < line.firstNonWhitespaceCharacterIndex) {
+    // Inline decorations map to the end-of-line position in the document.
+    if (position.character < line.firstNonWhitespaceCharacterIndex) {
       return undefined;
     }
     // Typing moves declarations around while the last analysis still describes
     // where they were, so the line has to still be the one that was measured
     // before its card is shown.
-    if (result.ecosystem !== 'java' && !line.text.includes(update.dep.alias ?? update.dep.name)) {
+    if (result.ecosystem !== 'java' && !line.text.includes(dep.alias ?? dep.name)) {
       return undefined;
     }
 
@@ -107,10 +104,12 @@ export class DependencyHoverProvider implements vscode.HoverProvider {
       position.line,
       line.range.end.character,
     );
-    const details = await this.details.resolve(document.uri.fsPath, result.ecosystem, update, this.settingsFor(document.uri));
+    const details = update ? await this.details.resolve(document.uri.fsPath, result.ecosystem, update, this.settingsFor(document.uri)) : {};
     if (token.isCancellationRequested) {
       return undefined;
     }
-    return new vscode.Hover(buildHover(update, result.ecosystem, details), range);
+    const contents = update ? [buildHover(update, result.ecosystem, details)] : [];
+    if (audit) contents.push(buildAuditHover(audit));
+    return new vscode.Hover(contents, range);
   }
 }

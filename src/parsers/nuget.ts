@@ -1,4 +1,5 @@
 import type { DependencyRef } from '../types';
+import { parseNugetVersion } from '../nuget';
 
 /** Reads PackageReference, central PackageVersion, and legacy packages.config entries. */
 export function parseNugetManifest(text: string): DependencyRef[] {
@@ -37,7 +38,13 @@ function add(
   if (!name || !spec || /\$\(|%\(|^\*$/.test(spec)) {
     return;
   }
-  deps.push({ name, spec, section, line: text.slice(0, offset).split('\n').length - 1 });
+  // packages.config records an installed version, not PackageReference's minimum.
+  const installed = section === 'packages' && parseNugetVersion(spec);
+  deps.push({
+    name, spec: installed ? `[${spec}]` : spec,
+    ...(installed ? { specRaw: spec } : {}),
+    section, line: text.slice(0, offset).split('\n').length - 1,
+  });
 }
 
 function attributes(source: string): Map<string, string> {

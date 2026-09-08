@@ -72,11 +72,13 @@ export function normalizePythonSpec(name: string, rawSpec: string): NormalizedSp
 }
 
 /**
- * True when knowing only the latest version is not enough: the latest is outside
- * the declared range, so the newest in-range version is worth a second lookup.
+ * Full metadata is needed to discover prereleases or the newest in-range version.
  */
 export function needsFullVersionList(spec: string, latest: string, opts: ResolveOptions): boolean {
   const { scheme } = opts;
+  if (opts.includePrerelease) {
+    return true;
+  }
   if (!opts.showSatisfyingUpdates || scheme.isPinned(spec) || !scheme.isRange(spec)) {
     return false;
   }

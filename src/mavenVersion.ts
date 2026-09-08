@@ -1,6 +1,6 @@
 import type { UpdateKind } from './types';
 
-type Part = number | string;
+type Part = bigint | string | Part[];
 
 interface Interval {
   lower?: string;
@@ -19,15 +19,8 @@ const QUALIFIERS = new Map([
   ['sp', 1],
 ]);
 
-const ALIASES: Record<string, string> = {
-  a: 'alpha',
-  b: 'beta',
-  m: 'milestone',
-  cr: 'rc',
-  ga: '',
-  final: '',
-  release: '',
-};
+const ALIASES = new Map([['cr', 'rc'], ['ga', ''], ['final', ''], ['release', '']]);
+const SHORT_QUALIFIERS = new Map([['a', 'alpha'], ['b', 'beta'], ['m', 'milestone']]);
 
 export function isValid(version: string): boolean {
   const value = version.trim();
@@ -35,12 +28,58 @@ export function isValid(version: string): boolean {
 }
 
 function partsOf(version: string): Part[] {
-  const parts: Part[] = [];
-  for (const match of version.toLowerCase().matchAll(/\d+|[a-z]+/g)) {
-    parts.push(/^\d+$/.test(match[0]) ? Number(match[0]) : (ALIASES[match[0]] ?? match[0]));
+  const root: Part[] = [];
+  const lists = [root];
+  let list = root;
+  const value = version.toLowerCase();
+  let start = 0;
+  let digit = false;
+  const nest = () => {
+    const child: Part[] = [];
+    list.push(child);
+    lists.push(child);
+    list = child;
+  };
+  const item = (text: string): Part => digit ? BigInt(text) : (ALIASES.get(text) ?? text);
+
+  // Hyphens and digit/qualifier transitions introduce less significant lists.
+  for (let i = 0; i < value.length; i++) {
+    const char = value[i];
+    if (char === '.' || char === '-') {
+      list.push(i === start ? 0n : item(value.slice(start, i)));
+      start = i + 1;
+      if (char === '-') nest();
+    } else if (char >= '0' && char <= '9') {
+      if (!digit && i > start) {
+        if (list.length) nest();
+        const qualifier = value.slice(start, i);
+        list.push(SHORT_QUALIFIERS.get(qualifier) ?? ALIASES.get(qualifier) ?? qualifier);
+        start = i;
+        nest();
+      }
+      digit = true;
+    } else {
+      if (digit && i > start) {
+        list.push(item(value.slice(start, i)));
+        start = i;
+        nest();
+      }
+      digit = false;
+    }
   }
-  while (parts.at(-1) === 0 || parts.at(-1) === '') parts.pop();
-  return parts;
+  if (start < value.length) {
+    if (!digit && list.length) nest();
+    list.push(item(value.slice(start)));
+  }
+  // Normalize children first, including zeroes immediately before qualifier lists.
+  for (const parts of lists.reverse()) {
+    for (let i = parts.length - 1; i >= 0; i--) {
+      const part = parts[i];
+      if (part === 0n || part === '' || (Array.isArray(part) && !part.length)) parts.splice(i, 1);
+      else if (!Array.isArray(part)) break;
+    }
+  }
+  return root;
 }
 
 function qualifierRank(value: string): [number, string] {
@@ -51,42 +90,43 @@ function qualifierRank(value: string): [number, string] {
 function compareQualifier(a: string, b: string): number {
   const [aRank, aName] = qualifierRank(a);
   const [bRank, bName] = qualifierRank(b);
-  return aRank - bRank || aName.localeCompare(bName);
+  return aRank - bRank || (aName < bName ? -1 : aName > bName ? 1 : 0);
 }
 
-function compareMissing(part: Part): number {
-  return typeof part === 'number' ? (part === 0 ? 0 : -1) : compareQualifier('', part);
-}
-
-/** Orders numeric components and Maven's well-known qualifiers. */
-export function compare(a: string, b: string): number {
-  const left = partsOf(a);
-  const right = partsOf(b);
-  for (let i = 0; i < Math.max(left.length, right.length); i++) {
-    const x = left[i];
-    const y = right[i];
-    if (x === undefined && y !== undefined) {
-      const result = compareMissing(y);
+function comparePart(left: Part | undefined, right: Part | undefined): number {
+  if (left === undefined) return right === undefined ? 0 : -comparePart(right, undefined);
+  if (right === undefined) {
+    if (typeof left === 'bigint') return left === 0n ? 0 : 1;
+    if (typeof left === 'string') return compareQualifier(left, '');
+    for (const part of left) {
+      const result = comparePart(part, undefined);
       if (result !== 0) return result;
-      continue;
     }
-    if (y === undefined && x !== undefined) {
-      const result = -compareMissing(x);
-      if (result !== 0) return result;
-      continue;
-    }
-    if (x === y) continue;
-    if (typeof x === 'number' && typeof y === 'number') return x - y;
-    if (typeof x === 'number') return 1;
-    if (typeof y === 'number') return -1;
-    const result = compareQualifier(x, y);
-    if (result !== 0) return result;
+    return 0;
   }
-  return 0;
+  if (Array.isArray(left)) {
+    if (!Array.isArray(right)) return typeof right === 'bigint' ? -1 : 1;
+    for (let i = 0; i < Math.max(left.length, right.length); i++) {
+      const result = comparePart(left[i], right[i]);
+      if (result !== 0) return result;
+    }
+    return 0;
+  }
+  if (Array.isArray(right)) return typeof left === 'bigint' ? 1 : -1;
+  if (typeof left === 'bigint') return typeof right === 'string' ? 1 : left < right ? -1 : left > right ? 1 : 0;
+  return typeof right === 'bigint' ? -1 : compareQualifier(left, right);
+}
+
+/** Orders versions using Maven ComparableVersion's separator and nested-list rules. */
+export function compare(a: string, b: string): number {
+  return comparePart(partsOf(a), partsOf(b));
 }
 
 export function isPrerelease(version: string): boolean {
-  return partsOf(version).some((part) => typeof part === 'string' && (QUALIFIERS.get(part) ?? 0) < 0);
+  const containsPrerelease = (part: Part): boolean => Array.isArray(part)
+    ? part.some(containsPrerelease)
+    : typeof part === 'string' && (QUALIFIERS.get(part) ?? 0) < 0;
+  return containsPrerelease(partsOf(version));
 }
 
 function parseRange(spec: string): Interval[] | undefined {

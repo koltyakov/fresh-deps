@@ -58,7 +58,8 @@ export function parseRequirementsTxt(text: string): DependencyRef[] {
   const deps: DependencyRef[] = [];
 
   for (const logical of logicalLines(text.split(/\r?\n/))) {
-    const code = stripComment(logical.text);
+    // Hash options belong to pip, not to the PEP 508 version specifier.
+    const code = stripComment(logical.text).replace(/\s+--hash(?:=|\s+)\S+/g, (option) => ' '.repeat(option.length));
     if (code.trim() === '' || code.trim().startsWith('-')) {
       continue;
     }

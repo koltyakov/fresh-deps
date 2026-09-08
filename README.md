@@ -65,6 +65,9 @@ widened. A single number means the update is a straight upgrade.
 ### Go specifics
 
 - Modules covered by a `replace` directive are skipped — their version no longer comes from the proxy.
+- Modules excluded by the extension process's `GONOPROXY` environment variable, or `GOPRIVATE`
+  when `GONOPROXY` is unset or empty, are never sent to a proxy. These modules are skipped rather
+  than fetched directly. Settings persisted only through `go env -w` are not read.
 - `// indirect` modules are hidden by default (`freshDeps.go.includeIndirect`).
 - New major versions live under a new import path, so `/v2`, `/v3`, … and the `gopkg.in` `.vN` form are
   probed and reported with the path you would have to import.
@@ -102,6 +105,28 @@ widened. A single number means the update is a straight upgrade.
 - Maven interval ranges such as `[1.0,2.0)` and unions such as `(,1.0],[1.2,)` are supported.
 - Versions declared through properties in the same POM are resolved. Dependencies with inherited or otherwise unresolved versions are skipped.
 
+## Security audits
+
+Enable `freshDeps.audit.enabled` to show security warnings alongside update hints, including
+dependencies that already use the latest version. Hover the declaration or hint for advisory
+details, severity and links where provided. The status bar reports how many declarations were
+checked and how many have warnings. Failed checks are logged in the Fresh Deps output channel.
+
+- npm uses the configured registry's bulk advisory endpoint, respecting scoped registries and
+  authentication. Registries without that endpoint are marked unsupported.
+- Python uses public PyPI's release vulnerability data. Custom Python indexes are not supported.
+- Go, Rust, Maven and NuGet audits are not implemented yet. Their version checks still work.
+
+Audit checks are off by default. Enabling them sends package names and checked versions to the
+configured npm registry or public PyPI, with no fallback to another service. Exact pins check the
+declared version; ranges check the baseline version and label warnings `at baseline`. This does
+not determine the installed version, inspect lockfiles, check transitive dependencies, or prove
+that an available update fixes an advisory. Declarations the parser skips are not audited.
+
+Audit results use the configured cache duration but are not persisted across window reloads.
+Typing only reads cached results. Saving, opening a manifest or running Check for Updates can
+query the audit provider. Both refresh and Clear Version Cache discard audit results too.
+
 ## Commands
 
 | Command | Does |
@@ -115,6 +140,7 @@ widened. A single number means the update is a straight upgrade.
 | Setting | Default | Does |
 |---|---|---|
 | `freshDeps.enabled` | `true` | Show inline hints |
+| `freshDeps.audit.enabled` | `false` | Show security warnings for npm and public PyPI declarations |
 | `freshDeps.cacheDurationMinutes` | `60` | How long resolved versions are reused |
 | `freshDeps.concurrency` | `8` | Parallel registry requests |
 | `freshDeps.requestTimeoutMs` | `10000` | Per-request timeout |

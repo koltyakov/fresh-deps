@@ -29,7 +29,7 @@ export class NugetClient {
     if (!body?.versions?.length) return { error: 'not found' };
     const all = body.versions.filter(nugetScheme.isVersion);
     const latest = nugetScheme.max(all, { includePrerelease: false });
-    return latest ? { latest, all } : { error: 'no stable versions found' };
+    return all.length ? { ...(latest ? { latest } : {}), all } : { error: 'no comparable versions found' };
   }
 
   private baseAddress(): Promise<string> {

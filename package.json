@@ -20,25 +20,12 @@
     "dependencies",
     "outdated",
     "updates",
-    "versions",
-    "semver",
     "npm",
     "go",
     "python",
-    "pypi",
-    "rust",
     "cargo",
-    "crates.io",
-    "java",
     "maven",
-    "dotnet",
-    "nuget",
-    "csproj",
-    "package.json",
-    "Cargo.toml",
-    "pom.xml",
-    "pyproject.toml",
-    "requirements.txt"
+    "nuget"
   ],
   "main": "./dist/extension.js",
   "icon": "assets/logo.png",
@@ -106,6 +93,11 @@
           "default": 60,
           "minimum": 0,
           "description": "How long resolved versions are cached before the registry is queried again."
+        },
+        "freshDeps.audit.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show security audit warnings using the configured npm registry's audit API or public PyPI. Sends package names and baseline versions to that registry. Checks manifest declarations, not installed or transitive dependencies. Other ecosystems and custom Python indexes are not supported."
         },
         "freshDeps.concurrency": {
           "type": "number",

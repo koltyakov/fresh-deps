@@ -51,7 +51,7 @@ interface NugetRange {
 function parseRange(raw: string): NugetRange | undefined {
   const spec = raw.trim();
   if (parseNugetVersion(spec)) {
-    return { min: spec, max: spec, minInclusive: true, maxInclusive: true, exact: true };
+    return { min: spec, minInclusive: true, maxInclusive: false, exact: false };
   }
   const floating = spec.match(/^(\d+(?:\.\d+)*)\.\*$/);
   if (floating) {
@@ -61,6 +61,7 @@ function parseRange(raw: string): NugetRange | undefined {
   if (!interval) return undefined;
   const min = interval[2] || undefined;
   const hasComma = interval[3] !== undefined;
+  if (!hasComma && (interval[1] !== '[' || interval[4] !== ']' || !min)) return undefined;
   const max = hasComma ? interval[3] || undefined : min;
   if ((min && !parseNugetVersion(min)) || (max && !parseNugetVersion(max))) return undefined;
   return {

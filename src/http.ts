@@ -7,6 +7,8 @@ export class HttpError extends Error {
 export interface RequestOptions {
   timeoutMs: number;
   headers?: Record<string, string>;
+  method?: 'POST';
+  body?: string;
 }
 
 /**
@@ -25,6 +27,8 @@ export async function fetchText(url: string, options: RequestOptions): Promise<s
 
 async function request(url: string, options: RequestOptions, accept: string): Promise<Response | undefined> {
   const response = await fetch(url, {
+    ...(options.method ? { method: options.method } : {}),
+    ...(options.body !== undefined ? { body: options.body } : {}),
     headers: {
       accept,
       'user-agent': 'vscode-fresh-deps',

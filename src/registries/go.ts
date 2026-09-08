@@ -30,6 +30,10 @@ export class GoClient {
   }
 
   async fetchLatest(modulePath: string): Promise<RegistryVersions> {
+    const exclusion = proxyExclusion(modulePath);
+    if (exclusion) {
+      return { error: exclusion };
+    }
     if (!this.proxy) {
       return { error: 'GOPROXY is off' };
     }
@@ -78,7 +82,7 @@ export class GoClient {
    * the date rather than on every check.
    */
   async fetchPublishDate(modulePath: string, version: string): Promise<string | undefined> {
-    if (!this.proxy) {
+    if (!this.proxy || proxyExclusion(modulePath)) {
       return undefined;
     }
     // The proxy indexes versions exactly as go.mod writes them, `v` prefix and all.
@@ -89,6 +93,9 @@ export class GoClient {
   }
 
   private async latestOf(modulePath: string): Promise<Resolved | undefined> {
+    if (proxyExclusion(modulePath)) {
+      return undefined;
+    }
     const url = `${this.proxy}/${escapeModulePath(modulePath)}/@latest`;
     const info = await fetchJson<LatestInfo>(url, { timeoutMs: this.options.timeoutMs });
     if (!info?.Version) {
@@ -102,6 +109,66 @@ export class GoClient {
     }
     return { version, raw: info.Version, meta: metaOf(info) };
   }
+}
+
+function proxyExclusion(modulePath: string): string | undefined {
+  const source = process.env.GONOPROXY ? 'GONOPROXY' : 'GOPRIVATE';
+  if (matchesPrefixPatterns(process.env[source] ?? '', modulePath)) {
+    return `skipped: module excluded from proxy requests by ${source}`;
+  }
+  return undefined;
+}
+
+/** Go's module.MatchPrefixPatterns: path.Match globs apply to path prefixes. */
+export function matchesPrefixPatterns(patterns: string, modulePath: string): boolean {
+  return patterns.split(',').some((entry) => {
+    const pattern = entry.replace(/\/$/, '');
+    if (!pattern) return false;
+    const count = pattern.split('/').length;
+    const parts = modulePath.split('/');
+    if (parts.length < count) return false;
+    let expression = '';
+    const chars = Array.from(pattern);
+    const literal = (char: string) => `\\u{${char.codePointAt(0)!.toString(16)}}`;
+    for (let i = 0; i < chars.length; i++) {
+      const char = chars[i];
+      if (char === '*') {
+        expression += '[^/]*';
+      } else if (char === '?') {
+        expression += '[^/]';
+      } else if (char === '\\') {
+        if (++i === chars.length) return false;
+        expression += literal(chars[i]);
+      } else if (char === '[') {
+        let range = '';
+        let terms = 0;
+        const negate = chars[i + 1] === '^';
+        if (negate) i++;
+        while (++i < chars.length && chars[i] !== ']') {
+          if (chars[i] === '-') return false;
+          if (chars[i] === '\\' && ++i === chars.length) return false;
+          const low = chars[i];
+          let high = low;
+          if (chars[i + 1] === '-') {
+            i += 2;
+            if (i === chars.length || chars[i] === ']' || chars[i] === '-') return false;
+            if (chars[i] === '\\' && ++i === chars.length) return false;
+            high = chars[i];
+          }
+          terms++;
+          // Go permits reversed ranges; they simply match no characters.
+          if (low.codePointAt(0)! <= high.codePointAt(0)!) {
+            range += low === high ? literal(low) : `${literal(low)}-${literal(high)}`;
+          }
+        }
+        if (!terms || i === chars.length) return false;
+        expression += `[${negate ? '^' : ''}${range}]`;
+      } else {
+        expression += literal(char);
+      }
+    }
+    return new RegExp(`^${expression}$`, 'u').test(parts.slice(0, count).join('/'));
+  });
 }
 
 /**

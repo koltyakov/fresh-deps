@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { escapeModulePath, majorLayout, resolveProxy } = require('../out/registries/go');
-const { readNpmConfig, authTokenFor } = require('../out/npmrc');
+const { readNpmConfig, authHeaderFor } = require('../out/npmrc');
 
 test('escapeModulePath escapes uppercase letters for the module proxy', () => {
   assert.strictEqual(escapeModulePath('github.com/Masterminds/semver'), 'github.com/!masterminds/semver');
@@ -44,8 +44,8 @@ test('npmrc: nearest file wins and ${VAR} is expanded', () => {
 
   assert.strictEqual(config.get('registry'), 'https://inner.example/');
   assert.strictEqual(config.get('@acme:registry'), 'https://acme.example/');
-  assert.strictEqual(authTokenFor(config, 'https://inner.example'), 'secret-value');
-  assert.strictEqual(authTokenFor(config, 'https://other.example'), undefined);
+  assert.strictEqual(authHeaderFor(config, 'https://inner.example'), 'Bearer secret-value');
+  assert.strictEqual(authHeaderFor(config, 'https://other.example'), undefined);
 
   delete process.env.DEMO_TOKEN;
   fs.rmSync(root, { recursive: true, force: true });

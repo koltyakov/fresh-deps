@@ -1,7 +1,7 @@
-import { fetchJson } from '../http';
+import { fetchJson, HttpError } from '../http';
 import * as pep440 from '../pep440';
 import { readPipConfig, resolveIndexUrl, splitCredentials } from '../pipconf';
-import type { PackageMeta, RegistryVersions } from '../types';
+import type { AuditResponse, PackageMeta, RegistryVersions, SecurityAdvisory } from '../types';
 
 /** PEP 691 JSON, which carries the version list PEP 700 added. */
 const SIMPLE_JSON = 'application/vnd.pypi.simple.v1+json;q=1.0, application/json;q=0.8, */*;q=0.1';
@@ -88,6 +88,56 @@ export class PyPiClient {
       }
     }
     return dates;
+  }
+
+  async fetchAudit(name: string, version: string): Promise<AuditResponse> {
+    if (!isWarehouse(this.index)) {
+      return { status: 'unsupported' };
+    }
+    const base = this.index.replace(/\/simple$/, '');
+    const url = `${base}/pypi/${encodeURIComponent(normalizeName(name))}/${encodeURIComponent(version)}/json`;
+    let body: unknown;
+    try {
+      body = await fetchJson<unknown>(url, {
+        timeoutMs: this.options.timeoutMs,
+        headers: { ...this.headers, accept: 'application/json' },
+      });
+    } catch (error) {
+      if (error instanceof HttpError && (error.status === 405 || error.status === 501)) {
+        return { status: 'unsupported' };
+      }
+      throw error;
+    }
+    if (body === undefined) {
+      return { status: 'unsupported' };
+    }
+    if (!body || typeof body !== 'object' || Array.isArray(body) ||
+        !('vulnerabilities' in body) || !Array.isArray(body.vulnerabilities)) {
+      throw new Error('Malformed PyPI audit response');
+    }
+    const advisories: SecurityAdvisory[] = [];
+    for (const entry of body.vulnerabilities) {
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry) ||
+          typeof entry.id !== 'string' || !entry.id.trim() ||
+          (entry.summary != null && typeof entry.summary !== 'string') ||
+          (entry.details != null && typeof entry.details !== 'string') ||
+          (entry.link !== undefined && typeof entry.link !== 'string') ||
+          (entry.withdrawn != null && (typeof entry.withdrawn !== 'string' || !entry.withdrawn.trim())) ||
+          (entry.fixed_in !== undefined && (!Array.isArray(entry.fixed_in) ||
+            !entry.fixed_in.every((value: unknown) => typeof value === 'string' && value.trim())))) {
+        throw new Error('Malformed PyPI audit advisory');
+      }
+      if (entry.withdrawn != null) {
+        continue;
+      }
+      advisories.push({
+        id: entry.id,
+        title: entry.summary || entry.details || entry.id,
+        ...(entry.link !== undefined ? { url: entry.link } : {}),
+        ...(entry.fixed_in !== undefined ? { fixedVersions: entry.fixed_in } : {}),
+      });
+    }
+    return { status: 'checked', advisories };
   }
 
   /**
@@ -192,7 +242,7 @@ export function yankedVersions(files: SimpleFile[]): Set<string> {
     }
     const entry = counts.get(parsed.text) ?? { total: 0, yanked: 0 };
     entry.total++;
-    if (file.yanked) {
+    if (file.yanked === true || typeof file.yanked === 'string') {
       entry.yanked++;
     }
     counts.set(parsed.text, entry);

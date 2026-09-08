@@ -80,6 +80,65 @@ test('Maven ranges support bounds and unions', () => {
   assert.ok(maven.satisfies('1.0.Final', '[1.0]', stable));
 });
 
+test('Maven comparison preserves separator lists and qualifier zero normalization', () => {
+  const ordered = [
+    ['1.0-1', '1.0.1'],
+    ['1.0.0-rc1', '1.0-rc2'],
+    ['1.0.0.X1', '1.0.0-X2'],
+    ['1.0-alpha', '1.0-beta'],
+    ['1.0-beta', '1.0-milestone'],
+    ['1.0-milestone', '1.0-rc'],
+    ['1.0-rc', '1.0-snapshot'],
+    ['1.0-snapshot', '1.0'],
+    ['1.0', '1.0-sp'],
+    ['1.0-sp', '1.0-unknown'],
+    ['1.0-unknown', '1.0-zzz'],
+    ['1.0-alpha', '1.0-a'],
+    ['1.0-1', '1.0-1.1'],
+    ['1.0-1', '1.0-1-1'],
+    ['1.0-1-1', '1.0-1.1'],
+    ['1.9007199254740992', '1.9007199254740993'],
+    ['1.foo_bar', '1.foobar'],
+    ['1-0.alpha', '1-0.beta'],
+    ['1-0.beta', '1'],
+    ['6.1.0rc3', '6.1.0'],
+    ['6.1.0', '6.1H.5-beta'],
+    ['6.1.0rc3', '6.1H.5-beta'],
+  ];
+  for (const [lower, upper] of ordered) {
+    assert.ok(maven.compare(lower, upper) < 0, `${lower} < ${upper}`);
+    assert.ok(maven.compare(upper, lower) > 0, `${upper} > ${lower}`);
+  }
+  const equal = [
+    ['1', '1.0.0'],
+    ['1', '1-0.0'],
+    ['1.0-rc1', '1.0.0-rc1'],
+    ['1.0-rc0', '1.0-rc'],
+    ['1.0-rc0.0', '1.0-rc'],
+    ['1.0-ga', '1.0'],
+    ['1.0-final', '1.0-release'],
+    ['1.0-cr1', '1.0-rc1'],
+    ['1.0a1', '1.0-alpha-1'],
+    ['1.0b2', '1.0-beta-2'],
+    ['1.0m3', '1.0-milestone-3'],
+    ['1.00000000000000000001', '1.1'],
+    ['1..1', '1.0.1'],
+  ];
+  for (const [left, right] of equal) {
+    assert.strictEqual(maven.compare(left, right), 0, `${left} == ${right}`);
+    assert.strictEqual(maven.compare(right, left), 0, `${right} == ${left}`);
+  }
+});
+
+test('Maven ranges and maximum selection use normalized qualifier lists', () => {
+  const opts = { includePrerelease: true };
+  assert.strictEqual(maven.max(['1.0-rc2', '1.0.0-rc1'], opts), '1.0-rc2');
+  assert.strictEqual(maven.max(['1.0.1', '1.0-1'], opts), '1.0.1');
+  assert.ok(maven.satisfies('1.0-rc2', '[1.0.0-rc1,1.0)', opts));
+  assert.ok(maven.isPrerelease('1.0.0-rc0'));
+  assert.ok(!maven.isPrerelease('1.0-a'));
+});
+
 test('Maven metadata ignores prereleases when choosing latest', () => {
   const result = versionsFromMetadata([
     '<metadata><versioning><release>1.10.0</release><versions>',

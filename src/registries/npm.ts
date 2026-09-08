@@ -1,6 +1,7 @@
-import { fetchJson, type RequestOptions } from '../http';
-import { authTokenFor, readNpmConfig, type NpmConfig } from '../npmrc';
-import type { PackageMeta, RegistryVersions } from '../types';
+import * as semver from 'semver';
+import { fetchJson, HttpError, type RequestOptions } from '../http';
+import { authHeaderFor, readNpmConfig, type NpmConfig } from '../npmrc';
+import type { AuditResponse, PackageMeta, RegistryVersions, SecurityAdvisory } from '../types';
 
 const DEFAULT_REGISTRY = 'https://registry.npmjs.org';
 /** Abbreviated metadata: same version list, a fraction of the payload. */
@@ -91,6 +92,60 @@ export class NpmClient {
     return dates;
   }
 
+  async fetchAudit(name: string, version: string): Promise<AuditResponse> {
+    if (!semver.valid(version)) {
+      throw new Error('Invalid npm audit version');
+    }
+    const request = this.requestOptions(name);
+    let body: unknown;
+    try {
+      body = await fetchJson<unknown>(`${this.registryFor(name)}/-/npm/v1/security/advisories/bulk`, {
+        ...request,
+        method: 'POST',
+        body: JSON.stringify({ [name]: [version] }),
+        headers: { ...request.headers, 'content-type': 'application/json' },
+      });
+    } catch (error) {
+      if (error instanceof HttpError && (error.status === 405 || error.status === 501)) {
+        return { status: 'unsupported' };
+      }
+      throw error;
+    }
+    if (body === undefined) {
+      return { status: 'unsupported' };
+    }
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      throw new Error('Malformed npm audit response');
+    }
+    const advisories: SecurityAdvisory[] = [];
+    for (const [packageName, entries] of Object.entries(body)) {
+      if (!Array.isArray(entries)) {
+        throw new Error('Malformed npm audit response');
+      }
+      for (const entry of entries) {
+        if (!entry || typeof entry !== 'object' || Array.isArray(entry) ||
+            !((typeof entry.id === 'string' && entry.id.trim()) ||
+              (typeof entry.id === 'number' && Number.isSafeInteger(entry.id))) ||
+            typeof entry.title !== 'string' || !entry.title.trim() ||
+            typeof entry.vulnerable_versions !== 'string' || !entry.vulnerable_versions.trim() ||
+            semver.validRange(entry.vulnerable_versions, { includePrerelease: true }) === null ||
+            (entry.severity !== undefined && typeof entry.severity !== 'string') ||
+            (entry.url !== undefined && typeof entry.url !== 'string')) {
+          throw new Error('Malformed npm audit advisory');
+        }
+        if (packageName === name && semver.satisfies(version, entry.vulnerable_versions, { includePrerelease: true })) {
+          advisories.push({
+            id: String(entry.id),
+            title: entry.title,
+            ...(entry.severity !== undefined ? { severity: entry.severity } : {}),
+            ...(entry.url !== undefined ? { url: entry.url } : {}),
+          });
+        }
+      }
+    }
+    return { status: 'checked', advisories };
+  }
+
   /** Registry a package resolves to, also used as part of its cache key. */
   registryFor(name: string): string {
     if (this.options.registryOverride) {
@@ -102,10 +157,10 @@ export class NpmClient {
   }
 
   private requestOptions(name: string): RequestOptions {
-    const token = authTokenFor(this.config, this.registryFor(name));
+    const authorization = authHeaderFor(this.config, this.registryFor(name));
     const headers: Record<string, string> = {};
-    if (token) {
-      headers.authorization = `Bearer ${token}`;
+    if (authorization) {
+      headers.authorization = authorization;
     }
     return { timeoutMs: this.options.timeoutMs, headers };
   }

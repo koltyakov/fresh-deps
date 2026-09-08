@@ -1,7 +1,7 @@
 {
   "name": "fresh-deps",
   "displayName": "Fresh Deps",
-  "description": "Highlights dependencies that have newer versions available, inline in package.json and go.mod",
+  "description": "Highlights dependencies that have newer versions available, inline in your manifest files.",
   "version": "0.1.0",
   "license": "MIT",
   "publisher": "koltyakov",
@@ -10,19 +10,28 @@
     "url": "https://github.com/koltyakov/vscode-fresh-deps.git"
   },
   "engines": {
-    "vscode": "^1.85.0"
+    "vscode": "^1.120.0"
   },
   "categories": [
+    "Linters",
     "Other"
   ],
   "keywords": [
+    "dependencies",
+    "outdated",
+    "updates",
+    "versions",
+    "semver",
     "npm",
     "go",
-    "dependencies",
-    "updates",
-    "versions"
+    "package.json"
   ],
   "main": "./dist/extension.js",
+  "icon": "assets/logo.png",
+  "galleryBanner": {
+    "color": "#0b4d80",
+    "theme": "dark"
+  },
   "activationEvents": [
     "onLanguage:json",
     "onLanguage:jsonc",
@@ -197,7 +206,8 @@
     "watch": "node esbuild.js --watch",
     "check": "tsc --noEmit",
     "test": "tsc -p tsconfig.json && node --test test/*.test.js",
-    "package": "npm run build && vsce package"
+    "package": "npm run build && vsce package",
+    "vscode:install": "node scripts/vscode-install.mjs"
   },
   "dependencies": {
     "semver": "^7.8.5"
@@ -205,7 +215,7 @@
   "devDependencies": {
     "@types/node": "^26.5.0",
     "@types/semver": "^7.8.0",
-    "@types/vscode": "^1.85.0",
+    "@types/vscode": "1.120.0",
     "@vscode/vsce": "^3.9.2",
     "esbuild": "^0.28.2",
     "typescript": "7.0.2"

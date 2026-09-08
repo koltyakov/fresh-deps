@@ -1,3 +1,5 @@
+<img src="assets/logo.png" alt="Fresh Deps" width="128" align="right">
+
 # Fresh Deps
 
 VSCode extension that highlights, inline, which of your dependencies have newer versions available.
@@ -91,6 +93,10 @@ npm test        # typecheck + unit tests
 npm run watch   # then F5 in VSCode to launch the extension host
 npm run package # build a .vsix
 ```
+
+To try the packaged build in your own editor, `npm run vscode:install` builds the `.vsix` and
+installs it with `code --install-extension --force`; reload the window afterwards. Set
+`FRESH_DEPS_VSCODE_CLI` to target another CLI (`code-insiders`, `cursor`, an absolute path).
 
 Registry lookups are network-dependent, so the test suite covers the pure parts: manifest parsing,
 position anchoring, version comparison, `.npmrc` resolution and Go path handling.

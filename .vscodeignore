@@ -3,6 +3,7 @@
 src/**
 test/**
 out/**
+scripts/**
 node_modules/**
 esbuild.js
 tsconfig.json
@@ -11,3 +12,5 @@ tsconfig.json
 !dist/extension.js
 .gitignore
 package-lock.json
+**/.DS_Store
+*.vsix

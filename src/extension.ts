@@ -133,9 +133,14 @@ export function activate(context: vscode.ExtensionContext): void {
   const MANIFEST_SELECTOR: vscode.DocumentSelector = [
     { scheme: 'file', pattern: '**/package.json' },
     { scheme: 'file', pattern: '**/go.mod' },
+    { scheme: 'file', pattern: '**/Cargo.toml' },
+    { scheme: 'file', pattern: '**/pom.xml' },
     { scheme: 'file', pattern: '**/pyproject.toml' },
     { scheme: 'file', pattern: '**/Pipfile' },
     { scheme: 'file', pattern: '**/*.txt' },
+    { scheme: 'file', pattern: '**/*.{cs,fs,vb}proj' },
+    { scheme: 'file', pattern: '**/Directory.{Packages,Build}.props' },
+    { scheme: 'file', pattern: '**/packages.config' },
   ];
 
   context.subscriptions.push(

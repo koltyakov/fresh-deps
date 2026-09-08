@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Java support: inline Maven update hints for dependencies and dependency management in `pom.xml`,
+  including POM properties, Maven version ordering, interval ranges, and configurable repositories.
+- .NET support: inline NuGet update hints in SDK project files, `Directory.Packages.props`,
+  `Directory.Build.props`, and legacy `packages.config`, including NuGet interval and floating ranges.
+- NuGet V3 feeds can be selected with `freshDeps.dotnet.indexUrl`.
+- Rust support: inline update hints for crates in `Cargo.toml`, including workspace and target-specific
+  dependency tables, renamed crates, Cargo requirement semantics, and yanked-release filtering.
 - Python support: inline update hints in `pyproject.toml` (PEP 621 `[project]`, PEP 735
   `[dependency-groups]`, `[build-system]` requires and the Poetry tables), `Pipfile`, and
   `requirements.txt` and its conventional variants.

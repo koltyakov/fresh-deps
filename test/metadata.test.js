@@ -4,6 +4,7 @@ const { display, relativeTime, publishedOn, formatSize, escapeMarkdown } = requi
 const { metaOf: npmMetaOf, repositoryOf } = require('../out/registries/npm');
 const { metaOf: goMetaOf } = require('../out/registries/go');
 const { metaOf: pypiMetaOf, uploadTimes, isWarehouse } = require('../out/registries/pypi');
+const { versionsOf: crateVersionsOf } = require('../out/registries/crates');
 
 const NOW = Date.parse('2026-09-08T12:00:00Z');
 
@@ -121,4 +122,24 @@ test('PyPI metadata prefers the modern licence field and drops pasted licence te
   assert.strictEqual(meta.homepage, 'https://requests.readthedocs.io');
   assert.strictEqual(pypiMetaOf({ license: 'MIT License\n\nCopyright (c) 2026 ...'.repeat(3) }).license, undefined);
   assert.strictEqual(pypiMetaOf({ license: 'MIT', license_expression: 'MIT OR Apache-2.0' }).license, 'MIT OR Apache-2.0');
+});
+
+test('crates.io ignores yanked releases and keeps metadata for the latest stable version', () => {
+  const versions = crateVersionsOf({
+    crate: {
+      description: 'Serialization framework',
+      homepage: 'https://serde.rs',
+      repository: 'https://github.com/serde-rs/serde',
+    },
+    versions: [
+      { num: '2.0.0-beta.1', created_at: '2026-08-01T00:00:00Z' },
+      { num: '1.0.220', yanked: true },
+      { num: '1.0.219', license: 'MIT OR Apache-2.0', created_at: '2026-07-01T00:00:00Z' },
+    ],
+  });
+  assert.strictEqual(versions.latest, '1.0.219');
+  assert.deepStrictEqual(versions.all, ['2.0.0-beta.1', '1.0.219']);
+  assert.strictEqual(versions.meta.license, 'MIT OR Apache-2.0');
+  assert.strictEqual(versions.meta.latestPublishedAt, '2026-07-01T00:00:00Z');
+  assert.strictEqual(versions.meta.repository, 'https://github.com/serde-rs/serde');
 });

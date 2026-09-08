@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const { parsePackageJson } = require('../out/parsers/packageJson');
 const { parseGoMod } = require('../out/parsers/goMod');
+const { parseCargoToml } = require('../out/parsers/cargoToml');
 
 const SECTIONS = ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'];
 
@@ -148,4 +149,62 @@ test('go.mod: skips replaced modules and other directives', () => {
 
   const deps = parseGoMod(text, { includeIndirect: false });
   assert.deepStrictEqual(deps.map((d) => d.name), ['github.com/c/d']);
+});
+
+test('Cargo.toml: reads standard, workspace and target dependency tables', () => {
+  const text = [
+    '[dependencies]',
+    'serde = "1.0"',
+    'tokio = { version = "1.35", features = ["full"] }',
+    '',
+    '[dev-dependencies]',
+    'pretty_assertions = "1.4"',
+    '',
+    '[workspace.dependencies]',
+    'anyhow = "~1.0.75"',
+    '',
+    '[target.\'cfg(unix)\'.build-dependencies]',
+    'cc = ">= 1.0, < 2"',
+  ].join('\n');
+
+  assert.deepStrictEqual(
+    parseCargoToml(text).map((d) => [d.name, d.spec, d.section, d.line]),
+    [
+      ['serde', '1.0', 'dependencies', 1],
+      ['tokio', '1.35', 'dependencies', 2],
+      ['pretty_assertions', '1.4', 'dev-dependencies', 5],
+      ['anyhow', '~1.0.75', 'workspace.dependencies', 8],
+      ['cc', '>= 1.0, < 2', 'target.cfg(unix).build-dependencies', 11],
+    ],
+  );
+});
+
+test('Cargo.toml: handles renamed and expanded dependencies', () => {
+  const text = [
+    '[dependencies]',
+    'json = { package = "serde_json", version = "1.0" }',
+    '',
+    '[dependencies.regex]',
+    'version = "1.10"',
+    'features = ["unicode"]',
+  ].join('\n');
+
+  const deps = parseCargoToml(text);
+  assert.deepStrictEqual(deps.map((d) => [d.name, d.spec, d.alias, d.line]), [
+    ['serde_json', '1.0', 'json', 1],
+    ['regex', '1.10', undefined, 4],
+  ]);
+});
+
+test('Cargo.toml: skips dependencies that do not resolve through crates.io', () => {
+  const text = [
+    '[dependencies]',
+    'local = { path = "../local", version = "1" }',
+    'fork = { git = "https://example.com/fork", version = "1" }',
+    'private = { registry = "company", version = "1" }',
+    'inherited = { workspace = true }',
+    'anything = "*"',
+    'real = "1"',
+  ].join('\n');
+  assert.deepStrictEqual(parseCargoToml(text).map((d) => d.name), ['real']);
 });

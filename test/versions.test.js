@@ -1,10 +1,11 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const { computeUpdate, needsFullVersionList, normalizeNpmSpec, normalizePythonSpec } = require('../out/versions');
-const { baselineOf, classifyUpdate, isPinned, schemeFor } = require('../out/schemes');
+const { baselineOf, cargoRange, classifyUpdate, isPinned, schemeFor } = require('../out/schemes');
 
 const OPTS = { includePrerelease: false, showSatisfyingUpdates: true, scheme: schemeFor('npm') };
 const PY_OPTS = { includePrerelease: false, showSatisfyingUpdates: true, scheme: schemeFor('python') };
+const CARGO_OPTS = { includePrerelease: false, showSatisfyingUpdates: true, scheme: schemeFor('rust') };
 const dep = (spec, name = 'pkg') => ({ name, spec, line: 0, section: 'dependencies' });
 
 test('baselineOf takes the floor of a range', () => {
@@ -125,4 +126,17 @@ test('computeUpdate hides Python prereleases unless asked', () => {
   const versions = { latest: '1.0', all: ['1.0', '2.0b1'] };
   assert.strictEqual(computeUpdate(dep, versions, PY_OPTS), undefined);
   assert.strictEqual(computeUpdate(dep, versions, { ...PY_OPTS, includePrerelease: true }).latest, '2.0b1');
+});
+
+test('Cargo requirements use implicit caret semantics and comma intersections', () => {
+  assert.strictEqual(cargoRange('1.2.3'), '^1.2.3');
+  assert.strictEqual(cargoRange('>= 1.2, < 2'), '>=1.2 <2');
+  assert.strictEqual(cargoRange('=1.2.3'), '1.2.3');
+  assert.strictEqual(cargoRange('*'), undefined);
+
+  const compatible = computeUpdate(dep('1.2.3'), { latest: '1.9.0', all: ['1.2.3', '1.9.0'] }, CARGO_OPTS);
+  assert.strictEqual(compatible.inRange, true);
+  const major = computeUpdate(dep('1.2.3'), { latest: '2.0.0', all: ['1.9.0', '2.0.0'] }, CARGO_OPTS);
+  assert.strictEqual(major.inRange, false);
+  assert.strictEqual(major.satisfying, '1.9.0');
 });

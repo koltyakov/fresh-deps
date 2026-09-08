@@ -13,6 +13,9 @@ const COMMENT_TOKEN: Record<Ecosystem, string> = {
   npm: '//',
   go: '//',
   python: '#',
+  rust: '#',
+  dotnet: '<!--',
+  java: '<!--',
 };
 
 /**
@@ -115,13 +118,14 @@ function visualWidth(text: string, tabSize: number): number {
 
 function version(update: DependencyUpdate, ecosystem: Ecosystem): string {
   const latest = display(update.latestRaw ?? update.latest, ecosystem);
+  const suffix = ecosystem === 'dotnet' || ecosystem === 'java' ? ' -->' : '';
   if (update.satisfying) {
-    return `\u2191 ${display(update.satisfying, ecosystem)} \u2192 ${latest}`;
+    return `\u2191 ${display(update.satisfying, ecosystem)} \u2192 ${latest}${suffix}`;
   }
   if (update.alternatePath) {
-    return `\u2191 ${latest} (${majorSuffix(update.alternatePath)})`;
+    return `\u2191 ${latest} (${majorSuffix(update.alternatePath)})${suffix}`;
   }
-  return `\u2191 ${latest}`;
+  return `\u2191 ${latest}${suffix}`;
 }
 
 /** The `/v3` or `.v3` tail a Go module gained, or the whole path if it is neither. */

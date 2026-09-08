@@ -1,13 +1,19 @@
 import * as path from 'path';
 import type { VersionCache } from './cache';
 import type { Settings } from './config';
+import { parseCargoToml } from './parsers/cargoToml';
 import { parseGoMod } from './parsers/goMod';
+import { parseNugetManifest } from './parsers/nuget';
 import { parsePackageJson } from './parsers/packageJson';
 import { parsePipfile } from './parsers/pipfile';
+import { parsePomXml } from './parsers/pomXml';
 import { parsePyProject } from './parsers/pyproject';
 import { parseRequirementsTxt } from './parsers/requirementsTxt';
+import { CratesClient } from './registries/crates';
 import { GoClient } from './registries/go';
 import { NpmClient } from './registries/npm';
+import { MavenClient } from './registries/maven';
+import { NugetClient } from './registries/nuget';
 import { normalizeName, PyPiClient } from './registries/pypi';
 import { schemeFor } from './schemes';
 import type {
@@ -40,7 +46,15 @@ export interface AnalyzeResult {
 }
 
 /** Which manifest a file is, since Python spreads its dependencies over several. */
-export type ManifestKind = 'package.json' | 'go.mod' | 'pyproject.toml' | 'Pipfile' | 'requirements.txt';
+export type ManifestKind =
+  | 'package.json'
+  | 'go.mod'
+  | 'Cargo.toml'
+  | 'pyproject.toml'
+  | 'Pipfile'
+  | 'requirements.txt'
+  | 'pom.xml'
+  | 'nuget';
 
 interface Manifest {
   ecosystem: Ecosystem;
@@ -72,6 +86,12 @@ export function manifestOf(fsPath: string): Manifest | undefined {
   if (name === 'go.mod') {
     return { ecosystem: 'go', kind: 'go.mod' };
   }
+  if (name === 'Cargo.toml') {
+    return { ecosystem: 'rust', kind: 'Cargo.toml' };
+  }
+  if (name === 'pom.xml') {
+    return { ecosystem: 'java', kind: 'pom.xml' };
+  }
   if (name === 'pyproject.toml') {
     return { ecosystem: 'python', kind: 'pyproject.toml' };
   }
@@ -80,6 +100,9 @@ export function manifestOf(fsPath: string): Manifest | undefined {
   }
   if (isRequirementsFile(fsPath)) {
     return { ecosystem: 'python', kind: 'requirements.txt' };
+  }
+  if (/\.(?:cs|fs|vb)proj$/i.test(name) || /^Directory\.(?:Packages|Build)\.props$/i.test(name) || name === 'packages.config') {
+    return { ecosystem: 'dotnet', kind: 'nuget' };
   }
   return undefined;
 }
@@ -169,12 +192,18 @@ function parseManifest(kind: ManifestKind, request: AnalyzeRequest): DependencyR
       return parsePackageJson(text, settings.npm.sections);
     case 'go.mod':
       return parseGoMod(text, { includeIndirect: settings.go.includeIndirect });
+    case 'Cargo.toml':
+      return parseCargoToml(text);
     case 'pyproject.toml':
       return parsePyProject(text, { includeBuildRequires: settings.python.includeBuildRequires });
     case 'Pipfile':
       return parsePipfile(text);
     case 'requirements.txt':
       return parseRequirementsTxt(text);
+    case 'pom.xml':
+      return parsePomXml(text);
+    case 'nuget':
+      return parseNugetManifest(text);
   }
 }
 
@@ -217,6 +246,12 @@ export function lookupFor(ecosystem: Ecosystem, fsPath: string, settings: Settin
       return goLookup(settings);
     case 'python':
       return pythonLookup(settings);
+    case 'rust':
+      return rustLookup(settings);
+    case 'dotnet':
+      return dotnetLookup(settings);
+    case 'java':
+      return mavenLookup(settings);
   }
 }
 
@@ -283,6 +318,30 @@ function pythonLookup(settings: Settings): Lookup {
         ...(meta ? { meta } : {}),
       };
     },
+  };
+}
+
+function rustLookup(settings: Settings): Lookup {
+  const client = new CratesClient(settings.requestTimeoutMs);
+  return {
+    key: (dep) => `rust|crates.io|${dep.name.toLowerCase().replace(/_/g, '-')}`,
+    fetch: (dep) => client.fetchVersions(dep.name),
+  };
+}
+
+function dotnetLookup(settings: Settings): Lookup {
+  const client = new NugetClient(settings.dotnet.indexUrl, settings.requestTimeoutMs);
+  return {
+    key: (dep) => `dotnet|${client.index}|${dep.name.toLowerCase()}`,
+    fetch: (dep) => client.fetchVersions(dep.name),
+  };
+}
+
+function mavenLookup(settings: Settings): Lookup {
+  const client = new MavenClient(settings.java.repository, settings.requestTimeoutMs);
+  return {
+    key: (dep) => `maven|${client.repository}|${dep.name}`,
+    fetch: (dep) => client.fetchVersions(dep.name),
   };
 }
 

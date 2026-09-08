@@ -85,6 +85,13 @@ function links(
     parts.push(`[pkg.go.dev](https://pkg.go.dev/${modulePath}@v${update.latest})`);
   } else if (ecosystem === 'python') {
     parts.push(`[PyPI](https://pypi.org/project/${update.dep.name}/${update.latest}/)`);
+  } else if (ecosystem === 'rust') {
+    parts.push(`[crates.io](https://crates.io/crates/${update.dep.name}/${update.latest})`);
+  } else if (ecosystem === 'dotnet') {
+    parts.push(`[NuGet](https://www.nuget.org/packages/${update.dep.name}/${update.latest})`);
+  } else if (ecosystem === 'java') {
+    const [groupId, artifactId] = update.dep.name.split(':');
+    parts.push(`[Maven Central](https://central.sonatype.com/artifact/${groupId}/${artifactId}/${update.latest})`);
   } else {
     parts.push(`[npm](https://www.npmjs.com/package/${update.dep.name}/v/${update.latest})`);
   }

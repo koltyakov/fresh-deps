@@ -14,9 +14,19 @@ export interface RequestOptions {
  * as a normal outcome rather than an error.
  */
 export async function fetchJson<T>(url: string, options: RequestOptions): Promise<T | undefined> {
+  const response = await request(url, options, 'application/json');
+  return (await response?.json()) as T | undefined;
+}
+
+export async function fetchText(url: string, options: RequestOptions): Promise<string | undefined> {
+  const response = await request(url, options, 'application/xml, text/xml');
+  return response?.text();
+}
+
+async function request(url: string, options: RequestOptions, accept: string): Promise<Response | undefined> {
   const response = await fetch(url, {
     headers: {
-      accept: 'application/json',
+      accept,
       'user-agent': 'vscode-fresh-deps',
       ...options.headers,
     },
@@ -29,5 +39,5 @@ export async function fetchJson<T>(url: string, options: RequestOptions): Promis
   if (!response.ok) {
     throw new HttpError(response.status, `${response.status} ${response.statusText}`);
   }
-  return (await response.json()) as T;
+  return response;
 }

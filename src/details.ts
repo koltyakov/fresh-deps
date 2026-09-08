@@ -97,7 +97,7 @@ export class DependencyHoverProvider implements vscode.HoverProvider {
     // Typing moves declarations around while the last analysis still describes
     // where they were, so the line has to still be the one that was measured
     // before its card is shown.
-    if (!line.text.includes(update.dep.alias ?? update.dep.name)) {
+    if (result.ecosystem !== 'java' && !line.text.includes(update.dep.alias ?? update.dep.name)) {
       return undefined;
     }
 

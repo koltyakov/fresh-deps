@@ -10,7 +10,7 @@ const UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
   ['minute', MINUTE],
 ];
 
-/** Go writes its versions with a `v`; npm and PyPI write them bare. */
+/** Go writes its versions with a `v`; npm, crates.io and PyPI write them bare. */
 export function display(version: string, ecosystem: Ecosystem): string {
   return ecosystem === 'go' && !version.startsWith('v') ? `v${version}` : version;
 }

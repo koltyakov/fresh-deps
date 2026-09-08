@@ -1,13 +1,15 @@
 import * as semver from 'semver';
 import * as pep440 from './pep440';
+import { nugetScheme } from './nuget';
+import * as mavenVersion from './mavenVersion';
 import type { Ecosystem, UpdateKind } from './types';
 
 const LOOSE = { loose: true } as const;
 
 /**
  * The version arithmetic an ecosystem needs, so that comparing a declaration
- * against a registry is written once. npm and Go both speak semver; Python
- * speaks PEP 440, which orders versions by different rules entirely.
+ * against a registry is written once. npm, Go and Rust speak semver (with
+ * different requirement syntax for Cargo); Python uses PEP 440.
  */
 export interface VersionScheme {
   /** True when the string is a version this scheme can order. */
@@ -83,6 +85,46 @@ export const semverScheme: VersionScheme = {
   classify: classifyUpdate,
 };
 
+/** Translates Cargo's comma-separated, implicit-caret requirements to node-semver. */
+export function cargoRange(spec: string): string | undefined {
+  const trimmed = spec.trim();
+  if (!trimmed || trimmed === '*' || trimmed.includes('||')) {
+    return undefined;
+  }
+  const parts = trimmed.split(',').map((part) => part.trim()).filter(Boolean);
+  if (parts.length === 0) {
+    return undefined;
+  }
+  const translated = parts.map((part) => {
+    const compact = part.replace(/^(>=|<=|>|<|=|\^|~)\s+/, '$1');
+    if (compact.startsWith('=')) {
+      return compact.slice(1);
+    }
+    return /^(>=|<=|>|<|\^|~)/.test(compact) || /[xX*]/.test(compact) ? compact : `^${compact}`;
+  }).join(' ');
+  return semver.validRange(translated, LOOSE) ? translated : undefined;
+}
+
+export const cargoScheme: VersionScheme = {
+  ...semverScheme,
+  baseline: (spec) => {
+    const range = cargoRange(spec);
+    return range ? baselineOf(range) : undefined;
+  },
+  isPinned: (spec) => /^=\s*v?\d+(?:\.\d+){2}(?:[-+][0-9A-Za-z.-]+)?$/.test(spec.trim()),
+  isRange: (spec) => cargoRange(spec) !== undefined,
+  satisfies: (version, spec, opts) => {
+    const range = cargoRange(spec);
+    return !!range && semver.satisfies(version, range, { ...LOOSE, includePrerelease: opts.includePrerelease });
+  },
+  maxSatisfying: (versions, spec, opts) => {
+    const range = cargoRange(spec);
+    return range
+      ? semver.maxSatisfying(versions, range, { ...LOOSE, includePrerelease: opts.includePrerelease }) ?? undefined
+      : undefined;
+  },
+};
+
 /**
  * Python has no `major.minor.patch` contract, so the step is read off the
  * release tuple: a change in the first component is a major move, the second a
@@ -119,6 +161,22 @@ export const pep440Scheme: VersionScheme = {
   classify: classifyPep440,
 };
 
+export const mavenScheme: VersionScheme = {
+  isVersion: mavenVersion.isValid,
+  compare: mavenVersion.compare,
+  isPrerelease: mavenVersion.isPrerelease,
+  baseline: mavenVersion.baselineOf,
+  isPinned: mavenVersion.isPinned,
+  isRange: mavenVersion.isRange,
+  satisfies: mavenVersion.satisfies,
+  maxSatisfying: mavenVersion.maxSatisfying,
+  max: mavenVersion.max,
+  classify: mavenVersion.classify,
+};
+
 export function schemeFor(ecosystem: Ecosystem): VersionScheme {
-  return ecosystem === 'python' ? pep440Scheme : semverScheme;
+  if (ecosystem === 'python') return pep440Scheme;
+  if (ecosystem === 'rust') return cargoScheme;
+  if (ecosystem === 'java') return mavenScheme;
+  return ecosystem === 'dotnet' ? nugetScheme : semverScheme;
 }

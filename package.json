@@ -26,7 +26,17 @@
     "go",
     "python",
     "pypi",
+    "rust",
+    "cargo",
+    "crates.io",
+    "java",
+    "maven",
+    "dotnet",
+    "nuget",
+    "csproj",
     "package.json",
+    "Cargo.toml",
+    "pom.xml",
     "pyproject.toml",
     "requirements.txt"
   ],
@@ -42,12 +52,21 @@
     "onLanguage:go.mod",
     "onLanguage:gomod",
     "onLanguage:toml",
+    "onLanguage:xml",
     "onLanguage:pip-requirements",
     "workspaceContains:**/package.json",
     "workspaceContains:**/go.mod",
+    "workspaceContains:**/Cargo.toml",
+    "workspaceContains:**/pom.xml",
     "workspaceContains:**/pyproject.toml",
     "workspaceContains:**/Pipfile",
-    "workspaceContains:**/requirements*.txt"
+    "workspaceContains:**/requirements*.txt",
+    "workspaceContains:**/*.csproj",
+    "workspaceContains:**/*.fsproj",
+    "workspaceContains:**/*.vbproj",
+    "workspaceContains:**/Directory.Packages.props",
+    "workspaceContains:**/Directory.Build.props",
+    "workspaceContains:**/packages.config"
   ],
   "contributes": {
     "commands": [
@@ -168,6 +187,31 @@
           "type": "boolean",
           "default": false,
           "description": "Also check [build-system] requires in pyproject.toml."
+        },
+        "freshDeps.rust.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Check Rust crates in Cargo.toml."
+        },
+        "freshDeps.dotnet.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Check NuGet dependencies in .NET project and package management files."
+        },
+        "freshDeps.dotnet.indexUrl": {
+          "type": "string",
+          "default": "",
+          "description": "NuGet V3 service index URL. Leave empty to use https://api.nuget.org/v3/index.json."
+        },
+        "freshDeps.java.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Check Maven dependencies in pom.xml."
+        },
+        "freshDeps.java.repository": {
+          "type": "string",
+          "default": "",
+          "description": "Maven repository URL. Leave empty to use https://repo.maven.apache.org/maven2."
         }
       }
     },

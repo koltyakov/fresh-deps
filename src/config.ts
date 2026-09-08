@@ -23,6 +23,17 @@ export interface Settings {
     indexUrl: string;
     includeBuildRequires: boolean;
   };
+  rust: {
+    enabled: boolean;
+  };
+  dotnet: {
+    enabled: boolean;
+    indexUrl: string;
+  };
+  java: {
+    enabled: boolean;
+    repository: string;
+  };
 }
 
 export function readSettings(scope?: vscode.Uri): Settings {
@@ -49,6 +60,17 @@ export function readSettings(scope?: vscode.Uri): Settings {
       enabled: cfg.get('python.enabled', true),
       indexUrl: cfg.get('python.indexUrl', ''),
       includeBuildRequires: cfg.get('python.includeBuildRequires', false),
+    },
+    rust: {
+      enabled: cfg.get('rust.enabled', true),
+    },
+    dotnet: {
+      enabled: cfg.get('dotnet.enabled', true),
+      indexUrl: cfg.get('dotnet.indexUrl', ''),
+    },
+    java: {
+      enabled: cfg.get('java.enabled', true),
+      repository: cfg.get('java.repository', ''),
     },
   };
 }

@@ -2,7 +2,7 @@
   "name": "fresh-deps",
   "displayName": "Fresh Deps",
   "description": "Highlights dependencies that have newer versions available, inline in your manifest files.",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "license": "MIT",
   "publisher": "koltyakov",
   "repository": {

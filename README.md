@@ -1,11 +1,48 @@
-<img src="https://raw.githubusercontent.com/koltyakov/fresh-deps/main/assets/logo.png" alt="Fresh Deps" width="128" align="right">
-
 # Fresh Deps
 
-VSCode extension that highlights, inline, which of your dependencies have newer versions available.
+See available dependency updates directly in your VS Code manifest files.
 
-Open a supported JavaScript, Go, Rust, Python, Java, or .NET manifest and every dependency that is behind gets an
-annotation at the end of its line:
+Fresh Deps adds inline version hints for **npm, Go, Python, Rust, Maven, and NuGet**.
+Compare the newest version your range allows with the latest release, then hover for details and a
+link to the package registry. Hints are editor decorations, so your files stay untouched.
+
+[Install from the Marketplace](https://marketplace.visualstudio.com/items?itemName=koltyakov.fresh-deps) · [Source code](https://github.com/koltyakov/fresh-deps) · [Report an issue](https://github.com/koltyakov/fresh-deps/issues)
+
+## What you get
+
+- Available versions beside each outdated dependency, aligned within each block.
+- In-range and out-of-range updates shown together, with theme-aware colors for update types.
+- Go major-version discovery, including new `/v2`, `/v3`, and `gopkg.in` import paths.
+- Support for scoped npm registries, Go proxies, and custom Python, Maven, and NuGet sources.
+- Optional security warnings for npm and public PyPI packages.
+- Cached lookups across window reloads. Typing never triggers a network request.
+
+## Get started
+
+1. Install **Fresh Deps** from the VS Code Extensions view. Requires VS Code 1.120.0 or later.
+2. Open a supported manifest, such as `package.json`, `go.mod`, or `pyproject.toml`.
+3. Look for version hints at the end of dependency lines. Hover a hint to inspect the update.
+
+Checks run when you open or save a manifest. To force a fresh check, use the refresh button in the
+editor title bar or run `Fresh Deps: Check for Updates` from the Command Palette.
+
+## Supported files
+
+| Ecosystem | Manifests | Package source |
+|---|---|---|
+| JavaScript / TypeScript | `package.json`, including Volta tool pins | npm registry |
+| Go | `go.mod` | Go module proxy |
+| Python | `pyproject.toml`, `Pipfile`, requirements and constraints files | PyPI or a custom index |
+| Rust | `Cargo.toml` | crates.io |
+| Java | `pom.xml` | Maven Central or a custom repository |
+| .NET | `*.csproj`, `*.fsproj`, `*.vbproj`, `Directory.Packages.props`, `Directory.Build.props`, `packages.config` | NuGet V3 feed |
+
+## Inline hints
+
+These examples illustrate the annotations you see in the editor. The comments are visual hints,
+not text added to your manifest, and the versions are examples rather than a live registry listing.
+
+### npm
 
 ```jsonc
 {
@@ -16,13 +53,17 @@ annotation at the end of its line:
 }
 ```
 
-```go-mod
+### Go
+
+```go
 require (
 	github.com/Masterminds/semver v1.5.0 // ↑ v3.5.0 (/v3)
 	github.com/stretchr/testify v1.8.0   // ↑ v1.12.1
 	gopkg.in/yaml.v2 v2.4.0              // ↑ v3.0.1 (.v3)
 )
 ```
+
+### Python
 
 ```toml
 [project]
@@ -32,45 +73,37 @@ dependencies = [
 ]
 ```
 
-Hovering an annotation shows the declared range, the latest version, whether it still satisfies the
-range, and a link to npm, pkg.go.dev, crates.io, PyPI, Maven Central, or NuGet.
+### Reading an update
 
-## What it reads
+In `↑ 18.19.130 → 26.5.0`, the first version is the newest your declared range allows.
+The second is the latest release and requires changing that range. A single version shows the
+available update; hover to check whether it satisfies your range.
 
-| Ecosystem | File | Source of truth |
-|---|---|---|
-| npm | `package.json` - `dependencies`, `devDependencies`, `peerDependencies`, `optionalDependencies`, `volta` | the npm registry (`.npmrc`-aware, including scoped registries and auth tokens) |
-| Go | `go.mod` - `require`, single-line and block form | the Go module proxy (`GOPROXY`-aware) |
-| Rust | `Cargo.toml` - dependency, dev-dependency, build-dependency, workspace and target-specific tables | crates.io |
-| Python | `pyproject.toml` - PEP 621 `[project]`, PEP 735 `[dependency-groups]` and the Poetry tables; `Pipfile`; `requirements.txt` and its conventional variants | the PyPI simple index (`PIP_INDEX_URL`/`UV_INDEX_URL`- and `pip.conf`-aware) |
-| Java | Maven `pom.xml` dependencies and dependency management | Maven Central, or a configured Maven repository |
-| .NET | `*.csproj`, `*.fsproj`, `*.vbproj`, `Directory.Packages.props`, `Directory.Build.props`, and `packages.config` | a NuGet V3 feed (nuget.org by default) |
+Hover details include the declared range, latest version, range compatibility, and a link to npm,
+pkg.go.dev, PyPI, crates.io, Maven Central, or NuGet.
 
-Hints are drawn at the end of the line - after any trailing comma or existing comment - in the
-manifest's own comment syntax, and lined up on a common column within each block. They should read
-as a note about the code, never as part of it.
+Hints follow the manifest's comment syntax and appear after any trailing comma or existing comment.
+Major updates use the theme's warning color, minor updates use its info color, and patch updates
+use a muted color.
 
-Colour separates the two kinds of move, both kept muted. A major update, the kind that needs the
-range widened or in Go a new import path, takes the theme's warning colour; drop-in minor and patch
-updates stay neutral. The comment token itself is always the plain grey of a real comment. All five
-colours are themeable: `freshDeps.commentForeground`, `freshDeps.majorForeground`,
-`freshDeps.minorForeground`, `freshDeps.patchForeground` and `freshDeps.prereleaseForeground`.
+Customize the colors through `workbench.colorCustomizations` using `freshDeps.commentForeground`,
+`freshDeps.majorForeground`, `freshDeps.minorForeground`, `freshDeps.patchForeground`, and
+`freshDeps.prereleaseForeground`.
 
-### Two numbers, not one
+## Ecosystem details
 
-When the latest version falls outside the declared range, both are shown: `↑ 18.19.130 → 26.5.0`
-means the newest version your range already allows is `18.19.130`, while `26.5.0` needs the range
-widened. A single number means the update is a straight upgrade.
+### npm and Volta
 
-### Volta specifics
-
+- Checks `dependencies`, `devDependencies`, `peerDependencies`, and `optionalDependencies` in `package.json`.
+- Reads `.npmrc`, including scoped registries and authentication tokens.
 - The `volta` block in `package.json` checks `node`, `npm`, `yarn`, and `pnpm` pins using their npm registry versions.
 - `extends` paths are not followed. Only pins declared in the current file are checked.
 - If you have customized `freshDeps.npm.sections`, add `"volta"` to enable these hints. Remove it to disable them.
 
-### Go specifics
+### Go
 
-- Modules covered by a `replace` directive are skipped - their version no longer comes from the proxy.
+- Reads single-line and block `require` declarations, using the `GOPROXY` environment variable unless you configure a proxy override.
+- Modules covered by a `replace` directive are skipped because their version no longer comes from the proxy.
 - Modules excluded by the extension process's `GONOPROXY` environment variable, or `GOPRIVATE`
   when `GONOPROXY` is unset or empty, are never sent to a proxy. These modules are skipped rather
   than fetched directly. Settings persisted only through `go env -w` are not read.
@@ -78,35 +111,39 @@ widened. A single number means the update is a straight upgrade.
 - New major versions live under a new import path, so `/v2`, `/v3`, … and the `gopkg.in` `.vN` form are
   probed and reported with the path you would have to import.
 
-### Python specifics
+### Python
 
-- Versions are compared by PEP 440, not semver - epochs (`1!2.0`), post-releases (`1.0.post1`), dev
+- Reads PEP 621 `[project]`, PEP 735 `[dependency-groups]`, and Poetry tables in `pyproject.toml`, plus `Pipfile` and requirements files.
+- Resolves the package index from `PIP_INDEX_URL`, `UV_INDEX_URL`, or `pip.conf` unless you configure an override.
+- Versions use PEP 440 ordering. Epochs like `1!2.0`, post-releases like `1.0.post1`, dev
   releases and calendar versions all order the way pip orders them.
 - Poetry's `^` and `~` constraints are expanded into the bounds they stand for, so `^0.2.3` is read
   as `>=0.2.3,<0.3.0` rather than as a caret range from another ecosystem.
 - Yanked releases are ignored: a version counts as withdrawn only when every one of its files is
   yanked, which is the rule pip applies.
-- Requirements with nothing to measure against - a bare `requests`, a `!=` or `<` only, a `@` direct
-  reference, an `-e` or `-r` line - are skipped before they cost a request.
+- Requirements with nothing to measure against are skipped before making a request. These include a bare
+  `requests`, a `!=` or `<` only, a `@` direct reference, and `-e` or `-r` lines.
 - Recognised requirements files are `requirements.txt` and its `-`, `.` or `_` suffixed variants,
   `constraints.txt`, `*-requirements.txt`, and any `.txt` inside a `requirements/` directory.
 
-### Rust specifics
+### Rust
 
+- Reads dependency, dev-dependency, build-dependency, workspace, and target-specific tables.
 - Cargo's own requirement semantics are used, including implicit caret requirements and comma-separated bounds.
 - Renamed dependencies query the crate named by `package`; path, git, inherited workspace and custom-registry
   dependencies are skipped because their versions do not come from crates.io.
 - Yanked releases are ignored.
 
-### .NET specifics
+### .NET
 
 - `PackageReference`, central `PackageVersion`, `VersionOverride`, and legacy `packages.config` declarations are read.
 - NuGet interval ranges such as `[1.0,2.0)` and floating ranges such as `1.*` use NuGet version ordering,
   including legacy four-part versions.
 - Versions containing MSBuild properties are skipped because checking them would require evaluating the project.
 
-### Java specifics
+### Java
 
+- Reads dependencies and dependency management in Maven `pom.xml` files.
 - Maven versions use Maven qualifier ordering, including `alpha`, `beta`, `milestone`, `rc`, `snapshot`, `final`, and `sp`.
 - Maven interval ranges such as `[1.0,2.0)` and unions such as `(,1.0],[1.2,)` are supported.
 - Versions declared through properties in the same POM are resolved. Dependencies with inherited or otherwise unresolved versions are skipped.
@@ -135,7 +172,7 @@ query the audit provider. Both refresh and Clear Version Cache discard audit res
 
 ## Commands
 
-| Command | Does |
+| Command | Action |
 |---|---|
 | `Fresh Deps: Check for Updates` | Drops the cache and re-queries for the current file |
 | `Fresh Deps: Toggle Inline Hints` | Turns the annotations off and on |
@@ -143,7 +180,7 @@ query the audit provider. Both refresh and Clear Version Cache discard audit res
 
 ## Settings
 
-| Setting | Default | Does |
+| Setting | Default | Description |
 |---|---|---|
 | `freshDeps.enabled` | `true` | Show inline hints |
 | `freshDeps.audit.enabled` | `false` | Show security warnings for npm and public PyPI declarations |
@@ -168,15 +205,15 @@ query the audit provider. Both refresh and Clear Version Cache discard audit res
 | `freshDeps.dotnet.enabled` | `true` | Check NuGet package declarations |
 | `freshDeps.dotnet.indexUrl` | `""` | NuGet V3 service index; empty uses nuget.org |
 
-Requests are cached for an hour and persisted across window reloads, and typing never triggers a
-lookup - only opening, saving, or an explicit check does.
+Version results are cached for an hour by default and persisted across window reloads. Change
+`freshDeps.cacheDurationMinutes` to adjust the duration.
 
 ## Development
 
 ```bash
 npm install
-npm test        # typecheck + unit tests
-npm run watch   # then F5 in VSCode to launch the extension host
+npm test        # compile and run unit tests
+npm run watch   # then F5 in VS Code to launch the extension host
 npm run package # build a .vsix
 ```
 
@@ -190,4 +227,4 @@ position anchoring, version comparison, Cargo, Maven, and PEP 440 requirement ma
 
 ## License
 
-MIT
+[MIT](https://github.com/koltyakov/fresh-deps/blob/main/LICENSE)

@@ -4,8 +4,8 @@
 
 See available dependency updates directly in your VS Code manifest files.
 
-Fresh Deps adds inline version hints for **npm, Go, Python, Rust, Java, .NET, PHP, Dart / Flutter,
-Ruby, Terraform / OpenTofu, Elixir, Deno / JSR, GitHub Actions, Docker, Helm, Swift,
+Fresh Deps adds inline version hints for **npm, Go, Python, Rust, Java, .NET, PHP, Dart, Flutter,
+Ruby, Terraform, OpenTofu, Elixir, Deno, JSR, GitHub Actions, Docker, Helm, Swift,
 Conan, Scala, Conda, Clojure, Ansible, Bazel, and vcpkg**.
 Compare the newest version your range allows with the latest release, then hover for details and a
 link to the package registry. Hints are editor decorations, so your files stay untouched.
@@ -35,29 +35,29 @@ editor title bar or run `Fresh Deps: Check for Updates` from the Command Palette
 
 | Ecosystem | Manifests | Package source |
 |---|---|---|
-| JavaScript / TypeScript | `package.json`, including Volta, `packageManager`, overrides and resolutions; pnpm catalogs and overrides; Yarn catalogs | npm registry |
+| JavaScript, TypeScript | `package.json`, including Volta, `packageManager`, overrides and resolutions; pnpm catalogs and overrides; Yarn catalogs | npm registry |
 | Go | `go.mod`, `go.work` runtime directives | Go module proxy and Go release metadata |
 | Python | `pyproject.toml`, `Pipfile`, requirements and constraints files, PEP 723 script blocks | PyPI or a source-selected custom index |
 | Rust | `Cargo.toml`, including inherited workspace dependencies | crates.io or configured HTTPS sparse registries |
-| Java / Kotlin / Android | Maven `pom.xml`; Gradle catalogs, build/settings scripts, and `gradle-wrapper.properties` | Maven repositories and Gradle release metadata |
+| Java, Kotlin, Android | Maven `pom.xml`; Gradle catalogs, build/settings scripts, and `gradle-wrapper.properties` | Maven repositories and Gradle release metadata |
 | .NET | `*.csproj`, `*.fsproj`, `*.vbproj`, `Directory.Packages.props`, `Directory.Build.props`, `packages.config`, `dotnet-tools.json`, `global.json` | NuGet V3 feed; .NET release metadata for SDKs |
-| PHP / Composer | `composer.json` | Packagist or Composer repositories |
-| Dart / Flutter | `pubspec.yaml`, `pubspec_overrides.yaml` | pub.dev or HTTPS hosted registries |
+| PHP, Composer | `composer.json` | Packagist or Composer repositories |
+| Dart, Flutter | `pubspec.yaml`, `pubspec_overrides.yaml` | pub.dev or HTTPS hosted registries |
 | Ruby | `Gemfile`, source-resolvable `*.gemspec` declarations | RubyGems-compatible registries |
-| Terraform / OpenTofu | `*.tf`, `*.tofu` provider and registry module requirements; `.tflint.hcl` plugins | Terraform Registry, OpenTofu Registry, GitHub releases |
+| Terraform, OpenTofu | `*.tf`, `*.tofu` provider and registry module requirements; `.tflint.hcl` plugins | Terraform Registry, OpenTofu Registry, GitHub releases |
 | Elixir | `mix.exs` | Hex.pm |
-| Deno / JSR | Deno configs, conventional import maps, and referenced local import maps | JSR and the configured npm registry |
+| Deno, JSR | Deno configs, conventional import maps, and referenced local import maps | JSR and the configured npm registry |
 | GitHub Actions | `.github/workflows/*.yml`, `*.yaml`; composite `action.yml`, `action.yaml` | Public GitHub tags API |
-| Docker / Compose | Dockerfiles, Containerfiles, and Compose files, including suffix variants | Docker Hub and HTTPS OCI registries |
-| Kubernetes / Helm | `Chart.yaml` dependencies | HTTPS chart indexes and OCI registries |
+| Docker, Compose | Dockerfiles, Containerfiles, and Compose files, including suffix variants | Docker Hub and HTTPS OCI registries |
+| Kubernetes, Helm | `Chart.yaml` dependencies | HTTPS chart indexes and OCI registries |
 | Swift | `Package.swift` | GitHub, GitLab, Bitbucket, and configured Swift registries |
-| C / C++ / Conan | `conanfile.txt`, `conanfile.py` | Configured Conan remotes or Conan Center recipe index |
-| Scala / sbt | `build.sbt`, `project/plugins.sbt` | Configurable Maven repositories |
+| C, C++, Conan | `conanfile.txt`, `conanfile.py` | Configured Conan remotes or Conan Center recipe index |
+| Scala, sbt | `build.sbt`, `project/plugins.sbt` | Configurable Maven repositories |
 | Conda | `environment.yml`, `environment.yaml`, including nested pip requirements | Named channels, labels, HTTPS channels, and `defaults` |
 | Clojure | `deps.edn`, `project.clj` | Maven Central and Clojars, or declared/configured Maven repositories |
 | Ansible | `requirements.yml`, `requirements.yaml` collections and roles | Ansible Galaxy and explicit compatible collection sources |
-| Bazel / Bzlmod | `MODULE.bazel`, including literal local includes | Bazel Central Registry or configured HTTPS registries |
-| C / C++ / vcpkg | `vcpkg.json` minimums, overrides, and baseline-selected bare dependencies | Builtin database, filesystem registries, and GitHub-hosted Git registries |
+| Bazel, Bzlmod | `MODULE.bazel`, including literal local includes | Bazel Central Registry or configured HTTPS registries |
+| C, C++, vcpkg | `vcpkg.json` minimums, overrides, and baseline-selected bare dependencies | Builtin database, filesystem registries, and GitHub-hosted Git registries |
 
 ## Inline hints
 
@@ -184,7 +184,7 @@ Customize the colors through `workbench.colorCustomizations` using `freshDeps.co
   `allowPrerelease: false` excludes SDK previews even when extension prereleases are enabled.
   These two JSON manifests require valid JSON; comments and computed versions are skipped.
 
-### Java / Kotlin / Android
+### Java, Kotlin, Android
 
 #### Maven
 
@@ -215,7 +215,7 @@ Customize the colors through `workbench.colorCustomizations` using `freshDeps.co
   Variables, interpolation, map-style declarations, dynamic versions, classifier notation, and versionless dependencies are skipped.
   Build-script repository declarations and authentication are not read.
 
-### PHP / Composer
+### PHP, Composer
 
 - Reads `require` and `require-dev` in `composer.json`. Platform requirements such as `php` and `ext-json` are skipped.
 - Supports numeric exact versions, comparisons, caret, Composer tilde, wildcard, hyphen, and OR constraints.
@@ -225,7 +225,7 @@ Customize the colors through `workbench.colorCustomizations` using `freshDeps.co
   Four-part versions with a nonzero fourth component and patch-level suffixes are not compared.
 - Supports explicit Composer repositories through `packages.json` and `metadata-url`. Unsupported repository types and repository filters produce skip reasons.
 
-### Dart / Flutter
+### Dart, Flutter
 
 - Reads `dependencies`, `dev_dependencies`, and `dependency_overrides` in `pubspec.yaml`.
 - Supports exact versions, comparison bounds, and Dart caret constraints. `^0.0.3` allows updates below `0.1.0`.
@@ -244,7 +244,7 @@ Customize the colors through `workbench.colorCustomizations` using `freshDeps.co
 - Reads literal gemspec dependencies when a sibling Gemfile identifies one unambiguous source.
   Ruby code and dynamically assembled requirements are not executed.
 
-### Terraform / OpenTofu
+### Terraform, OpenTofu
 
 - Reads literal `version` constraints inside `terraform.required_providers` blocks in `*.tf` and `*.tofu` files.
 - Checks `required_version` against Terraform or OpenTofu releases.
@@ -269,7 +269,7 @@ Customize the colors through `workbench.colorCustomizations` using `freshDeps.co
   Git, GitHub, path, umbrella, and computed repository declarations are skipped.
 - `mix.exs` is not executed. Dynamically assembled dependency lists and requirements are not checked.
 
-### Deno / JSR
+### Deno, JSR
 
 - Reads `imports` and `scopes` in `deno.json`, `deno.jsonc`, and conventional `import_map.json` / `import-map.json` files, including their `.jsonc` variants.
 - Checks explicitly versioned `jsr:` and `npm:` specifiers, including scoped packages, aliases, ranges, and subpaths such as `npm:react@^18.0.0/jsx-runtime`.
@@ -297,7 +297,7 @@ Customize the colors through `workbench.colorCustomizations` using `freshDeps.co
   Lookups read at most ten pages of 100 tags; reaching that limit reports a failed lookup rather than comparing a partial list.
   Authenticated private repositories can be queried on github.com. GitHub Enterprise host configuration is not supported.
 
-### Docker / Compose
+### Docker, Compose
 
 - Recognizes dot, hyphen, and underscore suffixes, such as `docker-compose-db.yml`, `compose_test.yaml`,
   `Dockerfile.prod`, and `Containerfile-dev`, plus prefixed names such as `prod.Containerfile` and `prod.Dockerfile`.
@@ -338,7 +338,7 @@ Customize the colors through `workbench.colorCustomizations` using `freshDeps.co
 - Supports alphanumeric releases, Conan version ordering, comparison ranges, users/channels, and recipe revision pins.
   User/channel recipes require a configured remote. Dynamic Python expressions are skipped.
 
-### Scala / sbt
+### Scala, sbt
 
 - Reads literal `"group" % "artifact" % "version"` Maven coordinates in `build.sbt` and `project/plugins.sbt`.
   Uses Maven version ordering and checks configured repositories in order.
@@ -391,7 +391,7 @@ Customize the colors through `workbench.colorCustomizations` using `freshDeps.co
 - Collection and role versions use separate Galaxy APIs. Pagination stops at 100 pages; incomplete lists report a lookup failure.
   Ansible configuration and authentication are not read. `requires_ansible` metadata, when returned by the server, supports optional runtime-compatibility hints.
 
-### Bazel / Bzlmod
+### Bazel, Bzlmod
 
 - Reads literal `bazel_dep(name = "rules_cc", version = "0.1.0")` declarations in `MODULE.bazel`, including multiline calls
   and development dependencies. Hints appear on the version field.
@@ -401,7 +401,7 @@ Customize the colors through `workbench.colorCustomizations` using `freshDeps.co
 - Reads literal HTTPS `--registry` flags from `common` and `build` entries in `.bazelrc`. The default is Bazel Central Registry.
   Hover details can fetch the latest module's compatibility level. Extension-generated repositories and graph-wide minimum-version selection are not evaluated.
 
-### C / C++ / vcpkg
+### C, C++, vcpkg
 
 - Reads `version>=` minimums, bare dependencies, feature dependencies, and exact `overrides` in `vcpkg.json`.
   Overrides suppress hints on the corresponding dependency declarations.

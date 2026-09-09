@@ -51,6 +51,7 @@
     "onLanguage:ruby",
     "onLanguage:elixir",
     "onLanguage:terraform",
+    "onLanguage:opentofu",
     "onLanguage:pip-requirements",
     "workspaceContains:**/package.json",
     "workspaceContains:**/composer.json",
@@ -70,9 +71,9 @@
     "workspaceContains:**/Directory.Build.props",
     "workspaceContains:**/packages.config",
     "workspaceContains:**/Gemfile",
-    "workspaceContains:**/*.gemspec",
     "workspaceContains:**/mix.exs",
-    "workspaceContains:**/*.tf"
+    "workspaceContains:**/*.tf",
+    "workspaceContains:**/*.tofu"
   ],
   "contributes": {
     "commands": [
@@ -258,7 +259,13 @@
         "freshDeps.terraform.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Check Terraform and OpenTofu providers in *.tf files using the public Terraform Registry."
+          "description": "Check Terraform and OpenTofu providers in *.tf and *.tofu files using their public registries."
+        },
+        "freshDeps.terraform.defaultRegistry": {
+          "type": "string",
+          "enum": ["", "registry.terraform.io", "registry.opentofu.org"],
+          "default": "",
+          "description": "Registry for two-part provider sources. Empty uses OpenTofu for *.tofu files and Terraform for *.tf files."
         },
         "freshDeps.elixir.enabled": {
           "type": "boolean",

@@ -23,7 +23,18 @@ function closingBrace(text: string, open: number): number {
 function blocks(text: string, name: string, offset = 0): { body: string; start: number }[] {
   const result: { body: string; start: number }[] = [];
   const pattern = new RegExp(`\\b${name}\\s*\\{`, 'g');
-  for (const match of text.matchAll(pattern)) {
+  let quote = false;
+  let escaped = false;
+  const structure = text.split('').map((char) => {
+    if (quote) {
+      if (!escaped && char === '"') quote = false;
+      escaped = !escaped && char === '\\';
+      return char === '\n' ? char : ' ';
+    }
+    if (char === '"') { quote = true; return ' '; }
+    return char;
+  }).join('');
+  for (const match of structure.matchAll(pattern)) {
     const open = (match.index ?? 0) + match[0].lastIndexOf('{');
     const close = closingBrace(text, open);
     if (close > open) result.push({ body: text.slice(open + 1, close), start: offset + open + 1 });
@@ -32,6 +43,16 @@ function blocks(text: string, name: string, offset = 0): { body: string; start: 
 }
 
 function maskComments(text: string): string {
+  const heredocMasked = text.split('');
+  const heredoc = /<<-?\s*([A-Za-z_][A-Za-z0-9_]*)[^\n]*\n/g;
+  for (const match of text.matchAll(heredoc)) {
+    const endPattern = new RegExp(`^[ \\t]*${match[1]}[ \\t]*(?:\\r?\\n|$)`, 'gm');
+    endPattern.lastIndex = (match.index ?? 0) + match[0].length;
+    const end = endPattern.exec(text);
+    const stop = end ? end.index + end[0].length : text.length;
+    for (let i = match.index ?? 0; i < stop; i++) if (heredocMasked[i] !== '\n' && heredocMasked[i] !== '\r') heredocMasked[i] = ' ';
+  }
+  text = heredocMasked.join('');
   let quote = false;
   let lineComment = false;
   let blockComment = false;
@@ -60,7 +81,7 @@ function maskComments(text: string): string {
   return result;
 }
 
-export function parseTerraform(text: string): DependencyRef[] {
+export function parseTerraform(text: string, defaultRegistry = 'registry.terraform.io'): DependencyRef[] {
   const clean = maskComments(text);
   const deps: DependencyRef[] = [];
   for (const terraform of blocks(clean, 'terraform')) {
@@ -70,7 +91,7 @@ export function parseTerraform(text: string): DependencyRef[] {
       while ((match = entry.exec(providers.body))) {
         const local = match[1];
         const valueAt = match.index + match[0].length;
-        let source = `hashicorp/${local}`;
+        let source = `${defaultRegistry}/hashicorp/${local}`;
         let spec: string | undefined;
         let versionAt = valueAt;
         if (providers.body[valueAt] === '{') {
@@ -80,7 +101,7 @@ export function parseTerraform(text: string): DependencyRef[] {
           const object = providers.body.slice(valueAt + 1, close);
           const sourceMatch = /\bsource\s*=\s*"([^"${}]+)"/.exec(object);
           const versionMatch = /\bversion\s*=\s*"([^"${}]+)"/.exec(object);
-          if (!versionMatch) continue;
+          if (!versionMatch || (/\bsource\s*=/.test(object) && !sourceMatch)) continue;
           source = sourceMatch?.[1].trim() ?? source;
           spec = versionMatch[1].trim();
           versionAt = valueAt + 1 + (versionMatch.index ?? 0);
@@ -90,9 +111,10 @@ export function parseTerraform(text: string): DependencyRef[] {
           spec = legacy[1].trim();
         }
         const parts = source.toLowerCase().split('/');
-        if (parts.length === 3 && parts[0] === 'registry.terraform.io') parts.shift();
-        if (parts.length !== 2 || !spec) continue;
-        const name = parts.join('/');
+        const host = parts.length === 3 ? parts.shift() : undefined;
+        if ((host && !['registry.terraform.io', 'registry.opentofu.org'].includes(host)) || parts.length !== 2 || !spec) continue;
+        const registry = host ?? defaultRegistry;
+        const name = registry === 'registry.opentofu.org' ? `${registry}/${parts.join('/')}` : parts.join('/');
         const absolute = providers.start + versionAt;
         deps.push({ name, spec, line: text.slice(0, absolute).split('\n').length - 1, section: 'required_providers',
           ...(local !== parts[1] ? { alias: local } : {}) });

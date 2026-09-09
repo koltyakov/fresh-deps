@@ -10,9 +10,12 @@ export class TerraformClient {
   constructor(private readonly timeoutMs: number) {}
 
   async fetchVersions(address: string): Promise<RegistryVersions> {
-    const [namespace, type] = address.toLowerCase().split('/');
+    const parts = address.toLowerCase().split('/');
+    const host = parts.length === 3 ? parts.shift()! : 'registry.terraform.io';
+    const [namespace, type] = parts;
     if (!namespace || !type) return { error: 'invalid provider address' };
-    const doc = await fetchJson<TerraformVersions>(`https://registry.terraform.io/v1/providers/${encodeURIComponent(namespace)}/${encodeURIComponent(type)}/versions`, { timeoutMs: this.timeoutMs });
+    if (!['registry.terraform.io', 'registry.opentofu.org'].includes(host)) return { error: 'unsupported provider registry' };
+    const doc = await fetchJson<TerraformVersions>(`https://${host}/v1/providers/${encodeURIComponent(namespace)}/${encodeURIComponent(type)}/versions`, { timeoutMs: this.timeoutMs });
     return doc ? terraformVersions(doc) : { error: 'not found' };
   }
 }

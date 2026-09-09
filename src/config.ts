@@ -39,7 +39,7 @@ export interface Settings {
   dart: { enabled: boolean };
   gradle: { enabled: boolean; repositories: string[] };
   ruby: { enabled: boolean };
-  terraform: { enabled: boolean };
+  terraform: { enabled: boolean; defaultRegistry: string };
   elixir: { enabled: boolean };
 }
 
@@ -89,7 +89,7 @@ export function readSettings(scope?: vscode.Uri): Settings {
       ]),
     },
     ruby: { enabled: cfg.get('ruby.enabled', true) },
-    terraform: { enabled: cfg.get('terraform.enabled', true) },
+    terraform: { enabled: cfg.get('terraform.enabled', true), defaultRegistry: cfg.get('terraform.defaultRegistry', '') },
     elixir: { enabled: cfg.get('elixir.enabled', true) },
   };
 }

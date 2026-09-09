@@ -41,8 +41,8 @@ editor title bar or run `Fresh Deps: Check for Updates` from the Command Palette
 | .NET | `*.csproj`, `*.fsproj`, `*.vbproj`, `Directory.Packages.props`, `Directory.Build.props`, `packages.config` | NuGet V3 feed |
 | PHP / Composer | `composer.json` | Packagist |
 | Dart / Flutter | `pubspec.yaml` | pub.dev |
-| Ruby | `Gemfile`, `*.gemspec` | RubyGems.org |
-| Terraform / OpenTofu | `*.tf` provider requirements | Terraform Registry |
+| Ruby | `Gemfile` | RubyGems.org |
+| Terraform / OpenTofu | `*.tf`, `*.tofu` provider requirements | Terraform Registry or OpenTofu Registry |
 | Elixir | `mix.exs` | Hex.pm |
 
 ## Inline hints
@@ -193,20 +193,23 @@ Customize the colors through `workbench.colorCustomizations` using `freshDeps.co
 
 ### Ruby
 
-- Reads literal `gem` calls in `Gemfile` and dependency calls in `*.gemspec`, including multiple constraints.
+- Reads literal `gem` calls in `Gemfile`, including multiple constraints.
 - Uses RubyGems version ordering and requirement operators, including pessimistic `~>` constraints.
   For example, `~> 2.1` stays below `3.0`, while `~> 2.1.4` stays below `2.2`.
 - Git, GitHub, path, custom-source, unconstrained, and interpolated dependencies are skipped.
   If a Gemfile declares a source other than `https://rubygems.org`, the whole file is skipped so private gem names are not sent to RubyGems.org.
-- Ruby requirements and gemspec code are not executed. Declarations assembled through variables or method calls are not checked.
+  Gemfiles containing git or path source blocks are skipped for the same reason.
+- The Gemfile is not executed. Declarations assembled through variables or method calls are not checked, and gemspec files are not read because they do not identify the dependency source.
 
 ### Terraform / OpenTofu
 
-- Reads literal `version` constraints inside `terraform.required_providers` blocks in `*.tf` files.
+- Reads literal `version` constraints inside `terraform.required_providers` blocks in `*.tf` and `*.tofu` files.
 - Supports full public provider addresses, implied `hashicorp/<local-name>` addresses, comparison constraints,
   exclusions, and Terraform's `~>` operator. Local aliases are shown in hover details.
-- Only providers on `registry.terraform.io` are checked. Custom registry hosts, computed constraints,
+- Providers on `registry.terraform.io` and `registry.opentofu.org` are checked against their respective registries. Custom registry hosts, computed constraints,
   provider blocks, modules, and `.terraform.lock.hcl` are skipped.
+- Two-part sources in `.tf` files default to the Terraform Registry, while `.tofu` files default to the OpenTofu Registry.
+  Set `freshDeps.terraform.defaultRegistry` when an OpenTofu project uses `.tf` files.
 - Lock-file selections and cross-module constraint resolution are not evaluated.
 
 ### Elixir
@@ -277,8 +280,9 @@ query the audit provider. Both refresh and Clear Version Cache discard audit res
 | `freshDeps.dart.enabled` | `true` | Check `pubspec.yaml` using pub.dev |
 | `freshDeps.gradle.enabled` | `true` | Check Gradle `*.versions.toml` catalogs |
 | `freshDeps.gradle.repositories` | Maven Central, Google Maven, Gradle Plugin Portal | Ordered Maven repository URLs for Gradle catalogs |
-| `freshDeps.ruby.enabled` | `true` | Check `Gemfile` and `*.gemspec` using RubyGems.org |
-| `freshDeps.terraform.enabled` | `true` | Check public provider requirements in `*.tf` files |
+| `freshDeps.ruby.enabled` | `true` | Check `Gemfile` using RubyGems.org |
+| `freshDeps.terraform.enabled` | `true` | Check public provider requirements in `*.tf` and `*.tofu` files |
+| `freshDeps.terraform.defaultRegistry` | `""` | Registry for two-part sources; empty selects one from the file extension |
 | `freshDeps.elixir.enabled` | `true` | Check literal dependencies in `mix.exs` using Hex.pm |
 
 Version results are cached for an hour by default and persisted across window reloads. Change

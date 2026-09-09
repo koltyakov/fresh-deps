@@ -145,7 +145,10 @@ function links(
   } else if (ecosystem === 'ruby') {
     parts.push(`[RubyGems](https://rubygems.org/gems/${encodeURIComponent(update.dep.name)}/versions/${encodeURIComponent(update.latest)})`);
   } else if (ecosystem === 'terraform') {
-    parts.push(`[Terraform Registry](https://registry.terraform.io/providers/${update.dep.name}/${encodeURIComponent(update.latest)}/docs)`);
+    const tofu = update.dep.name.startsWith('registry.opentofu.org/');
+    const name = tofu ? update.dep.name.slice('registry.opentofu.org/'.length) : update.dep.name;
+    const registry = tofu ? 'registry.opentofu.org' : 'registry.terraform.io';
+    parts.push(`[${tofu ? 'OpenTofu' : 'Terraform'} Registry](https://${registry}/providers/${name}/${encodeURIComponent(update.latest)}/docs)`);
   } else if (ecosystem === 'elixir') {
     parts.push(`[Hex](https://hex.pm/packages/${encodeURIComponent(update.dep.name)}/${encodeURIComponent(update.latest)})`);
   } else {

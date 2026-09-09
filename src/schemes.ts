@@ -154,19 +154,24 @@ export const composerScheme: VersionScheme = {
 
 function pessimisticScheme(dialect: 'terraform' | 'hex'): VersionScheme {
   const rangeOf = (spec: string) => pessimisticRange(spec, dialect);
+  const satisfies: VersionScheme['satisfies'] = (version, spec, opts) => {
+    const range = rangeOf(spec);
+    const prerelease = semver.prerelease(version, LOOSE);
+    if (dialect === 'terraform' && prerelease?.length) {
+      return /-/.test(spec) && /^(?:=\s*)?v?\d+(?:\.\d+){0,2}-[0-9A-Za-z.-]+(?:\+[0-9A-Za-z.-]+)?$/.test(spec.trim())
+        && !!range && semver.satisfies(version, range, { ...LOOSE, includePrerelease: true });
+    }
+    const includePrerelease = opts.includePrerelease || (dialect === 'hex' && /\d-[0-9A-Za-z]/.test(spec));
+    return !!range && semver.satisfies(version, range, { ...LOOSE, includePrerelease });
+  };
   return {
     ...semverScheme,
     baseline: (spec) => { const range = rangeOf(spec); return range ? baselineOf(range) : undefined; },
     isPinned: (spec) => /^(?:==?|=)?\s*v?\d+(?:\.\d+){0,2}(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(spec.trim()),
     isRange: (spec) => rangeOf(spec) !== undefined,
-    satisfies: (version, spec, opts) => {
-      const range = rangeOf(spec);
-      return !!range && semver.satisfies(version, range, { ...LOOSE, includePrerelease: opts.includePrerelease });
-    },
-    maxSatisfying: (versions, spec, opts) => {
-      const range = rangeOf(spec);
-      return range ? semver.maxSatisfying(versions, range, { ...LOOSE, includePrerelease: opts.includePrerelease }) ?? undefined : undefined;
-    },
+    satisfies,
+    maxSatisfying: (versions, spec, opts) => versions.filter((version) => semverScheme.isVersion(version)
+      && satisfies(version, spec, opts)).sort((a, b) => semver.compare(a, b, LOOSE)).at(-1),
   };
 }
 

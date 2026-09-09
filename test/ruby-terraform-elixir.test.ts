@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { manifestOf } from '../src/analyzer';
-import { parseGemfile, parseGemspec } from '../src/parsers/gemfile';
+import { parseGemfile } from '../src/parsers/gemfile';
 import { parseMixExs } from '../src/parsers/mixExs';
 import { parseTerraform } from '../src/parsers/terraform';
 import { compareRubyVersions, rubyScheme } from '../src/ruby';
@@ -15,7 +15,7 @@ const stable = { includePrerelease: false };
 
 test('Ruby, Terraform and Elixir manifests are recognized and activate the extension', () => {
   for (const [file, ecosystem, activation] of [
-    ['Gemfile', 'ruby', 'Gemfile'], ['demo.gemspec', 'ruby', '*.gemspec'],
+    ['Gemfile', 'ruby', 'Gemfile'],
     ['mix.exs', 'elixir', 'mix.exs'], ['providers.tf', 'terraform', '*.tf'],
   ]) {
     assert.equal(manifestOf(`/project/${file}`)?.ecosystem, ecosystem);
@@ -42,10 +42,10 @@ test('Gemfile parses literal public gems and skips non-registry declarations', (
   ]);
   assert.deepEqual(parseGemfile('source "https://gems.example" do\n  gem "private", "1.0"\nend'), []);
   assert.deepEqual(parseGemfile('source ENV.fetch("GEM_SOURCE")\ngem "private", "1.0"'), []);
-  assert.deepEqual(parseGemspec('spec.add_dependency "rack", "~> 3.0"\nspec.add_development_dependency "rspec", "~> 3.12"'), [
-    { name: 'rack', spec: '~> 3.0', line: 0, section: 'gems' },
-    { name: 'rspec', spec: '~> 3.12', line: 1, section: 'development_dependencies' },
-  ]);
+  assert.deepEqual(parseGemfile('path "components" do\n  gem "secret_component", "1.0"\nend'), []);
+  assert.deepEqual(parseGemfile('gem "secret_repo", "1.0", corp: "team/project"'), []);
+  assert.deepEqual(parseGemfile('opts = { path: "../secret" }\ngem "secret", "1.0", **opts'), []);
+  assert.deepEqual(parseGemfile('git_source(:corp) { |repo| "https://git.example/#{repo}" }\ngem "secret", "1.0", corp: "team/secret"'), []);
 });
 
 test('RubyGems version rules handle pessimistic bounds and prereleases', () => {
@@ -83,6 +83,13 @@ test('Terraform reads required providers, aliases, defaults and literal constrai
     { name: 'hashicorp/google-beta', spec: '>= 6.0, < 7.0', line: 7, section: 'required_providers' },
     { name: 'hashicorp/random', spec: '3.6.0', line: 8, section: 'required_providers' },
   ]);
+  assert.deepEqual(parseTerraform('locals { template = <<EOT\nterraform { required_providers { secret = "1.0.0" } }\nEOT\n}'), []);
+  assert.deepEqual(parseTerraform('terraform { required_providers { secret = { source = var.private_source, version = "1.0.0" } } }'), []);
+  assert.deepEqual(parseTerraform('terraform { required_providers { aws = "5.0.0" } }', 'registry.opentofu.org'), [
+    { name: 'registry.opentofu.org/hashicorp/aws', spec: '5.0.0', line: 0, section: 'required_providers' },
+  ]);
+  assert.deepEqual(parseTerraform('terraform { required_providers { aws = { source = "hashicorp/aws", version = "5.0.0" } } }', 'registry.opentofu.org')[0]?.name,
+    'registry.opentofu.org/hashicorp/aws');
 });
 
 test('Terraform and Hex translate their pessimistic constraints', () => {
@@ -92,10 +99,14 @@ test('Terraform and Hex translate their pessimistic constraints', () => {
   assert.equal(terraformScheme.satisfies('1.2.9', '1.2', stable), false);
   assert.equal(terraformScheme.satisfies('1.5.0', '>= 1.0, != 1.5.0, < 2.0', stable), false);
   assert.equal(terraformScheme.satisfies('1.6.0', '>= 1.0, != 1.5.0, < 2.0', stable), true);
+  assert.equal(terraformScheme.satisfies('1.2.1-beta.1', '~> 1.2.0', { includePrerelease: true }), false);
+  assert.equal(terraformScheme.satisfies('1.2.1-beta.1', '= 1.2.1-beta.1', stable), true);
   assert.equal(hexScheme.satisfies('1.9.0', '~> 1.2', stable), true);
   assert.equal(hexScheme.satisfies('2.0.0', '~> 1.2', stable), false);
   assert.equal(hexScheme.satisfies('1.5.0', '>= 1.2 and < 2.0', stable), true);
   assert.equal(hexScheme.satisfies('2.5.0', '~> 1.0 or ~> 2.0', stable), true);
+  assert.equal(hexScheme.satisfies('2.1.6-dev', '~> 2.1.2-dev', stable), true);
+  assert.equal(hexScheme.satisfies('2.2.0-dev', '~> 2.1.2-dev', stable), false);
 });
 
 test('mix.exs parses literal Hex dependencies and aliases', () => {
@@ -115,6 +126,14 @@ test('mix.exs parses literal Hex dependencies and aliases', () => {
     { name: 'phoenix', spec: '~> 1.7.0', line: 3, section: 'deps' },
     { name: 'jason', spec: '>= 1.0 and < 2.0', line: 4, section: 'deps', alias: 'json' },
   ]);
+  assert.deepEqual(parseMixExs('defp deps() do\n  [\n    "{:secret, \\"1.0.0\\"}",\n    ~S|{:other_secret, "1.0.0"}|,\n    {:public, "~> 1.0"}\n  ]\nend'), [
+    { name: 'public', spec: '~> 1.0', line: 4, section: 'deps' },
+  ]);
+  assert.deepEqual(parseMixExs('def deps, do: [{:plug, "~> 1.15"}]'), [
+    { name: 'plug', spec: '~> 1.15', line: 0, section: 'deps' },
+  ]);
+  assert.deepEqual(parseMixExs('defp deps do\n  private_data = [{:internal_codename, "1.0.0"}]\n  [{:public, "~> 1.0"}]\nend'), []);
+  assert.deepEqual(parseMixExs('def deps, do: build_deps()\ndef private_data, do: [{:internal_name, "1.0.0"}]'), []);
 });
 
 test('new registries select stable versions and preserve full version lists', () => {

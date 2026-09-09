@@ -14,7 +14,7 @@ import { parsePomXml } from './parsers/pomXml';
 import { parsePubspec } from './parsers/pubspec';
 import { parsePyProject } from './parsers/pyproject';
 import { parseRequirementsTxt } from './parsers/requirementsTxt';
-import { parseGemfile, parseGemspec } from './parsers/gemfile';
+import { parseGemfile } from './parsers/gemfile';
 import { parseMixExs } from './parsers/mixExs';
 import { parseTerraform } from './parsers/terraform';
 import { CratesClient } from './registries/crates';
@@ -77,7 +77,6 @@ export type ManifestKind =
   | 'pom.xml'
   | 'nuget'
   | 'Gemfile'
-  | 'gemspec'
   | 'mix.exs'
   | 'terraform';
 
@@ -109,9 +108,8 @@ export function manifestOf(fsPath: string): Manifest | undefined {
   if (name === 'pubspec.yaml') return { ecosystem: 'dart', kind: 'pubspec.yaml' };
   if (name === 'pnpm-workspace.yaml') return { ecosystem: 'npm', kind: 'pnpm-workspace.yaml' };
   if (name === 'Gemfile') return { ecosystem: 'ruby', kind: 'Gemfile' };
-  if (name.endsWith('.gemspec')) return { ecosystem: 'ruby', kind: 'gemspec' };
   if (name === 'mix.exs') return { ecosystem: 'elixir', kind: 'mix.exs' };
-  if (name.endsWith('.tf')) return { ecosystem: 'terraform', kind: 'terraform' };
+  if (name.endsWith('.tf') || name.endsWith('.tofu')) return { ecosystem: 'terraform', kind: 'terraform' };
   if (name.endsWith('.versions.toml')) return { ecosystem: 'gradle', kind: 'gradle-catalog' };
   if (name === 'package.json') {
     return { ecosystem: 'npm', kind: 'package.json' };
@@ -259,9 +257,9 @@ function parseManifest(kind: ManifestKind, request: AnalyzeRequest): DependencyR
     case 'nuget':
       return parseNugetManifest(text);
     case 'Gemfile': return parseGemfile(text);
-    case 'gemspec': return parseGemspec(text);
     case 'mix.exs': return parseMixExs(text);
-    case 'terraform': return parseTerraform(text);
+    case 'terraform': return parseTerraform(text, settings.terraform.defaultRegistry
+      || (request.fsPath.endsWith('.tofu') ? 'registry.opentofu.org' : 'registry.terraform.io'));
   }
 }
 
@@ -449,7 +447,7 @@ function rubyLookup(settings: Settings): Lookup {
 
 function terraformLookup(settings: Settings): Lookup {
   const client = new TerraformClient(settings.requestTimeoutMs);
-  return { key: (dep) => `terraform|registry.terraform.io|${dep.name.toLowerCase()}`, fetch: (dep) => client.fetchVersions(dep.name) };
+  return { key: (dep) => `terraform|${dep.name.toLowerCase()}`, fetch: (dep) => client.fetchVersions(dep.name) };
 }
 
 function hexLookup(settings: Settings): Lookup {

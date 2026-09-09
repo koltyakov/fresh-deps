@@ -19,7 +19,7 @@ const settings: Settings = {
   php: { enabled: true },
   dart: { enabled: true },
   gradle: { enabled: true, repositories: ['https://repo.maven.apache.org/maven2'] },
-  ruby: { enabled: true }, terraform: { enabled: true }, elixir: { enabled: true },
+  ruby: { enabled: true }, terraform: { enabled: true, defaultRegistry: '' }, elixir: { enabled: true },
 };
 
 for (const fixture of [

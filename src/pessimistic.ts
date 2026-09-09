@@ -31,7 +31,7 @@ export function pessimisticRange(spec: string, dialect: 'terraform' | 'hex'): st
       if (op === '~>') {
         const upper = upperBound(version);
         if (!upper) return undefined;
-        translated.forEach((branch) => branch.push(`>=${version}`, `<${upper}`));
+        translated.forEach((branch) => branch.push(`>=${version}`, `<${upper}${dialect === 'hex' ? '-0' : ''}`));
       } else if (op === '!=') {
         translated = translated.flatMap((branch) => [[...branch, `<${version}`], [...branch, `>${version}`]]);
       } else if (op === '=' || op === '==') {

@@ -1,10 +1,10 @@
-import { fetchJson, HttpError } from '../http';
+import { fetchJson, HttpError, request } from '../http';
 import * as pep440 from '../pep440';
 import { readPipConfig, resolveIndexUrl, splitCredentials } from '../pipconf';
 import type { AuditResponse, PackageMeta, RegistryVersions, SecurityAdvisory } from '../types';
 
 /** PEP 691 JSON, which carries the version list PEP 700 added. */
-const SIMPLE_JSON = 'application/vnd.pypi.simple.v1+json;q=1.0, application/json;q=0.8, */*;q=0.1';
+const SIMPLE_JSON = 'application/vnd.pypi.simple.v1+json, application/vnd.pypi.simple.v1+html;q=0.5, text/html;q=0.2';
 
 const ARCHIVE_RE = /\.(?:tar\.gz|tar\.bz2|tar\.xz|tgz|zip)$/i;
 
@@ -14,6 +14,7 @@ interface SimpleFile {
   yanked?: boolean | string;
   /** PEP 700, so every version the index lists arrives already dated. */
   'upload-time'?: string;
+  'requires-python'?: string;
 }
 
 interface SimpleProject {
@@ -38,13 +39,33 @@ export class PyPiClient {
     this.headers = { accept: SIMPLE_JSON, ...(auth ? { authorization: auth } : {}) };
   }
 
+  private async project(url: string): Promise<SimpleProject | undefined> {
+    const response = await request(url, { timeoutMs: this.options.timeoutMs, headers: this.headers }, SIMPLE_JSON);
+    if (!response) return undefined;
+    if (/html/i.test(response.headers.get('content-type') ?? '')) {
+      const html = (await response.text()).replace(/<!--[\s\S]*?-->/g, '');
+      const decode = (text: string) => text.replace(/&(?:amp|quot|apos|lt|gt|#39);/g,
+        (entity) => ({ '&amp;': '&', '&quot;': '"', '&apos;': "'", '&#39;': "'", '&lt;': '<', '&gt;': '>' })[entity]!);
+      const files: SimpleFile[] = [];
+      for (const anchor of html.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a\s*>/gi)) {
+        const attrs = new Map([...anchor[1].matchAll(/([\w-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g)].map((m) => [m[1].toLowerCase(), decode(m[2] ?? m[3])]));
+        const filename = decode(anchor[2].replace(/<[^>]*>/g, '').trim());
+        if (!attrs.has('href') || !versionFromFilename(filename)) continue;
+        files.push({ filename, ...(attrs.has('data-requires-python') ? { 'requires-python': attrs.get('data-requires-python') } : {}),
+          ...(/\bdata-yanked(?:\s|=|$)/i.test(anchor[1]) ? { yanked: attrs.get('data-yanked') || true } : {}) });
+      }
+      return { files };
+    }
+    return await response.json() as SimpleProject;
+  }
+
   /**
    * The simple index answers with every version in one response, so unlike npm
    * there is no cheaper "just the latest" call to make first.
    */
   async fetchVersions(name: string): Promise<RegistryVersions> {
     const url = `${this.index}/${normalizeName(name)}/`;
-    const body = await fetchJson<SimpleProject>(url, { timeoutMs: this.options.timeoutMs, headers: this.headers });
+    const body = await this.project(url);
     if (!body) {
       return { error: 'not found' };
     }
@@ -64,9 +85,16 @@ export class PyPiClient {
     // `all` for anyone who opted into them.
     const latest = pep440.max(published, { includePrerelease: false });
     const latestPublishedAt = latest ? uploadTimes(files).get(latest) : undefined;
+    const requirements: Record<string, string[]> = {};
+    for (const file of files) {
+      const raw = file.filename && versionFromFilename(file.filename);
+      const version = raw && pep440.parseVersion(raw)?.text;
+      if (version && file.yanked !== true && typeof file.yanked !== 'string') (requirements[version] ??= []).push(file['requires-python'] ?? '');
+    }
     return {
       ...(latest ? { latest } : {}),
       all: published,
+      requirements,
       ...(latestPublishedAt ? { meta: { latestPublishedAt } } : {}),
     };
   }
@@ -77,7 +105,7 @@ export class PyPiClient {
    */
   async fetchPublishDates(name: string, versions: string[]): Promise<Map<string, string>> {
     const url = `${this.index}/${normalizeName(name)}/`;
-    const body = await fetchJson<SimpleProject>(url, { timeoutMs: this.options.timeoutMs, headers: this.headers });
+    const body = await this.project(url);
     const times = uploadTimes(body?.files ?? []);
     const dates = new Map<string, string>();
     for (const version of versions) {

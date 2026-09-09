@@ -4,6 +4,16 @@ import type { DependencyRef } from '../types';
 import { yamlDocument, yamlString } from './yaml';
 
 export function imageDependency(image: string, line: number, section: string): DependencyRef | undefined {
+  const digest = /^(.+)@(sha256:[a-f\d]{64})$/.exec(image);
+  if (digest) {
+    const dep = imageDependency(digest[1], line, section);
+    return dep ? { ...dep, revision: digest[2], specRaw: `${dep.spec}@${digest[2]}` } : undefined;
+  }
+  const external = /^([a-z\d.-]+(?::\d+)?)\/([a-z\d._/-]+):([^/@\s]+)$/.exec(image);
+  if (external && (external[1].includes('.') || external[1].includes(':') || external[1] === 'localhost')
+    && !['docker.io', 'index.docker.io'].includes(external[1]) && dockerTag(external[3])) {
+    return { name: external[2], spec: external[3], source: external[1], line, section };
+  }
   const match = /^(?:docker\.io\/|index\.docker\.io\/)?([a-z0-9]+(?:[._-][a-z0-9]+)*(?:\/[a-z0-9]+(?:[._-][a-z0-9]+)*)?):([^/@\s]+)$/.exec(image);
   if (!match || !dockerTag(match[2])) return undefined;
   // An unqualified first component containing a dot names a registry, not a Hub namespace.

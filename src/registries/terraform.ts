@@ -7,22 +7,44 @@ export interface TerraformVersions {
 }
 
 export class TerraformClient {
+  private readonly services = new Map<string, Promise<Record<string, string> | undefined>>();
   constructor(private readonly timeoutMs: number) {}
+
+  private async service(host: string, kind: 'providers' | 'modules'): Promise<string | undefined> {
+    if (['registry.terraform.io', 'registry.opentofu.org'].includes(host)) return `https://${host}/v1/${kind}/`;
+    let promise = this.services.get(host);
+    if (!promise) {
+      promise = fetchJson<Record<string, string>>(`https://${host}/.well-known/terraform.json`, { timeoutMs: this.timeoutMs });
+      this.services.set(host, promise);
+    }
+    const value = (await promise)?.[`${kind}.v1`];
+    if (!value) return undefined;
+    const url = new URL(value, `https://${host}`);
+    return url.protocol === 'https:' && !url.username && !url.password ? url.href.replace(/\/?$/, '/') : undefined;
+  }
 
   async fetchVersions(address: string): Promise<RegistryVersions> {
     if (address.startsWith('tflint:')) return this.fetchPluginVersions(address.slice(7));
     if (address.startsWith('module:')) {
-      const match = /^module:(registry\.terraform\.io|registry\.opentofu\.org)\/([\w-]+\/[\w-]+\/[\w-]+)$/.exec(address);
+      const match = /^module:([\w.-]+)\/([\w-]+\/[\w-]+\/[\w-]+)$/.exec(address);
       if (!match) return { error: 'invalid module address' };
-      const doc = await fetchJson<{ modules?: TerraformVersions[] }>(`https://${match[1]}/v1/modules/${match[2]}/versions`, { timeoutMs: this.timeoutMs });
+      const base = await this.service(match[1], 'modules');
+      if (!base) return { error: 'Registry does not advertise a modules service' };
+      const token = process.env[`TF_TOKEN_${match[1].replace(/\./g, '_').replace(/-/g, '__')}`];
+      const doc = await fetchJson<{ modules?: TerraformVersions[] }>(`${base}${match[2]}/versions`, { timeoutMs: this.timeoutMs,
+        headers: token && new URL(base).hostname === match[1] ? { authorization: `Bearer ${token}` } : undefined });
       return doc ? terraformVersions({ versions: doc.modules?.flatMap((module) => module.versions ?? []) }) : { error: 'not found' };
     }
     const parts = address.toLowerCase().split('/');
     const host = parts.length === 3 ? parts.shift()! : 'registry.terraform.io';
     const [namespace, type] = parts;
     if (!namespace || !type) return { error: 'invalid provider address' };
-    if (!['registry.terraform.io', 'registry.opentofu.org'].includes(host)) return { error: 'unsupported provider registry' };
-    const doc = await fetchJson<TerraformVersions>(`https://${host}/v1/providers/${encodeURIComponent(namespace)}/${encodeURIComponent(type)}/versions`, { timeoutMs: this.timeoutMs });
+    if (!/^[\w.-]+$/.test(host)) return { error: 'invalid provider registry' };
+    const base = await this.service(host, 'providers');
+    if (!base) return { error: 'Registry does not advertise a providers service' };
+    const token = process.env[`TF_TOKEN_${host.replace(/\./g, '_').replace(/-/g, '__')}`];
+    const doc = await fetchJson<TerraformVersions>(`${base}${encodeURIComponent(namespace)}/${encodeURIComponent(type)}/versions`, { timeoutMs: this.timeoutMs,
+      headers: token && new URL(base).hostname === host ? { authorization: `Bearer ${token}` } : undefined });
     return doc ? terraformVersions(doc) : { error: 'not found' };
   }
   private async fetchPluginVersions(repository: string): Promise<RegistryVersions> {

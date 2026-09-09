@@ -13,8 +13,14 @@ export interface HexPackage {
 export class HexClient {
   constructor(private readonly timeoutMs: number) {}
 
-  async fetchVersions(name: string): Promise<RegistryVersions> {
-    const doc = await fetchJson<HexPackage>(`https://hex.pm/api/packages/${encodeURIComponent(name.toLowerCase())}`, { timeoutMs: this.timeoutMs });
+  async fetchVersions(name: string, source = 'https://hex.pm/api'): Promise<RegistryVersions> {
+    if (source.startsWith('hexrepo:')) {
+      const configured = process.env[`FRESH_DEPS_HEX_REPO_${source.slice(8).toUpperCase().replace(/\W/g, '_')}`];
+      if (!configured || !/^https:\/\/[^\s]+$/.test(configured)) return { error: 'Custom Hex repository requires an API URL in FRESH_DEPS_HEX_REPO_<NAME>' };
+      source = configured.replace(/\/$/, '');
+    }
+    const headers = source.startsWith('https://hex.pm/') && process.env.HEX_API_KEY ? { authorization: process.env.HEX_API_KEY } : undefined;
+    const doc = await fetchJson<HexPackage>(`${source}/packages/${encodeURIComponent(name.toLowerCase())}`, { timeoutMs: this.timeoutMs, headers });
     return doc ? hexVersions(doc) : { error: 'not found' };
   }
 }

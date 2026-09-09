@@ -91,7 +91,7 @@ test('package.json: tolerates comments and ignores nested objects', () => {
     '}',
   ].join('\n');
   const deps = parsePackageJson(text, SECTIONS);
-  assert.deepStrictEqual(deps.map((d) => d.name), ['lodash']);
+  assert.deepStrictEqual(deps.map((d) => d.name), ['lodash', 'nested']);
 });
 
 test('package.json: reads Volta pins with comments and multi-line values', () => {
@@ -146,6 +146,7 @@ test('go.mod: reads block and single-line requires', () => {
   assert.deepStrictEqual(
     deps.map((d) => [d.name, d.spec, d.line]),
     [
+      ['go', '>=1.22.0', 2],
       ['github.com/spf13/cobra', 'v1.8.0', 4],
       ['github.com/stretchr/testify', 'v1.9.0', 7],
     ],
@@ -241,5 +242,6 @@ test('Cargo.toml: skips dependencies that do not resolve through crates.io', () 
     'anything = "*"',
     'real = "1"',
   ].join('\n');
-  assert.deepStrictEqual(parseCargoToml(text).map((d) => d.name), ['real']);
+  assert.deepStrictEqual(parseCargoToml(text).map((d) => d.name), ['private', 'real']);
+  assert.equal(parseCargoToml(text)[0].source, 'cargo:company');
 });

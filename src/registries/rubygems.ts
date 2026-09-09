@@ -13,8 +13,8 @@ export interface RubyGemsVersion {
 export class RubyGemsClient {
   constructor(private readonly timeoutMs: number) {}
 
-  async fetchVersions(name: string): Promise<RegistryVersions> {
-    const doc = await fetchJson<RubyGemsVersion[]>(`https://rubygems.org/api/v1/versions/${encodeURIComponent(name)}.json`, { timeoutMs: this.timeoutMs });
+  async fetchVersions(name: string, source = 'https://rubygems.org'): Promise<RegistryVersions> {
+    const doc = await fetchJson<RubyGemsVersion[]>(`${source}/api/v1/versions/${encodeURIComponent(name)}.json`, { timeoutMs: this.timeoutMs });
     return doc ? rubyGemsVersions(doc) : { error: 'not found' };
   }
 }

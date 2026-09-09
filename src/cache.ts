@@ -10,6 +10,20 @@ const ERROR_TTL_MS = 5 * 60 * 1000;
 
 export class VersionCache {
   private entries = new Map<string, Entry>();
+  private pending = new Map<string, Promise<RegistryVersions>>();
+  generation = 0;
+
+  /** Share requests across declarations and editors without sharing comparison policy. */
+  resolve(key: string, fetch: () => Promise<RegistryVersions>): Promise<RegistryVersions> {
+    let pending = this.pending.get(key);
+    if (!pending) {
+      pending = Promise.resolve().then(fetch).finally(() => {
+        if (this.pending.get(key) === pending) this.pending.delete(key);
+      });
+      this.pending.set(key, pending);
+    }
+    return pending;
+  }
 
   constructor(private ttlMs: number) {}
 
@@ -36,6 +50,8 @@ export class VersionCache {
 
   clear(): void {
     this.entries.clear();
+    this.pending.clear();
+    this.generation++;
   }
 
   /** Serialisable snapshot, used to keep resolved versions across window reloads. */

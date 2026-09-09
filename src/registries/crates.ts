@@ -1,5 +1,5 @@
 import * as semver from 'semver';
-import { fetchJson } from '../http';
+import { fetchJson, fetchText } from '../http';
 import type { PackageMeta, RegistryVersions } from '../types';
 
 const API = 'https://crates.io/api/v1/crates';
@@ -16,6 +16,7 @@ interface CrateVersion {
   yanked?: boolean;
   created_at?: string;
   license?: string | null;
+  rust_version?: string | null;
 }
 
 export interface CratesResponse {
@@ -26,7 +27,16 @@ export interface CratesResponse {
 export class CratesClient {
   constructor(private readonly timeoutMs: number) {}
 
-  async fetchVersions(name: string): Promise<RegistryVersions> {
+  async fetchVersions(name: string, source?: string): Promise<RegistryVersions> {
+    if (source) {
+      if (!source.startsWith('sparse+https://')) return { error: 'Only HTTPS sparse Cargo registries are supported' };
+      const lower = name.toLowerCase();
+      const suffix = lower.length <= 2 ? `${lower.length}/${lower}` : lower.length === 3 ? `3/${lower[0]}/${lower}` : `${lower.slice(0, 2)}/${lower.slice(2, 4)}/${lower}`;
+      const text = await fetchText(`${source.slice(7).replace(/\/$/, '')}/${suffix}`, { timeoutMs: this.timeoutMs, headers: { accept: 'text/plain' } });
+      if (!text) return { error: 'not found' };
+      const versions = text.trim().split('\n').map((line) => { const item = JSON.parse(line); return { ...item, num: item.vers }; });
+      return versionsOf({ versions });
+    }
     const doc = await fetchJson<CratesResponse>(`${API}/${encodeURIComponent(name)}`, { timeoutMs: this.timeoutMs });
     return doc ? versionsOf(doc) : { error: 'not found' };
   }
@@ -50,5 +60,6 @@ export function versionsOf(doc: CratesResponse): RegistryVersions {
   if (doc.crate?.repository) meta.repository = doc.crate.repository;
   if (release?.license) meta.license = release.license;
   if (release?.created_at) meta.latestPublishedAt = release.created_at;
-  return { latest, all, meta };
+  if (release?.rust_version) meta.runtimeRequirement = `Rust >=${release.rust_version}`;
+  return { latest, all, meta, requirements: Object.fromEntries(releases.map((item) => [item.num, [item.rust_version ?? '']])) };
 }

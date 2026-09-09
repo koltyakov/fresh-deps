@@ -10,13 +10,16 @@ export function parsePnpmWorkspace(text: string): DependencyRef[] {
   const read = (entries: unknown, section: string) => {
     if (!isMap(entries)) return;
     for (const pair of entries.items) {
-      const name = yamlString(pair.key);
+      const rawName = yamlString(pair.key);
+      const selector = rawName?.split('>').at(-1)?.trim();
+      const name = section === 'overrides' ? /^(?:@[^/\s]+\/)?[^/@\s]+/.exec(selector ?? '')?.[0] : rawName;
       const spec = yamlString(pair.value);
       const normalized = name && spec ? normalizeNpmSpec(name, spec) : undefined;
       if (normalized) deps.push({ ...normalized, line: doc.line(pair.value), section });
     }
   };
   read(doc.root.get('catalog', true), 'catalog');
+  read(doc.root.get('overrides', true), 'overrides');
   const catalogs = doc.root.get('catalogs', true);
   if (isMap(catalogs)) {
     for (const pair of catalogs.items) {

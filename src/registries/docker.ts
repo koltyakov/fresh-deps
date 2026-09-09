@@ -1,6 +1,7 @@
 import { dockerScheme, dockerTag } from '../docker';
 import { fetchJson, HttpError } from '../http';
 import type { RegistryVersions } from '../types';
+import { OciClient, basicAuth } from './oci';
 
 export function dockerVersions(tags: string[], spec: string): RegistryVersions {
   const style = dockerTag(spec)?.style;
@@ -12,18 +13,27 @@ export class DockerClient {
   private readonly pending = new Map<string, Promise<string[] | undefined>>();
   constructor(private readonly timeoutMs: number) {}
 
-  async fetchVersions(name: string, spec: string): Promise<RegistryVersions> {
-    let pending = this.pending.get(name);
-    if (!pending) { pending = this.tags(name); this.pending.set(name, pending); }
+  async fetchVersions(name: string, spec: string, host?: string, revision?: string): Promise<RegistryVersions> {
+    const key = `${host ?? 'docker.io'}/${name}`;
+    let pending = this.pending.get(key);
+    if (!pending) { pending = host ? new OciClient(this.timeoutMs).tags(host, name) : this.tags(name); this.pending.set(key, pending); }
     const tags = await pending;
-    return tags ? dockerVersions(tags, spec) : { error: 'not found' };
+    const versions = tags ? dockerVersions(tags, spec) : { error: 'not found' };
+    if (revision && versions.latest) {
+      const response = await new OciClient(this.timeoutMs).response(`https://${host ?? 'registry-1.docker.io'}/v2/${name}/manifests/${encodeURIComponent(versions.latest)}`,
+        'application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json');
+      const digest = response?.headers.get('docker-content-digest');
+      if (digest && /^sha256:[a-f\d]{64}$/.test(digest)) return { ...versions, revision: digest, latestRaw: `${versions.latest}@${digest}` };
+    }
+    return versions;
   }
 
   private async tags(name: string): Promise<string[] | undefined> {
     // The Hub UI API embeds every image manifest per tag. Distribution lists only names.
+    const credentials = basicAuth('registry-1.docker.io');
     const auth = await fetchJson<{ token?: string; access_token?: string }>(
       `https://auth.docker.io/token?service=registry.docker.io&scope=${encodeURIComponent(`repository:${name}:pull`)}`,
-      { timeoutMs: this.timeoutMs });
+      { timeoutMs: this.timeoutMs, headers: credentials ? { authorization: credentials } : undefined });
     const token = auth?.token ?? auth?.access_token;
     if (!token) throw new Error('Docker Hub did not return an anonymous registry token');
     const tags: string[] = [];

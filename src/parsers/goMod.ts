@@ -33,6 +33,12 @@ export function parseGoMod(text: string, options: { includeIndirect: boolean }):
     if (trimmed === '') {
       continue;
     }
+    const runtime = /^(go|toolchain)\s+(?:go)?(\d+\.\d+(?:\.\d+)?)$/.exec(trimmed);
+    if (runtime && !block) {
+      deps.push({ name: 'go', spec: `>=${runtime[2].split('.').length === 2 ? runtime[2] + '.0' : runtime[2]}`,
+        specRaw: runtime[2], line: lineNo, section: runtime[1], runtime: 'go', semver: true });
+      continue;
+    }
 
     if (block !== undefined) {
       if (trimmed.startsWith(')')) {

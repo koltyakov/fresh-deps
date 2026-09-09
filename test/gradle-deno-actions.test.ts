@@ -22,7 +22,8 @@ test('recognizes Gradle, Deno, import maps and scoped GitHub workflow filenames'
   for (const file of ['.github/workflows/ci.yml', '.github/workflows/release.yaml', 'tools/action.yml', 'action.yaml']) {
     assert.equal(manifestOf(`/project/${file}`)?.ecosystem, 'githubActions');
   }
-  for (const file of ['ci.yml', '.github/ci.yml', '.github/workflows/nested/ci.yml', 'settings.gradle.kts', 'other.json']) {
+  assert.equal(manifestOf('/project/settings.gradle.kts')?.kind, 'gradle-build');
+  for (const file of ['ci.yml', '.github/ci.yml', '.github/workflows/nested/ci.yml', 'other.json']) {
     assert.equal(manifestOf(`/project/${file}`), undefined);
   }
 });

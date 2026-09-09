@@ -1,6 +1,7 @@
 import { fetchJson } from '../http';
 import { actionRuntimes, actionTagStyle, actionVersion, githubActionsScheme } from '../githubActions';
 import type { DependencyRef, RegistryVersions } from '../types';
+import { githubTags, githubTagCommit } from './github';
 
 /** Runtime selectors resolve full releases, but updates keep the selector's precision. */
 export function actionRuntimeVersions(versions: string[], spec: string): RegistryVersions {
@@ -49,27 +50,21 @@ export class GithubActionsClient {
     return result.map((release) => release.version);
   }
 
-  async fetchVersions(name: string, spec: string): Promise<RegistryVersions> {
+  async fetchVersions(name: string, spec: string, revision?: string): Promise<RegistryVersions> {
+    if (revision && (await githubTagCommit(name, spec, this.timeoutMs))?.toLowerCase() !== revision.toLowerCase()) return { error: 'SHA pin does not match the release tag in its comment' };
     const key = name.toLowerCase();
     let promise = this.pending.get(key);
     if (!promise) {
-      promise = this.tags(key);
+      promise = githubTags(key, this.timeoutMs);
       this.pending.set(key, promise);
     }
     const tags = await promise;
-    return tags ? githubActionVersions(tags, spec) : { error: 'not found' };
+    const result = tags ? githubActionVersions(tags, spec) : { error: 'not found' };
+    if (revision && result.latest) {
+      const commit = await githubTagCommit(name, result.latest, this.timeoutMs);
+      if (commit) return { ...result, revision: commit, latestRaw: `${result.latest} @ ${commit}` };
+    }
+    return result;
   }
 
-  private async tags(name: string): Promise<string[] | undefined> {
-    const tags: string[] = [];
-    for (let page = 1; page <= 10; page++) {
-      const result = await fetchJson<{ name: string }[]>(`https://api.github.com/repos/${name}/tags?per_page=100&page=${page}`,
-        { timeoutMs: this.timeoutMs, headers: { 'X-GitHub-Api-Version': '2022-11-28' } });
-      if (!result) return undefined;
-      if (!Array.isArray(result) || result.some((tag) => typeof tag.name !== 'string')) throw new Error('invalid GitHub tags response');
-      tags.push(...result.map((tag) => tag.name));
-      if (result.length < 100) return tags;
-    }
-    throw new Error('GitHub tag pagination limit reached');
-  }
 }

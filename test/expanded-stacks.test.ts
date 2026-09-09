@@ -55,9 +55,11 @@ test('Docker parses literal images and skips stages, heredocs, digests, variable
   assert.deepEqual(parseDockerfile(text).map(({ name, spec, line }) => [name, spec, line]), [
     ['library/node', '20-alpine', 1], ['library/nginx', '1.25-bookworm', 7],
   ]);
-  for (const image of ['node:latest', 'node', 'node:20@sha256:abc', '${IMAGE}:20', 'ghcr.io/org/image:1', 'localhost:5000/image:1']) {
+  for (const image of ['node:latest', 'node', 'node:20@sha256:abc', '${IMAGE}:20']) {
     assert.equal(imageDependency(image, 0, 'image'), undefined, image);
   }
+  assert.equal(imageDependency('ghcr.io/org/image:1', 0, 'image')?.source, 'ghcr.io');
+  assert.equal(imageDependency('localhost:5000/image:1', 0, 'image')?.source, 'localhost:5000');
   assert.equal(imageDependency('docker.io/library/node:20', 0, 'image')?.name, 'library/node');
   const compose = 'x-image: fake:1\nservices:\n  api:\n    image: docker.io/owner/api:1.0\n  local:\n    image: ${IMAGE}:1\n';
   assert.deepEqual(parseCompose(compose).map(({ name, line }) => [name, line]), [['owner/api', 3]]);
@@ -109,7 +111,8 @@ test('Docker tags keep precision and suffix instead of confusing variants with p
 test('Helm scopes dependencies, anchors version fields and rejects unresolved repositories', () => {
   const text = 'apiVersion: v2\nversion: 1.0.0\ndependencies:\n  - name: redis\n    alias: cache\n    version: "~1.0.0"\n    repository: https://charts.example/stable/\n';
   assert.deepEqual(parseHelm(text), [{ name: 'redis', spec: '~1.0.0', source: 'https://charts.example/stable', alias: 'cache', line: 5, section: 'dependencies' }]);
-  for (const repository of ['@stable', 'alias:stable', 'oci://registry.example/charts', 'file://../local', 'https://user:pass@example.org']) {
+  assert.equal(parseHelm('dependencies: [{name: redis, version: 1.0.0, repository: "oci://registry.example/charts"}]')[0]?.source, 'oci://registry.example/charts');
+  for (const repository of ['@stable', 'alias:stable', 'file://../local', 'https://user:pass@example.org']) {
     assert.deepEqual(parseHelm(`dependencies:\n  - name: redis\n    version: 1.0.0\n    repository: ${repository === '@stable' ? '"@stable"' : repository}`), []);
   }
 });
@@ -136,7 +139,7 @@ test('Swift reads literal requirement forms and uses next-major bounds below 1.0
 
 test('Conan reads literal assignments and calls without extracting strings from expressions', () => {
   assert.deepEqual(parseConan('[requires]\nfmt/10.0.0\nzlib/[>=1.0 <2.0]\nprivate/1.0@user/channel\n[generators]\nCMakeDeps', false)
-    .map(({ name, spec, line }) => [name, spec, line]), [['fmt', '10.0.0', 1], ['zlib', '>=1.0 <2.0', 2]]);
+    .map(({ name, spec, line }) => [name, spec, line]), [['fmt', '10.0.0', 1], ['zlib', '>=1.0 <2.0', 2], ['private@user/channel', '1.0', 3]]);
   const python = 'class Recipe:\n  requires = ("fmt/10.0", "zlib/1.2")\n  def requirements(self):\n    self.requires("openssl/3.0", transitive_headers=True)\n    self.tool_requires("cmake/3.20")\n';
   assert.deepEqual(parseConan(python, true).map((dep) => dep.name), ['fmt', 'zlib', 'openssl', 'cmake']);
   for (const text of ['requires = "fmt/10.0" + suffix', 'requires = f"fmt/10.0"', 'self.requires("fmt/10.0" + suffix)',
@@ -156,10 +159,10 @@ test('sbt checks explicit coordinates and only resolves plugin suffixes when con
 test('Conda keeps channel order, handles explicit overrides and skips unsupported build constraints', () => {
   const text = 'channels: [conda-forge, bioconda, nodefaults]\ndependencies:\n  - numpy=1.26\n  - bioconda::samtools>=1.0,<2.0\n  - python=3.11=build_0\n  - pip:\n      - requests==2.0\n';
   assert.deepEqual(parseConda(text).map(({ name, source, line }) => [name, source, line]), [
-    ['numpy', 'conda-forge|bioconda', 2], ['samtools', 'bioconda', 3],
+    ['numpy', 'conda-forge|bioconda', 2], ['samtools', 'bioconda', 3], ['requests', undefined, 6],
   ]);
   assert.deepEqual(parseConda('dependencies: [numpy=1.26]'), []);
-  assert.deepEqual(parseConda('channels: [defaults]\ndependencies: [numpy=1.26]'), []);
+  assert.equal(parseConda('channels: [defaults]\ndependencies: [numpy=1.26]')[0]?.source, 'defaults');
   assert.equal(parseConda('channels: [defaults]\ndependencies: [conda-forge::numpy=1.26]').length, 1);
   assert.deepEqual(parseConda('channels: [conda-forge]\ndependencies: ["numpy>=1.0rc1"]'), []);
 });
@@ -184,7 +187,8 @@ test('Clojure parses nested alias maps and skips Git coordinates, reader macros 
     ['org.clojure:clojure', 0, 'deps'], ['cheshire:cheshire', 2, 'extra-deps'],
   ]);
   assert.equal(parseClojure('{:deps {cheshire {:mvn/version "5.0.0"}}}')[0].name, 'cheshire:cheshire');
-  for (const text of ['{:deps {#_a/b {:mvn/version "1.0"}}}', '{:deps {a/b {:mvn/version "1.0"}} :mvn/repos {}}',
+  assert.equal(parseClojure('{:deps {a/b {:mvn/version "1.0"}} :mvn/repos {}}')[0].source, 'https://repo.maven.apache.org/maven2|https://repo.clojars.org');
+  for (const text of ['{:deps {#_a/b {:mvn/version "1.0"}}}',
     '; {:deps {a/b {:mvn/version "1.0"}}}', '{:deps {a/b {:mvn/version version}}}']) assert.deepEqual(parseClojure(text), [], text);
 });
 
@@ -230,7 +234,7 @@ test('Yarn catalogs preserve npm aliases and explicit registry selection', () =>
 test('registry response adapters exclude incompatible releases and preserve full lists', () => {
   assert.deepEqual(helmVersions('entries:\n  redis:\n    - version: 1.0.0\n    - version: 2.0.0\n    - version: 3.0.0-rc1', 'redis').all,
     ['1.0.0', '2.0.0', '3.0.0-rc1']);
-  assert.deepEqual(conanVersions('versions:\n  "1.9": {folder: all}\n  "1.10": {folder: all}\n  "2.0-rc1": {folder: all}').all, ['1.9', '1.10']);
+  assert.deepEqual(conanVersions('versions:\n  "1.9": {folder: all}\n  "1.10": {folder: all}\n  "2.0-rc1": {folder: all}').all, ['1.9', '1.10', '2.0-rc1']);
   assert.deepEqual(condaVersions({ files: [
     { version: '1.0', attrs: { subdir: 'linux-64' }, labels: ['main'] },
     { version: '1.5', basename: 'noarch/pkg.tar.bz2' },

@@ -31,6 +31,12 @@ export function parseGradleBuild(text: string): DependencyRef[] {
     if (token.value === '{') { blocks.push(tokens[i - 1]?.value ?? ''); continue; }
     if (token.value === '}') { blocks.pop(); continue; }
     const block = blocks.at(-1);
+    if (token.value === 'from' && blocks.includes('versionCatalogs')) {
+      const offset = tokens[i + 1]?.value === '(' ? 2 : 1;
+      const literal = tokens[i + offset];
+      const match = literal?.string && /^([\w.-]+:[\w.-]+):(\d[\w.-]*)$/.exec(literal.value);
+      if (match && mavenScheme.isPinned(match[2])) deps.push({ name: match[1], spec: match[2], line: literal.line, section: 'versionCatalogs' });
+    }
     if (block !== 'dependencies' && block !== 'plugins') continue;
     const previous = tokens[i - 1];
     if (previous && previous.line === token.line && !['{', ';'].includes(previous.value)) continue;

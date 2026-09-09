@@ -1,15 +1,16 @@
 import { isMap, isScalar, isSeq } from 'yaml';
 import * as semver from 'semver';
-import { conanScheme } from '../numericVersion';
+import { numericScheme } from '../numericVersion';
 import type { DependencyRef } from '../types';
 import { vcpkgVersion } from '../vcpkg';
 import { yamlDocument, yamlString } from './yaml';
+const conanScheme = numericScheme(false);
 
-export function parseVcpkg(text: string): DependencyRef[] {
+export function parseVcpkg(text: string, options?: { allowConfiguration: boolean; baseline: string }): DependencyRef[] {
   try { JSON.parse(text); } catch { return []; }
   const doc = yamlDocument(text);
-  if (!doc || doc.root.has('vcpkg-configuration')) return [];
-  const source = yamlString(doc.root.get('builtin-baseline', true));
+  if (!doc || doc.root.has('vcpkg-configuration') && !options?.allowConfiguration) return [];
+  const source = options?.baseline ?? yamlString(doc.root.get('builtin-baseline', true));
   if (!source || !/^[a-f0-9]{40}$/.test(source)) return [];
   const deps: DependencyRef[] = [];
   const overrides = new Set<string>();
@@ -20,6 +21,11 @@ export function parseVcpkg(text: string): DependencyRef[] {
     for (const entries of lists) {
       if (!isSeq(entries)) continue;
       for (const entry of entries.items) {
+        const bare = yamlString(entry);
+        if (bare && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(bare) && !overrides.has(bare)) {
+          deps.push({ name: bare, spec: '@baseline', source, line: doc.line(entry), section });
+          continue;
+        }
         if (!isMap(entry)) continue;
         const name = yamlString(entry.get('name', true));
         if (!name || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(name)) continue;
@@ -29,7 +35,10 @@ export function parseVcpkg(text: string): DependencyRef[] {
         if (keys.length !== 1 || keys[0] === 'version-string') continue;
         const versionNode = entry.get(keys[0], true);
         let version = yamlString(versionNode);
-        if (!version) continue;
+        if (!version) {
+          if (section !== 'overrides') deps.push({ name, spec: '@baseline', source, line: doc.line(entry), section });
+          continue;
+        }
         if (section === 'overrides' && entry.has('port-version')) {
           const revision = entry.get('port-version', true);
           if (!isScalar(revision) || !Number.isSafeInteger(revision.value) || Number(revision.value) < 0 || version.includes('#')) continue;

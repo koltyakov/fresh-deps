@@ -10,7 +10,20 @@ export interface PackagistResponse {
 export class PackagistClient {
   constructor(private readonly timeoutMs: number) {}
 
-  async fetchVersions(name: string): Promise<RegistryVersions> {
+  async fetchVersions(name: string, sources?: string): Promise<RegistryVersions> {
+    if (sources) {
+      for (const source of sources.split('|')) {
+        const index = await fetchJson<{ 'metadata-url'?: string; packages?: Record<string, Record<string, { version: string }>> }>(`${source}/packages.json`, { timeoutMs: this.timeoutMs });
+        if (!index) continue;
+        if (index.packages?.[name]) return packagistVersions({ packages: { [name]: Object.values(index.packages[name]) } }, name);
+        if (!index['metadata-url']) return { error: 'Composer repository does not expose package metadata' };
+        const url = new URL(index['metadata-url'].replace('%package%', name), `${source}/`);
+        if (url.protocol !== 'https:' || url.username || url.password) return { error: 'Invalid Composer metadata URL' };
+        const doc = await fetchJson<PackagistResponse>(url.href, { timeoutMs: this.timeoutMs });
+        if (doc?.packages?.[name]?.length) return packagistVersions(doc, name);
+      }
+      return { error: 'not found' };
+    }
     const doc = await fetchJson<PackagistResponse>(`https://repo.packagist.org/p2/${name.split('/').map(encodeURIComponent).join('/')}.json`, { timeoutMs: this.timeoutMs });
     return doc ? packagistVersions(doc, name) : { error: 'not found' };
   }

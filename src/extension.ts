@@ -5,8 +5,10 @@ import { AuditCache } from './audit';
 import { readSettings } from './config';
 import { DecorationRenderer } from './decorations';
 import { DependencyHoverProvider, DetailsResolver } from './details';
+import { manifestSelectors } from './manifests';
+import { clearManifestCache } from './projectFiles';
 
-const CACHE_STATE_KEY = 'freshDeps.cache';
+const CACHE_STATE_KEY = 'freshDeps.cache.v2';
 const TYPING_DEBOUNCE_MS = 400;
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -90,13 +92,16 @@ export function activate(context: vscode.ExtensionContext): void {
       const checked = result.audits.filter((audit) => audit.result.status === 'checked').length;
       const auditFailed = result.audits.filter((audit) => audit.result.status === 'failed').length;
       status.text = count === 0 ? '$(check) Deps up to date' : `$(arrow-up) ${count} update${count === 1 ? '' : 's'}`;
+      if (count === 0 && (result.incomplete || result.failures.size || result.skipped?.length)) status.text = '$(info) Dependency check incomplete';
+      else if (count === 0 && result.declarations === 0) status.text = '$(info) No supported declarations';
       if (affected) status.text += ` | $(warning) ${affected} audited deps with warnings`;
       else if (auditFailed) status.text += ' | $(warning) Audit incomplete';
       status.tooltip = new vscode.MarkdownString(
         [
-          count === 0 ? 'All dependencies are up to date.' : `${count} dependencies have newer versions.`,
+          count === 0 ? 'No updates found among checked declarations.' : `${count} dependencies have newer versions.`,
+          result.skipped?.length ? `\n\n${result.skipped.length} declarations skipped. See the Fresh Deps output channel for reasons.` : '',
           result.failures.size ? `\n\n${result.failures.size} lookups failed - see the Fresh Deps output channel.` : '',
-          settings.auditEnabled ? `\n\nAudit: ${checked}/${result.audits.length} declarations checked; ${affected} with warnings; ${auditFailed} failed. Checks declared versions or range baselines, not installed dependencies. Unsupported or uncached declarations are not checked.` : '',
+          settings.auditEnabled ? `\n\nAudit: ${checked}/${result.audits.length} declarations checked; ${affected} with warnings; ${auditFailed} failed. Checks declared versions, range baselines, or optional lockfile selections, not installed dependencies. Unsupported or uncached declarations are not checked.` : '',
           '\n\nClick to re-check.',
         ].join(''),
       );
@@ -104,6 +109,9 @@ export function activate(context: vscode.ExtensionContext): void {
 
       for (const [name, error] of result.failures) {
         output.appendLine(`[${new Date().toISOString()}] ${name}: ${error}`);
+      }
+      if (allowNetwork) for (const skip of result.skipped ?? []) {
+        output.appendLine(`${document.uri.fsPath}:${skip.line + 1} ${skip.name}: skipped, ${skip.reason}`);
       }
       for (const audit of result.audits) {
         if (audit.result.status === 'failed') {
@@ -148,47 +156,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
   // Every language a supported manifest can be opened as. The provider itself only
   // answers on a line the last check reported an update for.
-  const MANIFEST_SELECTOR: vscode.DocumentSelector = [
-    { scheme: 'file', pattern: '**/requirements.{yml,yaml}' },
-    { scheme: 'file', pattern: '**/MODULE.bazel' },
-    { scheme: 'file', pattern: '**/vcpkg.json' },
-    { scheme: 'file', pattern: '**/{Dockerfile,Containerfile}{,.*,-*,_*}' },
-    { scheme: 'file', pattern: '**/*.{Dockerfile,Containerfile}' },
-    { scheme: 'file', pattern: '**/{compose,docker-compose}{,.*,-*,_*}.{yml,yaml}' },
-    { scheme: 'file', pattern: '**/Chart.yaml' },
-    { scheme: 'file', pattern: '**/Package.swift' },
-    { scheme: 'file', pattern: '**/conanfile.{txt,py}' },
-    { scheme: 'file', pattern: '**/build.sbt' },
-    { scheme: 'file', pattern: '**/project/plugins.sbt' },
-    { scheme: 'file', pattern: '**/environment.{yml,yaml}' },
-    { scheme: 'file', pattern: '**/deps.edn' },
-    { scheme: 'file', pattern: '**/.yarnrc.yml' },
-    { scheme: 'file', pattern: '**/{dotnet-tools,global}.json' },
-    { scheme: 'file', pattern: '**/package.json' },
-    { scheme: 'file', pattern: '**/composer.json' },
-    { scheme: 'file', pattern: '**/pubspec.yaml' },
-    { scheme: 'file', pattern: '**/pnpm-workspace.yaml' },
-    { scheme: 'file', pattern: '**/*.versions.toml' },
-    { scheme: 'file', pattern: '**/build.gradle{,.kts}' },
-    { scheme: 'file', pattern: '**/deno.{json,jsonc}' },
-    { scheme: 'file', pattern: '**/import{_,-}map.{json,jsonc}' },
-    { scheme: 'file', pattern: '**/.github/workflows/*.{yml,yaml}' },
-    { scheme: 'file', pattern: '**/action.{yml,yaml}' },
-    { scheme: 'file', pattern: '**/go.mod' },
-    { scheme: 'file', pattern: '**/Cargo.toml' },
-    { scheme: 'file', pattern: '**/pom.xml' },
-    { scheme: 'file', pattern: '**/pyproject.toml' },
-    { scheme: 'file', pattern: '**/Pipfile' },
-    { scheme: 'file', pattern: '**/*.txt' },
-    { scheme: 'file', pattern: '**/*.{cs,fs,vb}proj' },
-    { scheme: 'file', pattern: '**/Directory.{Packages,Build}.props' },
-    { scheme: 'file', pattern: '**/packages.config' },
-    { scheme: 'file', pattern: '**/Gemfile' },
-    { scheme: 'file', pattern: '**/mix.exs' },
-    { scheme: 'file', pattern: '**/*.tf' },
-    { scheme: 'file', pattern: '**/*.tofu' },
-    { scheme: 'file', pattern: '**/.tflint.hcl' },
-  ];
+  const MANIFEST_SELECTOR: vscode.DocumentSelector = manifestSelectors;
 
   context.subscriptions.push(
     vscode.languages.registerHoverProvider(
@@ -210,7 +178,7 @@ export function activate(context: vscode.ExtensionContext): void {
       updateContext(editor);
       void refresh(editor, true);
     }),
-    vscode.workspace.onDidSaveTextDocument((document) => schedule(document, true)),
+    vscode.workspace.onDidSaveTextDocument((document) => { clearManifestCache(); schedule(document, true); }),
     vscode.workspace.onDidChangeTextDocument((event) => schedule(event.document, false)),
     vscode.workspace.onDidChangeConfiguration((event) => {
       if (!event.affectsConfiguration('freshDeps')) {
@@ -227,6 +195,7 @@ export function activate(context: vscode.ExtensionContext): void {
       }
     }),
     vscode.commands.registerCommand('freshDeps.refresh', async () => {
+      clearManifestCache();
       cache.clear();
       auditCache.clear();
       details.clear();

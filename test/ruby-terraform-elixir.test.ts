@@ -40,9 +40,9 @@ test('Gemfile parses literal public gems and skips non-registry declarations', (
     { name: 'rails', spec: '~> 7.1, >= 7.1.2', line: 1, section: 'gems' },
     { name: 'rspec', spec: '~> 3.12', line: 4, section: 'gems' },
   ]);
-  assert.deepEqual(parseGemfile('source "https://gems.example" do\n  gem "private", "1.0"\nend'), []);
-  assert.deepEqual(parseGemfile('source ENV.fetch("GEM_SOURCE")\ngem "private", "1.0"'), []);
-  assert.deepEqual(parseGemfile('path "components" do\n  gem "secret_component", "1.0"\nend'), []);
+  assert.equal(parseGemfile('source "https://gems.example" do\n  gem "private", "1.0"\nend')[0]?.source, 'https://gems.example');
+  assert.match(parseGemfile('source ENV.fetch("GEM_SOURCE")\ngem "private", "1.0"')[0].skipReason!, /source/);
+  assert.match(parseGemfile('path "components" do\n  gem "secret_component", "1.0"\nend')[0].skipReason!, /source/);
   assert.deepEqual(parseGemfile('gem "secret_repo", "1.0", corp: "team/project"'), []);
   assert.deepEqual(parseGemfile('opts = { path: "../secret" }\ngem "secret", "1.0", **opts'), []);
   assert.deepEqual(parseGemfile('git_source(:corp) { |repo| "https://git.example/#{repo}" }\ngem "secret", "1.0", corp: "team/secret"'), []);
@@ -77,11 +77,13 @@ test('Terraform reads required providers, aliases, defaults and literal constrai
     { name: 'hashicorp/aws', spec: '~> 5.0', line: 4, section: 'required_providers' },
     { name: 'hashicorp/google-beta', spec: '>= 6.0, < 7.0', line: 6, section: 'required_providers' },
     { name: 'hashicorp/random', spec: '3.6.0', line: 7, section: 'required_providers' },
+    { name: 'private.example/acme/custom', spec: '1.0.0', line: 8, section: 'required_providers' },
   ]);
   assert.deepEqual(parseTerraform(`# terraform { required_providers { bad = "1.0.0" } }\n${text}`), [
     { name: 'hashicorp/aws', spec: '~> 5.0', line: 5, section: 'required_providers' },
     { name: 'hashicorp/google-beta', spec: '>= 6.0, < 7.0', line: 7, section: 'required_providers' },
     { name: 'hashicorp/random', spec: '3.6.0', line: 8, section: 'required_providers' },
+    { name: 'private.example/acme/custom', spec: '1.0.0', line: 9, section: 'required_providers' },
   ]);
   assert.deepEqual(parseTerraform('locals { template = <<EOT\nterraform { required_providers { secret = "1.0.0" } }\nEOT\n}'), []);
   assert.deepEqual(parseTerraform('terraform { required_providers { secret = { source = var.private_source, version = "1.0.0" } } }'), []);

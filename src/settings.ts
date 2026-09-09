@@ -8,7 +8,7 @@ type EcosystemSettings = Record<Ecosystem, { enabled: boolean }> & {
   java: { repository: string };
   gradle: { repositories: string[] };
   terraform: { defaultRegistry: string };
-  scala: { repositories: string[]; scalaBinaryVersion: string; sbtBinaryVersion: string };
+  scala: { repositories: string[]; scalaBinaryVersion: string; sbtBinaryVersion: string; platformSuffix: string };
   conda: { subdir: string };
   clojure: { repositories: string[] };
 };
@@ -21,6 +21,9 @@ export type Settings = EcosystemSettings & {
   requestTimeoutMs: number;
   showSatisfyingUpdates: boolean;
   includePrerelease: boolean;
+  useLockfiles: boolean;
+  auditProvider: 'registry' | 'osv';
+  runtimeVersions: Record<string, string>;
 };
 
 /** Read effective values, including the defaults registered in package.json. */
@@ -39,6 +42,9 @@ export function readSettingsFrom(read: <T>(key: string) => T | undefined): Setti
     requestTimeoutMs: get('requestTimeoutMs'),
     showSatisfyingUpdates: get('showSatisfyingUpdates'),
     includePrerelease: get('includePrerelease'),
+    useLockfiles: get('useLockfiles'),
+    auditProvider: get('audit.provider'),
+    runtimeVersions: get('runtimeVersions'),
     npm: {
       enabled: get('npm.enabled'),
       registry: get('npm.registry'),
@@ -78,6 +84,7 @@ export function readSettingsFrom(read: <T>(key: string) => T | undefined): Setti
       repositories: get('scala.repositories'),
       scalaBinaryVersion: get('scala.scalaBinaryVersion'),
       sbtBinaryVersion: get('scala.sbtBinaryVersion'),
+      platformSuffix: get('scala.platformSuffix'),
     },
     conda: { enabled: get('conda.enabled'), subdir: get('conda.subdir') },
     clojure: { enabled: get('clojure.enabled'), repositories: get('clojure.repositories') },

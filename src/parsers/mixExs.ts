@@ -94,14 +94,22 @@ function dependencyTuples(stream: Token[], start: number, end: number): Dependen
     }
     const options = stream.slice(i + 4, close - 1);
     const option = (name: string) => options.some((token, index) => token.kind === 'word' && token.value === name && options[index + 1]?.value === ':');
-    if (['git', 'github', 'path', 'in_umbrella', 'organization', 'repo'].some(option) || !spec || !/\d/.test(spec)) {
+    if (['git', 'github', 'path', 'in_umbrella'].some(option) || !spec || !/\d/.test(spec)) {
       i = close - 1;
       continue;
     }
     let name = local;
     const hexAt = options.findIndex((token, index) => token.kind === 'word' && token.value === 'hex' && options[index + 1]?.value === ':');
     if (hexAt >= 0 && options[hexAt + 2]?.kind === 'atom') name = options[hexAt + 2].value;
-    deps.push({ name, spec, line: stream[i + 3].line, section: 'deps', ...(name !== local ? { alias: local } : {}) });
+    const literalOption = (key: string) => {
+      const at = options.findIndex((token, index) => token.kind === 'word' && token.value === key && options[index + 1]?.value === ':');
+      return at >= 0 && options[at + 2]?.kind === 'string' ? options[at + 2].value : undefined;
+    };
+    const organization = literalOption('organization');
+    const repo = literalOption('repo');
+    const source = organization && /^[\w-]+$/.test(organization) ? `https://hex.pm/api/repos/${organization}` : repo ? `hexrepo:${repo}` : undefined;
+    deps.push({ name, spec, line: stream[i + 3].line, section: 'deps', ...(name !== local ? { alias: local } : {}),
+      ...(source ? { source } : {}), ...((option('repo') || option('organization')) && !source ? { skipReason: 'Computed Hex repository or organization' } : {}) });
     i = close - 1;
   }
   return deps;

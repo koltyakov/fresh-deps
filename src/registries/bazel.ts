@@ -1,5 +1,5 @@
 import { bazelScheme } from '../bazel';
-import { fetchJson } from '../http';
+import { fetchJson, fetchText } from '../http';
 import type { RegistryVersions } from '../types';
 
 export function bazelVersions(data: { versions?: unknown; yanked_versions?: unknown; homepage?: unknown }): RegistryVersions {
@@ -14,9 +14,19 @@ export function bazelVersions(data: { versions?: unknown; yanked_versions?: unkn
 
 export class BazelClient {
   constructor(private readonly timeoutMs: number) {}
-  async fetchVersions(name: string): Promise<RegistryVersions> {
+  async compatibility(name: string, version: string, source = 'https://bcr.bazel.build'): Promise<number | undefined> {
+    for (const registry of source.split('|')) {
+      const text = await fetchText(`${registry}/modules/${encodeURIComponent(name)}/${encodeURIComponent(version)}/MODULE.bazel`, { timeoutMs: this.timeoutMs, headers: { accept: 'text/plain' } });
+      if (text) return Number(text.match(/\bcompatibility_level\s*=\s*(\d+)/)?.[1] ?? 0);
+    }
+    return undefined;
+  }
+  async fetchVersions(name: string, sources = 'https://bcr.bazel.build'): Promise<RegistryVersions> {
     if (!/^[a-z][a-z0-9._-]*$/.test(name)) return { error: 'invalid Bazel module name' };
-    const data = await fetchJson<Parameters<typeof bazelVersions>[0]>(`https://bcr.bazel.build/modules/${encodeURIComponent(name)}/metadata.json`, { timeoutMs: this.timeoutMs });
-    return data ? bazelVersions(data) : { error: 'not found' };
+    for (const source of sources.split('|')) {
+      const data = await fetchJson<Parameters<typeof bazelVersions>[0]>(`${source}/modules/${encodeURIComponent(name)}/metadata.json`, { timeoutMs: this.timeoutMs });
+      if (data) return bazelVersions(data);
+    }
+    return { error: 'not found' };
   }
 }

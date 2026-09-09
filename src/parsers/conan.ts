@@ -3,10 +3,11 @@ import type { DependencyRef } from '../types';
 import { codeTokens, groupEnd } from './codeTokens';
 
 function requirement(value: string, line: number, section: string): DependencyRef[] {
-  const match = /^([a-z0-9_][a-z0-9_+.-]*)\/(\[[^\]]+\]|\d+(?:\.\d+)*)$/.exec(value);
+  const match = /^([a-z0-9_][a-z0-9_+.-]*)\/(\[[^\]]+\]|[A-Za-z0-9]+(?:[._+-][A-Za-z0-9]+)*)(?:@([\w.-]+\/[\w.-]+))?(?:#([a-f\d]{32}))?$/.exec(value);
   if (!match) return [];
   const spec = match[2].replace(/^\[|\]$/g, '');
-  return conanScheme.baseline(spec) ? [{ name: match[1], spec, specRaw: match[2], line, section }] : [];
+  return conanScheme.baseline(spec) ? [{ name: match[1] + (match[3] ? `@${match[3]}` : ''), spec, specRaw: match[2] + (match[4] ? `#${match[4]}` : ''),
+    ...(match[4] ? { revision: match[4] } : {}), line, section }] : [];
 }
 
 export function parseConan(text: string, python: boolean): DependencyRef[] {
@@ -14,7 +15,7 @@ export function parseConan(text: string, python: boolean): DependencyRef[] {
   if (!python) {
     let section = '';
     text.split(/\r?\n/).forEach((raw, line) => {
-      const value = raw.replace(/\s*#.*$/, '').trim();
+      const value = raw.replace(/(?:^\s*#|\s+#).*$/, '').trim();
       const header = /^\[([^\]]+)\]$/.exec(value);
       if (header) section = header[1];
       else if (['requires', 'tool_requires', 'build_requires', 'test_requires'].includes(section)) deps.push(...requirement(value, line, section));

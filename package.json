@@ -2,7 +2,7 @@
   "name": "fresh-deps",
   "displayName": "Fresh Deps",
   "description": "Highlights dependencies that have newer versions available, inline in your manifest files.",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "license": "MIT",
   "publisher": "koltyakov",
   "repository": {
@@ -50,10 +50,16 @@
   "main": "./dist/extension.js",
   "icon": "assets/logo.png",
   "galleryBanner": {
-    "color": "#3b2600",
+    "color": "#00152d",
     "theme": "dark"
   },
   "activationEvents": [
+    "workspaceContains:**/go.work",
+    "workspaceContains:**/gradle-wrapper.properties",
+    "workspaceContains:**/settings.gradle{,.kts}",
+    "workspaceContains:**/pubspec_overrides.yaml",
+    "workspaceContains:**/*.gemspec",
+    "workspaceContains:**/project.clj",
     "onLanguage:starlark",
     "onLanguage:bazel",
     "workspaceContains:**/requirements.{yml,yaml}",
@@ -149,6 +155,18 @@
       "title": "Fresh Deps",
       "order": 0,
       "properties": {
+        "freshDeps.useLockfiles": {
+          "type": "boolean", "default": false,
+          "description": "Use unambiguous versions from adjacent lockfiles as update and audit baselines. Does not inspect installed packages."
+        },
+        "freshDeps.audit.provider": {
+          "type": "string", "enum": ["registry", "osv"], "default": "registry",
+          "description": "Audit provider. OSV sends public package names and checked versions to api.osv.dev when auditing is enabled."
+        },
+        "freshDeps.runtimeVersions": {
+          "type": "object", "default": {}, "additionalProperties": { "type": "string" },
+          "description": "Runtime versions for compatible-release hints, keyed by ecosystem: python, npm, dart, rust. For example {\"python\": \"3.11.0\", \"npm\": \"20.0.0\"}."
+        },
         "freshDeps.enabled": {
           "type": "boolean",
           "default": true,
@@ -163,7 +181,7 @@
         "freshDeps.audit.enabled": {
           "type": "boolean",
           "default": false,
-          "description": "Show security audit warnings using the configured npm registry's audit API or public PyPI. Sends package names and baseline versions to that registry. Checks manifest declarations, not installed or transitive dependencies. Other ecosystems and custom Python indexes are not supported."
+          "description": "Show warnings using the selected audit provider. Sends package names and checked versions to the provider. Checks declaration baselines or optional lockfile selections, not installed or transitive dependencies."
         },
         "freshDeps.concurrency": {
           "type": "number",
@@ -195,35 +213,35 @@
       "properties": {
         "freshDeps.ansible.enabled": {
           "type": "boolean", "default": true,
-          "description": "Check public Ansible Galaxy collections and role pins in requirements.yml and requirements.yaml. Ansible configuration files are not read."
+          "description": "Check Galaxy collections and role pins, including explicit compatible HTTPS collection sources. Ansible configuration files are not read."
         },
         "freshDeps.bazel.enabled": {
           "type": "boolean", "default": true,
-          "description": "Check literal bazel_dep versions in MODULE.bazel using the Bazel Central Registry. Overrides are skipped; .bazelrc and custom registries are not read."
+          "description": "Check Bzlmod dependencies, including literal local includes and HTTPS registry flags in .bazelrc."
         },
         "freshDeps.vcpkg.enabled": {
           "type": "boolean", "default": true,
-          "description": "Check explicit vcpkg version minimums and overrides against the current builtin registry, including port revisions. Requires builtin-baseline. Custom configurations are skipped; baseline selections are not resolved."
+          "description": "Check vcpkg minimums, overrides, and baseline selections in builtin, filesystem, or GitHub-hosted Git registries, including port revisions."
         },
         "freshDeps.docker.enabled": {
           "type": "boolean", "default": true,
-          "description": "Check versioned Docker Hub images in Dockerfiles, Containerfiles and Compose services, preserving tag precision and variants."
+          "description": "Check versioned Docker Hub and HTTPS OCI images, preserving tag precision and variants. Also checks tag-plus-digest references."
         },
         "freshDeps.helm.enabled": {
           "type": "boolean", "default": true,
-          "description": "Check Chart.yaml dependencies using explicit HTTPS chart repository indexes."
+          "description": "Check Chart.yaml dependencies using explicit HTTPS chart indexes or OCI repositories."
         },
         "freshDeps.swift.enabled": {
           "type": "boolean", "default": true,
-          "description": "Check literal GitHub-hosted package dependencies in Package.swift."
+          "description": "Check literal Swift packages from GitHub, GitLab, Bitbucket, or configured Swift registries."
         },
         "freshDeps.conan.enabled": {
           "type": "boolean", "default": true,
-          "description": "Check numeric Conan requirements against the public Conan Center recipe index. Custom remotes and revisions are not evaluated."
+          "description": "Check Conan versions and recipe revisions using configured Conan 2 remotes or the Conan Center recipe index."
         },
         "freshDeps.scala.enabled": {
           "type": "boolean", "default": true,
-          "description": "Check explicit Maven coordinates in build.sbt and project/plugins.sbt."
+          "description": "Check literal sbt Maven coordinates, Scala cross-version dependencies, and configured platform suffixes."
         },
         "freshDeps.scala.repositories": {
           "type": "array", "items": { "type": "string", "format": "uri" },
@@ -232,15 +250,19 @@
         },
         "freshDeps.scala.scalaBinaryVersion": {
           "type": "string", "default": "", "pattern": "^(?:[0-9]+(?:\\.[0-9]+)?)?$",
-          "description": "Scala binary version used for sbt plugin artifacts, for example 2.12. Empty skips plugin declarations."
+          "description": "Scala binary version for cross-built libraries and sbt plugins. Empty infers literal library versions but skips plugin declarations."
         },
         "freshDeps.scala.sbtBinaryVersion": {
           "type": "string", "default": "", "pattern": "^(?:[0-9]+\\.[0-9]+)?$",
           "description": "sbt binary version used for plugin artifacts, for example 1.0. Both binary-version settings must be set to check addSbtPlugin declarations."
         },
+        "freshDeps.scala.platformSuffix": {
+          "type": "string", "default": "", "pattern": "^(?:sjs[0-9]+|native[0-9]+(?:\\.[0-9]+)?)?$",
+          "description": "Platform binary suffix for sbt %%% dependencies, such as sjs1 or native0.5. Empty skips platform-dependent declarations."
+        },
         "freshDeps.conda.enabled": {
           "type": "boolean", "default": true,
-          "description": "Check numeric Conda requirements from explicit anaconda.org channels in environment.yml and environment.yaml."
+          "description": "Check Conda requirements from named, labelled, HTTPS, or defaults channels, and nested pip requirements."
         },
         "freshDeps.conda.subdir": {
           "type": "string", "default": "", "pattern": "^(?:[a-z0-9]+-[a-z0-9_]+)?$",
@@ -248,27 +270,27 @@
         },
         "freshDeps.clojure.enabled": {
           "type": "boolean", "default": true,
-          "description": "Check literal Maven dependencies in deps.edn."
+          "description": "Check literal Maven dependencies in deps.edn and project.clj."
         },
         "freshDeps.clojure.repositories": {
           "type": "array", "items": { "type": "string", "format": "uri" },
           "default": ["https://repo.maven.apache.org/maven2", "https://repo.clojars.org"],
-          "description": "Ordered Maven repositories for Clojure. Files declaring :mvn/repos are skipped."
+          "description": "Default Maven repositories for Clojure. Literal :mvn/repos entries select project sources."
         },
         "freshDeps.npm.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Check npm dependencies in package.json, pnpm-workspace.yaml catalogs and .yarnrc.yml catalogs."
+          "description": "Check npm dependencies, tool pins, overrides, resolutions, and pnpm/Yarn catalogs."
         },
         "freshDeps.deno.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Check npm and JSR imports in deno.json, deno.jsonc and conventional import map files."
+          "description": "Check npm and JSR imports in Deno configs, conventional import maps, and referenced local import maps."
         },
         "freshDeps.githubActions.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Check action version tags and Node.js, Python and Go setup inputs in GitHub Actions workflows and composite actions using public GitHub data."
+          "description": "Check action tags, verified SHA release comments, runtime setup inputs, literal matrices, and local version files."
         },
         "freshDeps.npm.registry": {
           "type": "string",
@@ -285,14 +307,17 @@
             "devDependencies",
             "peerDependencies",
             "optionalDependencies",
-            "volta"
+            "volta",
+            "packageManager",
+            "overrides",
+            "resolutions"
           ],
-          "description": "package.json sections to inspect, including Volta tool pins in volta."
+          "description": "package.json sections to inspect, including volta, packageManager, overrides, and resolutions."
         },
         "freshDeps.go.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Check Go modules in go.mod."
+          "description": "Check Go modules and runtime directives in go.mod and go.work."
         },
         "freshDeps.go.proxy": {
           "type": "string",
@@ -312,7 +337,7 @@
         "freshDeps.python.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Check Python dependencies in pyproject.toml, Pipfile and requirements files."
+          "description": "Check Python dependencies in project manifests, requirements files, and PEP 723 script metadata."
         },
         "freshDeps.python.indexUrl": {
           "type": "string",
@@ -327,7 +352,7 @@
         "freshDeps.rust.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Check Rust crates in Cargo.toml."
+          "description": "Check Rust crates, inherited workspace requirements, and configured HTTPS sparse registries."
         },
         "freshDeps.dotnet.enabled": {
           "type": "boolean",
@@ -342,22 +367,22 @@
         "freshDeps.java.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Check Maven dependencies in pom.xml."
+          "description": "Check Maven dependencies, parents, plugins, and extensions in pom.xml."
         },
         "freshDeps.php.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Check Composer dependencies in composer.json using public Packagist."
+          "description": "Check Composer dependencies using Packagist or explicit Composer repositories."
         },
         "freshDeps.dart.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Check Dart and Flutter dependencies in pubspec.yaml using pub.dev."
+          "description": "Check Dart and Flutter dependencies and overrides using public or explicit HTTPS hosted registries."
         },
         "freshDeps.gradle.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Check Gradle *.versions.toml catalogs and literal dependencies and plugins in build.gradle and build.gradle.kts."
+          "description": "Check Gradle catalogs, literal build/settings declarations, and wrapper versions."
         },
         "freshDeps.gradle.repositories": {
           "type": "array",
@@ -377,7 +402,7 @@
         "freshDeps.ruby.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Check Bundler dependencies in Gemfile using public RubyGems."
+          "description": "Check Gemfile and source-resolvable gemspec dependencies using RubyGems-compatible sources."
         },
         "freshDeps.terraform.enabled": {
           "type": "boolean",

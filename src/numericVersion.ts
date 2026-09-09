@@ -69,4 +69,4 @@ export function numericScheme(conda: boolean): VersionScheme {
   };
 }
 export const condaScheme = numericScheme(true);
-export const conanScheme = numericScheme(false);
+export { conanScheme } from './conan';

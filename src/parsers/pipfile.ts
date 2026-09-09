@@ -1,6 +1,7 @@
 import type { DependencyRef } from '../types';
 import { normalizePythonSpec } from '../versions';
 import { scanToml, versionOf } from './toml';
+import { pythonSources } from './pythonSources';
 
 const SECTIONS = ['packages', 'dev-packages'];
 
@@ -24,5 +25,5 @@ export function parsePipfile(text: string): DependencyRef[] {
     }
   }
 
-  return deps;
+  return pythonSources(text, deps, 'pipfile');
 }

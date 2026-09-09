@@ -14,7 +14,23 @@ export function composerVersion(raw: string): string | undefined {
 
 /** Translate the numeric subset of Composer constraints; reject branch and stability expressions. */
 export function composerRange(spec: string): string | undefined {
-  if (!spec.trim() || /@|\bas\b|dev|!=|<>/i.test(spec)) return undefined;
+  if (!spec.trim() || /@|\bas\b|dev/i.test(spec)) return undefined;
+  if (/!=|<>/.test(spec)) {
+    const alternatives: string[] = [];
+    for (const part of spec.split(/\|\|?/)) {
+      const excluded: string[] = [];
+      const base = part.replace(/(?:!=|<>)\s*(v?\d+(?:\.\d+){0,2})\b/g, (_whole, version: string) => { excluded.push(composerVersion(version)!); return ''; });
+      if (!excluded.length) { const range = composerRange(part); if (!range) return undefined; alternatives.push(range); continue; }
+      if (/!=|<>/.test(base) || excluded.length > 8) return undefined;
+      const range = composerRange(base.trim().replace(/,\s*$/, ''));
+      if (!range) return undefined;
+      let groups = [range];
+      for (const version of excluded) groups = groups.flatMap((group) => [`${group} <${version}`, `${group} >${version}`]);
+      alternatives.push(...groups);
+    }
+    const range = alternatives.join(' || ');
+    return semver.validRange(range) ? range : undefined;
+  }
   const alternatives = spec.split(/\|\|?/).map((part) => {
     const input = part.trim().replace(/,/g, ' ').replace(/(>=|<=|>|<|=|\^|~)\s+/g, '$1');
     // Composer and npm agree on hyphen ranges and wildcard bounds.

@@ -2,6 +2,7 @@ import type { DependencyRef } from '../types';
 import { normalizePythonSpec } from '../versions';
 import { parseRequirement } from './pep508';
 import { scanToml, versionOf, type TomlValue } from './toml';
+import { pythonSources } from './pythonSources';
 
 /** Poetry's own key, not a distribution. */
 const NOT_A_DEPENDENCY = ['python'];
@@ -138,6 +139,8 @@ export function parsePyProject(text: string, options: PyProjectOptions): Depende
       fromRequirements(entry.value, `project.optional-dependencies.${c}`);
     } else if (a === 'dependency-groups' && entry.path.length === 2) {
       fromRequirements(entry.value, `dependency-groups.${b}`);
+    } else if (a === 'tool' && b === 'uv' && c === 'dev-dependencies' && entry.path.length === 3) {
+      fromRequirements(entry.value, 'tool.uv.dev-dependencies');
     } else if (a === 'build-system' && b === 'requires' && entry.path.length === 2) {
       if (options.includeBuildRequires) {
         fromRequirements(entry.value, 'build-system.requires');
@@ -151,5 +154,5 @@ export function parsePyProject(text: string, options: PyProjectOptions): Depende
     }
   }
 
-  return deps;
+  return pythonSources(text, deps, 'pyproject');
 }

@@ -154,9 +154,10 @@ function visualWidth(text: string, tabSize: number): number {
 }
 
 function version(update: DependencyUpdate, ecosystem: Ecosystem): string {
-  const latest = display(update.latestRaw ?? update.latest, ecosystem);
+  const show = (value: string) => update.dep.runtime ? value : display(value, update.dep.ecosystem ?? ecosystem);
+  const latest = show(update.latestRaw ?? update.latest);
   if (update.satisfying) {
-    return `\u2191 ${display(update.satisfying, ecosystem)} \u2192 ${latest}`;
+    return `\u2191 ${show(update.satisfying)} \u2192 ${latest}`;
   }
   if (update.alternatePath) {
     return `\u2191 ${latest} (${majorSuffix(update.alternatePath)})`;

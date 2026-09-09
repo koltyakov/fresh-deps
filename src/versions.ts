@@ -93,13 +93,15 @@ export function computeUpdate(
 ): DependencyUpdate | undefined {
   const { scheme } = opts;
 
-  const current = scheme.baseline(dep.spec);
+  const current = versions.baseline && scheme.isVersion(versions.baseline) ? versions.baseline : dep.resolvedVersion && scheme.isVersion(dep.resolvedVersion)
+    && scheme.satisfies(dep.resolvedVersion, dep.spec, { includePrerelease: true }) ? dep.resolvedVersion : scheme.baseline(dep.spec);
   if (!current) {
     return undefined;
   }
 
   const latest = pickLatest(versions, opts);
-  if (!latest || scheme.compare(latest, current) <= 0) {
+  const revisionChanged = !!dep.revision && !!versions.revision && dep.revision !== versions.revision;
+  if (!latest || scheme.compare(latest, current) < 0 || (scheme.compare(latest, current) === 0 && !revisionChanged)) {
     return undefined;
   }
 
@@ -108,7 +110,7 @@ export function computeUpdate(
     return undefined;
   }
 
-  const inRange = scheme.isRange(dep.spec)
+  const inRange = dep.spec === '@baseline' && !!versions.baseline ? true : scheme.isRange(dep.spec)
     ? scheme.satisfies(latest, dep.spec, { includePrerelease: true })
     : scheme.compare(latest, current) === 0;
 
@@ -116,7 +118,7 @@ export function computeUpdate(
     dep,
     current,
     latest,
-    kind: scheme.classify(current, latest),
+    kind: revisionChanged && scheme.compare(current, latest) === 0 ? 'patch' : scheme.classify(current, latest),
     inRange,
   };
 

@@ -130,6 +130,10 @@ export function parseTerraform(text: string, defaultRegistry = 'registry.terrafo
   const clean = maskComments(text);
   const deps: DependencyRef[] = [];
   for (const terraform of blocks(clean, 'terraform')) {
+    const runtime = /\brequired_version\s*=\s*"([^"${}]+)"/.exec(terraform.body);
+    if (runtime) deps.push({ name: defaultRegistry === 'registry.opentofu.org' ? 'opentofu' : 'terraform',
+      spec: runtime[1], runtime: defaultRegistry === 'registry.opentofu.org' ? 'opentofu' : 'terraform',
+      line: text.slice(0, terraform.start + runtime.index).split('\n').length - 1, section: 'required_version' });
     for (const providers of blocks(terraform.body, 'required_providers', terraform.start)) {
       const entry = /\b([A-Za-z][\w-]*)\s*=\s*/g;
       let match: RegExpExecArray | null;
@@ -157,9 +161,9 @@ export function parseTerraform(text: string, defaultRegistry = 'registry.terrafo
         }
         const parts = source.toLowerCase().split('/');
         const host = parts.length === 3 ? parts.shift() : undefined;
-        if ((host && !['registry.terraform.io', 'registry.opentofu.org'].includes(host)) || parts.length !== 2 || !spec) continue;
+        if ((host && !/^[\w.-]+$/.test(host)) || parts.length !== 2 || !spec) continue;
         const registry = host ?? defaultRegistry;
-        const name = registry === 'registry.opentofu.org' ? `${registry}/${parts.join('/')}` : parts.join('/');
+        const name = registry !== 'registry.terraform.io' ? `${registry}/${parts.join('/')}` : parts.join('/');
         const absolute = providers.start + versionAt;
         deps.push({ name, spec, line: text.slice(0, absolute).split('\n').length - 1, section: 'required_providers',
           ...(local !== parts[1] ? { alias: local } : {}) });
@@ -180,7 +184,7 @@ export function parseTerraform(text: string, defaultRegistry = 'registry.terrafo
       };
       const source = literal('source');
       const version = literal('version');
-      const match = source && /^(?:(registry\.terraform\.io|registry\.opentofu\.org)\/)?([\w-]+\/[\w-]+\/[\w-]+)$/.exec(source.value);
+      const match = source && /^(?:([\w.-]+\.[\w.-]+)\/)?([\w-]+\/[\w-]+\/[\w-]+)$/.exec(source.value);
       if (match && version && !/[$%{}]/.test(version.value)) deps.push({
         name: `module:${match[1] ?? defaultRegistry}/${match[2]}`, spec: version.value,
         alias: tokens[i + 1].value, line: version.line, section: 'modules',

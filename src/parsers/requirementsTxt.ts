@@ -1,6 +1,7 @@
 import type { DependencyRef } from '../types';
 import { normalizePythonSpec } from '../versions';
 import { parseRequirement } from './pep508';
+import { requirementsSource } from './pythonSources';
 
 interface LogicalLine {
   text: string;
@@ -80,5 +81,5 @@ export function parseRequirementsTxt(text: string): DependencyRef[] {
     }
   }
 
-  return deps;
+  return requirementsSource(text, deps);
 }

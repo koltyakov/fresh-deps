@@ -5,13 +5,28 @@ import { parseNugetVersion } from '../nuget';
 export function parseNugetManifest(text: string): DependencyRef[] {
   const source = text.replace(/<!--[\s\S]*?-->/g, (comment) => comment.replace(/[^\n]/g, ' '));
   const deps: DependencyRef[] = [];
+  const properties = new Map<string, string>();
+  const conditional = new Set<string>();
+  for (const group of source.matchAll(/<PropertyGroup\b([^>]*)>([\s\S]*?)<\/PropertyGroup\s*>/gi)) {
+    for (const property of group[2].matchAll(/<([\w.-]+)\b([^>]*)>([^<]*)<\/\1\s*>/g)) {
+      const name = property[1].toLowerCase();
+      if (/\bCondition\s*=/i.test(group[1] + property[2])) conditional.add(name);
+      else properties.set(name, property[3].trim());
+    }
+  }
+  for (const name of conditional) properties.delete(name);
+  const resolve = (raw: string | undefined): string | undefined => {
+    if (!raw) return raw;
+    for (let i = 0; i < 10 && raw.includes('$('); i++) raw = raw.replace(/\$\(([^)]+)\)/g, (whole, key: string) => properties.get(key.toLowerCase()) ?? whole);
+    return raw;
+  };
   const msbuild = /<(PackageReference|PackageVersion)\b([^>]*?)(?:\/\s*>|>([\s\S]*?)<\/\1\s*>)/gi;
 
   for (const match of source.matchAll(msbuild)) {
     const attrs = attributes(match[2]);
     const name = attrs.get('include') ?? attrs.get('update');
     const nestedVersion = match[3]?.match(/<Version\b[^>]*>([^<]+)<\/Version\s*>/i)?.[1];
-    const spec = attrs.get('versionoverride') ?? attrs.get('version') ?? nestedVersion;
+    const spec = resolve(attrs.get('versionoverride') ?? attrs.get('version') ?? nestedVersion);
     add(deps, source, match.index, name, spec, match[1]);
   }
 

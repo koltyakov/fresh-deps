@@ -17,11 +17,12 @@ interface VersionDocument {
   repository?: unknown;
   _npmUser?: { name?: string };
   dist?: { unpackedSize?: number; fileCount?: number };
+  engines?: { node?: string };
 }
 
 interface Packument {
   'dist-tags'?: Record<string, string>;
-  versions?: Record<string, unknown>;
+  versions?: Record<string, VersionDocument>;
 }
 
 /** The full packument, the only place the registry publishes per-version dates. */
@@ -53,7 +54,7 @@ export class NpmClient {
     }
     // The document describing the newest release is already on the wire, so the
     // descriptive fields on it are free - only the publish date is missing.
-    return { latest: body.version, meta: metaOf(body) };
+    return { latest: body.version, meta: metaOf(body), ...(body.engines?.node ? { requirements: { [body.version]: [body.engines.node] } } : {}) };
   }
 
   /** Full lookup: every published version, for finding the newest in-range one. */
@@ -70,6 +71,7 @@ export class NpmClient {
     return {
       ...(body['dist-tags']?.latest ? { latest: body['dist-tags'].latest } : {}),
       all: Object.keys(body.versions ?? {}),
+      requirements: Object.fromEntries(Object.entries(body.versions ?? {}).map(([version, doc]) => [version, [doc.engines?.node ?? '']])),
     };
   }
 

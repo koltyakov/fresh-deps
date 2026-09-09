@@ -1,4 +1,5 @@
 import type { DependencyRef } from '../types';
+import { repositoryUrl } from './helm';
 
 interface Token { kind: 'word' | 'string' | 'punct' | 'newline'; value: string; line: number }
 
@@ -41,12 +42,36 @@ function tokens(text: string): Token[] {
 
 export function parseGemfile(text: string): DependencyRef[] {
   const customGitSources = new Set([...text.matchAll(/\bgit_source\s*\(\s*:([A-Za-z_][A-Za-z0-9_]*)/g)].map((match) => match[1]));
-  for (const line of text.split(/\r?\n/)) {
-    const source = /^\s*source\b\s*(?:\(?\s*)?(?:(["'])(.*?)\1)?/.exec(line);
-    if (source && (!source[2] || !/^https:\/\/rubygems\.org\/?$/i.test(source[2]))) return [];
-    if (/^\s*(?:git|path)\b.*\bdo\s*(?:#.*)?$/.test(line)) return [];
+  const sources = new Map<number, string>();
+  const stack: string[] = [];
+  let source = 'https://rubygems.org';
+  const stream = tokens(text);
+  let pending: string | undefined;
+  for (let i = 0; i < stream.length; i++) {
+    const token = stream[i];
+    if (token.kind === 'word' && ['source', 'git', 'path'].includes(token.value)
+      && (!stream[i - 1] || stream[i - 1].kind === 'newline')) {
+      const literal = stream[i + 1]?.value === '(' ? stream[i + 2] : stream[i + 1];
+      const selected = token.value === 'source' && literal?.kind === 'string' ? repositoryUrl(literal.value) : undefined;
+      const end = stream.findIndex((next, at) => at > i && next.kind === 'newline');
+      const block = stream.slice(i, end < 0 ? undefined : end).some((next) => next.kind === 'word' && next.value === 'do');
+      if (block) pending = selected ?? 'unsupported';
+      else source = selected ?? 'unsupported';
+    }
+    if (token.kind === 'word' && token.value === 'do') { stack.push(source); source = pending ?? source; pending = undefined; }
+    if (token.kind === 'word' && token.value === 'end' && stack.length) source = stack.pop()!;
+    sources.set(token.line, source);
   }
-  return parseRubyDependencies(text, new Set(['gem']), customGitSources);
+  return parseRubyDependencies(text, new Set(['gem']), customGitSources).map((dep) => {
+    const source = sources.get(dep.line) ?? 'https://rubygems.org';
+    return source === 'unsupported' ? { ...dep, skipReason: 'Ruby dependency source is dynamic, Git, or a local path' }
+      : source === 'https://rubygems.org' ? dep : { ...dep, source };
+  });
+}
+
+export function parseGemspec(text: string, source: string | undefined): DependencyRef[] {
+  return parseRubyDependencies(text, new Set(['add_dependency', 'add_runtime_dependency', 'add_development_dependency']), new Set())
+    .map((dep) => source ? { ...dep, source } : { ...dep, skipReason: 'No unambiguous Gemfile source for gemspec dependency' });
 }
 
 function parseRubyDependencies(text: string, calls: Set<string>, customGitSources: Set<string>): DependencyRef[] {

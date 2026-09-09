@@ -20,6 +20,8 @@ export class DetailsResolver {
     update: DependencyUpdate,
     settings: Settings,
   ): Promise<PackageDetails> {
+    if (update.dep.runtime) return {};
+    ecosystem = update.dep.ecosystem ?? ecosystem;
     const versions = versionsOf(update, ecosystem);
     const lookup = lookupFor(ecosystem, fsPath, settings);
     if (!lookup?.fetchDetails) {

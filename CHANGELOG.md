@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.0
+
+- Preserve Python dependency sources from uv, Poetry, Pipfile, and requirements files; report unresolved sources instead of querying a guessed index.
+- Deduplicate concurrent version requests, retain GitHub ETags, support optional GitHub tokens, and honor registry rate-limit reset headers.
+- Add Maven parent/plugin/extension checks, Scala cross-build and platform suffixes, Gradle settings/catalog constraints/wrapper checks, npm overrides/resolutions/package-manager pins, and PEP 723 scripts.
+- Add OCI image and Helm lookups, tag-plus-digest updates, verified GitHub action SHA comments, literal setup matrices/version files, and more setup runtimes.
+- Extend Cargo workspace/sparse registry handling, NuGet project configuration, Composer repositories/stability, Ruby sources/gemspecs, Terraform services/runtime pins, Hex organizations, Swift sources/registries, Conan remotes/revisions/version ordering, Conda channels/pip entries, and Clojure manifests/repositories.
+- Add Bazel local includes/custom registries/compatibility details and vcpkg baseline selections/filesystem/GitHub registries.
+- Add opt-in lockfile baselines, runtime-compatible release hints, and OSV audits for supported public packages.
+- Centralize manifest detection and editor selectors; distinguish skipped or incomplete checks in the editor status.
+
 ## 0.3.0
 
 - Add Ansible Galaxy collection and role hints in requirements YAML, with collection constraints and paginated version lookups.

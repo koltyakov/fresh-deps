@@ -37,9 +37,22 @@ export function parseClojure(text: string): DependencyRef[] {
   const parsed = edn(tokens, 0);
   if (!parsed || parsed[1] !== tokens.length || parsed[0].kind !== '{') return [];
   const deps: DependencyRef[] = [];
+  const repositories = new Map([['central', 'https://repo.maven.apache.org/maven2'], ['clojars', 'https://repo.clojars.org']]);
+  let hasRepositories = false;
+  const readRepositories = (node: Edn) => {
+    if (node.kind !== '{') return false;
+    hasRepositories = true;
+    for (const [name, config] of pairs(node)) {
+      const url = pairs(config).find(([key]) => key.atom?.value === ':url')?.[1].atom;
+      if (name.atom?.kind !== 'string' || !url || url.kind !== 'string' || !/^https:\/\/[^\s${}]+$/.test(url.value)) return false;
+      try { const parsed = new URL(url.value); if (parsed.username || parsed.password) return false; } catch { return false; }
+      repositories.set(name.atom.value, url.value.replace(/\/$/, ''));
+    }
+    return true;
+  };
   const walk = (node: Edn) => {
     for (const [key, value] of pairs(node)) {
-      if (key.atom?.value === ':mvn/repos') return false;
+      if (key.atom?.value === ':mvn/repos') { if (!readRepositories(value)) return false; continue; }
       if ([':deps', ':extra-deps', ':override-deps', ':replace-deps'].includes(key.atom?.value ?? '')) {
         for (const [lib, coordinate] of pairs(value)) {
           const name = lib.atom?.value;
@@ -54,5 +67,25 @@ export function parseClojure(text: string): DependencyRef[] {
     }
     return true;
   };
-  return walk(parsed[0]) ? deps : [];
+  return walk(parsed[0]) ? deps.map((dep) => hasRepositories ? { ...dep, source: [...repositories.values()].join('|') } : dep) : [];
+}
+
+export function parseLeiningen(text: string): DependencyRef[] {
+  const tokens = codeTokens(text, 'clojure');
+  const deps: DependencyRef[] = [];
+  for (let i = 0; i < tokens.length - 2; i++) {
+    if (tokens[i].value !== ':' || !['dependencies', 'managed-dependencies', 'plugins'].includes(tokens[i + 1].value) || tokens[i + 2].value !== '[') continue;
+    const parsed = edn(tokens, i + 2);
+    if (!parsed) continue;
+    for (const dependency of parsed[0].items ?? []) {
+      const [name, version] = dependency.items ?? [];
+      if (dependency.kind !== '[' || !name?.atom || version?.atom?.kind !== 'string' || !mavenScheme.isPinned(version.atom.value)) continue;
+      const coordinate = name.atom.value;
+      if (/^[\w.-]+(?:\/[\w.-]+)?$/.test(coordinate)) deps.push({ name: coordinate.includes('/') ? coordinate.replace('/', ':') : `${coordinate}:${coordinate}`,
+        spec: version.atom.value, line: version.atom.line, section: tokens[i + 1].value });
+    }
+    i = parsed[1] - 1;
+  }
+  // Leiningen repository forms may contain credentials and dynamic expressions.
+  return /:repositories\b/.test(text) ? deps.map((dep) => ({ ...dep, skipReason: 'Leiningen repository configuration requires an explicit source' })) : deps;
 }

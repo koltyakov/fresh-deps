@@ -43,7 +43,9 @@ test('Composer handles exact partial versions, tilde, caret, wildcards and OR co
   assert.equal(composerScheme.satisfies('1.5.0', '>=1.2, <2.0', stable), true);
   assert.equal(composerScheme.satisfies('1.2.9', '1.2.*', stable), true);
   assert.equal(composerScheme.satisfies('2.0.9', '1.0 - 2.0', stable), true);
-  for (const spec of ['dev-main', '^1.0@beta', '1.0 as 2.0', '>=1.0 !=1.1', '*']) {
+  assert.equal(composerScheme.satisfies('1.1.0', '>=1.0 !=1.1', stable), false);
+  assert.equal(composerScheme.satisfies('1.2.0', '>=1.0 !=1.1', stable), true);
+  for (const spec of ['dev-main', '^1.0@beta', '1.0 as 2.0', '*']) {
     assert.equal(composerScheme.baseline(spec), undefined, spec);
   }
   assert.equal(composerVersion('v1.2.3'), '1.2.3');
@@ -64,7 +66,7 @@ test('Composer reads requirements with line anchors and skips platforms and cust
     { name: 'laravel/framework', spec: '^11.0', line: 4, section: 'require' },
     { name: 'phpunit/phpunit', spec: '~10.5.0', line: 7, section: 'require-dev' },
   ]);
-  assert.deepEqual(parseComposerJson('{"repositories":[{"type":"path","url":"../pkg"}],"require":{"vendor/pkg":"^1.0"}}'), []);
+  assert.match(parseComposerJson('{"repositories":[{"type":"path","url":"../pkg"}],"require":{"vendor/pkg":"^1.0"}}')[0].skipReason!, /repository/);
   assert.deepEqual(parseComposerJson('{"require":'), []);
   const update = computeUpdate(parseComposerJson(text)[0], { latest: '12.0.0', all: ['11.0.0', '11.9.0', '12.0.0'] },
     { ...stable, showSatisfyingUpdates: true, scheme: composerScheme });
@@ -101,7 +103,7 @@ test('pubspec parses block and flow declarations and skips non-public sources an
     'dev_dependencies: {test: ^1.24.0}', 'dependency_overrides:', '  http: 1.2.0',
   ].join('\n');
   assert.deepEqual(parsePubspec(text), [
-    { name: 'http', spec: '^1.0.0', line: 2, section: 'dependencies' },
+    { name: 'custom', spec: '^1.0.0', line: 7, section: 'dependencies', source: 'https://example.com' },
     { name: 'public_package', spec: '>=1.0.0 <2.0.0', line: 11, section: 'dependencies' },
     { name: 'test', spec: '^1.24.0', line: 12, section: 'dev_dependencies' },
     { name: 'http', spec: '1.2.0', line: 14, section: 'dependency_overrides' },
@@ -110,7 +112,7 @@ test('pubspec parses block and flow declarations and skips non-public sources an
   assert.deepEqual(parsePubspec('dependencies:\n  test: ^1.0.0\n  test: ^2.0.0'), []);
   assert.deepEqual(parsePubspec('pin: &pin ^1.0.0\ndependencies:\n  http: *pin'), []);
   assert.equal(parsePubspec('dependencies:\n  http: {hosted: {url: https://pub.dev, name: http}, version: ^1.0.0}')[0]?.name, 'http');
-  assert.deepEqual(parsePubspec('dependencies:\n  private: ^1.0.0', 'https://private.example'), []);
+  assert.equal(parsePubspec('dependencies:\n  private: ^1.0.0', 'https://private.example')[0]?.source, 'https://private.example');
   assert.equal(parsePubspec('dependencies:\n  http: {hosted: https://pub.dev, version: ^1.0.0}', 'https://private.example')[0]?.name, 'http');
 });
 
@@ -122,6 +124,7 @@ test('pnpm reads default and named catalogs including scoped aliases', () => {
   ].join('\n')), [
     { name: 'react', spec: '^18.0.0', line: 2, section: 'catalog' },
     { name: '@scope/real', spec: '^2.0.0', alias: 'alias', line: 4, section: 'catalog' },
+    { name: 'ignored', spec: '^1.0.0', line: 9, section: 'overrides' },
     { name: '@types/node', spec: '>=20.0.0 <21.0.0', line: 7, section: 'catalogs.modern' },
     { name: 'react', spec: '^17.0.0', line: 8, section: 'catalogs.legacy' },
   ]);
@@ -144,6 +147,7 @@ test('Gradle catalogs resolve version refs per declaration, coordinates, and plu
   assert.deepEqual(deps.map((dep) => [dep.name, dep.spec, dep.line, dep.section]), [
     ['org.example:core', '2.0.0', 4, 'libraries'], ['org.example:other', '1.0.0', 5, 'libraries'],
     ['org.example:short', '1.2.0', 6, 'libraries'], ['org.example:nested', '2.0.0', 7, 'libraries'],
+    ['org.example:rich', '[1.0,2.0)', 9, 'libraries'],
     ['org.jetbrains.kotlin.jvm:org.jetbrains.kotlin.jvm.gradle.plugin', '2.0.0', 12, 'plugins'],
   ]);
 });

@@ -1,6 +1,7 @@
 import * as semver from 'semver';
-import { conanScheme } from './numericVersion';
+import { numericScheme } from './numericVersion';
 import type { VersionScheme } from './schemes';
+const conanScheme = numericScheme(false);
 
 export function vcpkgVersion(value: string): { version: string; revision: bigint; kind: 'numeric' | 'date' | 'semver' } | undefined {
   const match = /^([^#]+)(?:#(0|[1-9]\d*))?$/.exec(value);

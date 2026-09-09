@@ -67,6 +67,7 @@ function stripFieldPrefix(entry: TomlEntry): TomlEntry {
 function dependencyOf(key: string, value: TomlValue, line: number, section: string): DependencyRef | undefined {
   let name = key;
   let version: string | undefined;
+  let source: string | undefined;
 
   if (value.kind === 'string') {
     version = value.text;
@@ -74,9 +75,11 @@ function dependencyOf(key: string, value: TomlValue, line: number, section: stri
     const fields = new Map(value.entries.filter((entry) => entry.path.length === 1).map((entry) => [entry.path[0], entry.value]));
     // These sources do not resolve through crates.io. `workspace = true` has no
     // local requirement to measure, and therefore naturally has no version field.
-    if (fields.has('path') || fields.has('git') || fields.has('registry')) {
+    if (fields.has('path') || fields.has('git')) {
       return undefined;
     }
+    const registry = fields.get('registry');
+    if (registry?.kind === 'string') source = `cargo:${registry.text}`;
     const versionValue = fields.get('version');
     if (versionValue?.kind !== 'string') {
       return undefined;
@@ -97,6 +100,7 @@ function dependencyOf(key: string, value: TomlValue, line: number, section: stri
     spec,
     line,
     section,
+    ...(source ? { source } : {}),
     ...(name !== key ? { alias: key } : {}),
   };
 }

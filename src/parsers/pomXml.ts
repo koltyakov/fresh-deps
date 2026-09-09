@@ -94,8 +94,14 @@ export function parsePomXml(text: string): DependencyRef[] {
   };
 
   const deps: DependencyRef[] = [];
-  for (const dependency of descendants(project, 'dependency')) {
-    const groupId = value(child(dependency, 'groupId'));
+  const coordinates = [
+    ...descendants(project, 'dependency'),
+    ...(parent ? [parent] : []),
+    ...descendants(project, 'plugin').filter((node) => ['plugins', 'reportPlugins'].includes(node.parent?.name ?? '')),
+    ...descendants(project, 'extension').filter((node) => node.parent?.name === 'extensions'),
+  ];
+  for (const dependency of coordinates) {
+    const groupId = value(child(dependency, 'groupId')) ?? (dependency.name === 'plugin' ? 'org.apache.maven.plugins' : undefined);
     const artifactId = value(child(dependency, 'artifactId'));
     const versionNode = child(dependency, 'version');
     const rawVersion = value(versionNode);
@@ -108,7 +114,7 @@ export function parsePomXml(text: string): DependencyRef[] {
       name: `${resolvedGroup}:${resolvedArtifact}`,
       spec,
       line: versionNode.line,
-      section: sectionOf(dependency),
+      section: dependency.name === 'dependency' ? sectionOf(dependency) : dependency.name,
     });
   }
   return deps;

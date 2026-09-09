@@ -11,9 +11,11 @@ export function parseSwift(text: string): DependencyRef[] {
     if (end < 0) continue;
     const args = tokens.slice(i + 3, end);
     i = end;
-    const urlAt = args.findIndex((token) => token.value === 'url');
+    const urlAt = args.findIndex((token) => token.value === 'url' || token.value === 'id');
     if (urlAt < 0 || args[urlAt + 1]?.value !== ':' || args[urlAt + 2]?.kind !== 'string' || args[urlAt + 3]?.value !== ',') continue;
-    const repo = /^https:\/\/github\.com\/([\w-]+\/[\w.-]+?)(?:\.git)?\/?$/.exec(args[urlAt + 2].value);
+    const registry = args[urlAt].value === 'id';
+    const repo = registry ? /^([\w-]+\.[\w-]+)$/.exec(args[urlAt + 2].value)
+      : /^https:\/\/(?:github\.com|gitlab\.com|bitbucket\.org)\/([\w-]+(?:\/[\w.-]+)+?)(?:\.git)?\/?$/.exec(args[urlAt + 2].value);
     if (!repo) continue;
     const requirement = args.slice(urlAt + 4);
     if (requirement.at(-1)?.value === ',') requirement.pop();
@@ -44,7 +46,8 @@ export function parseSwift(text: string): DependencyRef[] {
         raw = `${from.value}${op}${to.value}`; line = from.line;
       }
     }
-    if (spec) deps.push({ name: repo[1], spec, specRaw: raw, line, section: 'dependencies' });
+    const source = registry ? 'swift-registry' : new URL(args[urlAt + 2].value).hostname;
+    if (spec) deps.push({ name: repo[1].replace(/\.git$/, ''), spec, specRaw: raw, line, section: 'dependencies', ...(source !== 'github.com' ? { source } : {}) });
   }
   return deps;
 }

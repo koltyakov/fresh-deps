@@ -25,6 +25,21 @@ export class CondaClient {
   constructor(private readonly timeoutMs: number, readonly subdir: string) {}
   async fetchVersions(name: string, channels: string): Promise<RegistryVersions> {
     for (const channel of channels.split('|')) {
+      if (channel === 'defaults' || channel.startsWith('https://') || channel.includes('/label/')) {
+        const bases = channel === 'defaults' ? ['https://repo.anaconda.com/pkgs/main', 'https://repo.anaconda.com/pkgs/r']
+          : [channel.startsWith('https://') ? channel.replace(/\/$/, '') : `https://conda.anaconda.org/${channel}`];
+        for (const base of bases) {
+          const all: string[] = [];
+          for (const subdir of [this.subdir, 'noarch']) {
+            const doc = await fetchJson<{ packages?: Record<string, { name: string; version: string }>; 'packages.conda'?: Record<string, { name: string; version: string }> }>(`${base}/${subdir}/repodata.json`, { timeoutMs: this.timeoutMs });
+            for (const pkg of [...Object.values(doc?.packages ?? {}), ...Object.values(doc?.['packages.conda'] ?? {})]) {
+              if (pkg.name === name && condaScheme.isVersion(pkg.version)) all.push(pkg.version);
+            }
+          }
+          if (all.length) return { all: [...new Set(all)], latest: condaScheme.max(all, { includePrerelease: false }) };
+        }
+        continue;
+      }
       const doc = await fetchJson<CondaPackage>(`https://api.anaconda.org/package/${encodeURIComponent(channel)}/${encodeURIComponent(name)}`,
         { timeoutMs: this.timeoutMs });
       if (!doc) continue;

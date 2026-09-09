@@ -55,7 +55,6 @@ roles:
 
 test('Ansible skips custom sources, dynamic values, aliases and unrelated YAML', () => {
   for (const entry of [
-    '{name: private.pkg, version: 1.0.0, source: https://private.example}',
     '{name: private.pkg, version: 1.0.0, source: null}',
     '{name: private.pkg, version: 1.0.0, type: git}',
     '{name: https://github.com/owner/repo, version: 1.0.0}',
@@ -65,6 +64,7 @@ test('Ansible skips custom sources, dynamic values, aliases and unrelated YAML',
     '{name: ansible.posix, version: "!=2.0.0"}',
     '{name: ansible.posix, version: 1.0.0, <<: {source: https://private.example}}',
   ]) assert.deepEqual(parseAnsible(`collections: [${entry}]`), [], entry);
+  assert.equal(parseAnsible('collections: [{name: private.pkg, version: 1.0.0, source: https://private.example}]')[0]?.source, 'https://private.example');
   assert.deepEqual(parseAnsible('roles: [{src: https://github.com/a/b, version: 1.0.0}, {name: a.b, scm: git, version: 1.0.0}]'), []);
   assert.deepEqual(parseAnsible('base: &pin 1.0.0\ncollections: [{name: ansible.posix, version: *pin}]'), []);
   assert.deepEqual(parseAnsible('collections: [\n'), []);
@@ -195,11 +195,11 @@ test('vcpkg parses minimums, feature dependencies and overrides with port revisi
   });
   const deps = parseVcpkg(text);
   assert.deepEqual(deps.map(({ name, spec, section }) => [name, spec, section]), [
-    ['zlib', '1.2.13#2', 'overrides'], ['fmt', '>=10.0.0#1', 'dependencies'], ['catch2', '>=3.0.0', 'features'],
+    ['zlib', '1.2.13#2', 'overrides'], ['bare', '@baseline', 'dependencies'], ['fmt', '>=10.0.0#1', 'dependencies'], ['catch2', '>=3.0.0', 'features'],
   ]);
   for (const dep of deps) {
     assert.equal(dep.source, baseline);
-    assert.ok(text.split('\n')[dep.line].includes(dep.specRaw!.split('#')[0]));
+    assert.ok(text.split('\n')[dep.line].includes(dep.specRaw?.split('#')[0] ?? dep.name));
   }
   assert.equal(deps[0].vcpkgVersionField, 'version');
 });

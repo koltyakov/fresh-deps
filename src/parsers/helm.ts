@@ -21,7 +21,9 @@ export function parseHelm(text: string): DependencyRef[] {
     const name = yamlString(entry.get('name', true));
     const node = entry.get('version', true);
     const spec = yamlString(node);
-    const source = repositoryUrl(yamlString(entry.get('repository', true)) ?? '');
+    const rawSource = yamlString(entry.get('repository', true)) ?? '';
+    const source = rawSource.startsWith('oci://')
+      ? repositoryUrl(rawSource.replace(/^oci:/, 'https:'))?.replace(/^https:/, 'oci:') : repositoryUrl(rawSource);
     const alias = yamlString(entry.get('alias', true));
     return name && /^[\w.-]+$/.test(name) && spec && semverScheme.baseline(spec) && source
       ? [{ name, spec, source, line: doc.line(node), section: 'dependencies', ...(alias ? { alias } : {}) }] : [];

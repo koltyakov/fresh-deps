@@ -16,7 +16,7 @@ export function buildAuditHover(audit: DependencyAudit): vscode.MarkdownString {
     md.appendText(message);
     return md;
   }
-  md.appendText(`Checked ${audit.baseline ? 'range baseline' : 'declared version'} ${audit.version}. This is not an installed-dependency or transitive audit.`);
+  md.appendText(`Checked ${audit.dep.resolvedVersion === audit.version ? 'lockfile version' : audit.baseline ? 'range baseline' : 'declared version'} ${audit.version}. This is not an installed-dependency or transitive audit.`);
   md.appendMarkdown('\n\n');
   if (!audit.result.advisories.length) md.appendText('No advisories reported for the checked version.');
   for (const advisory of audit.result.advisories) {
@@ -50,6 +50,7 @@ export function buildHover(
 ): vscode.MarkdownString {
   const md = new vscode.MarkdownString();
   md.supportThemeIcons = true;
+  ecosystem = update.dep.ecosystem ?? ecosystem;
 
   const name = update.alternatePath ?? update.dep.name;
   const meta = { ...update.meta, ...details.meta };
@@ -58,24 +59,25 @@ export function buildHover(
     md.appendMarkdown(`${escapeMarkdown(meta.description)}\n\n`);
   }
 
-  const currentDisplay = display(update.current, ecosystem);
+  const displayVersion = (version: string) => update.dep.runtime ? version : display(version, ecosystem);
+  const currentDisplay = displayVersion(update.current);
   const currentDate = publishedOn(details.currentPublishedAt);
   const latestDate = publishedOn(details.latestPublishedAt ?? meta.latestPublishedAt);
 
   md.appendMarkdown(`| | |\n|---|---|\n`);
   // A pinned declaration already spells out the version in use, so the date goes
   // on that row rather than repeating the same number twice.
-  const declared = update.dep.specRaw ?? update.dep.spec;
+  const declared = update.dep.spec === '@baseline' ? 'registry baseline' : update.dep.specRaw ?? update.dep.spec;
   const declaredIsCurrent = declared.trim() === currentDisplay;
   md.appendMarkdown(`| Declared | ${row(declared, declaredIsCurrent ? currentDate : undefined)} |\n`);
   if (!declaredIsCurrent) {
     md.appendMarkdown(`| Current | ${row(currentDisplay, currentDate)} |\n`);
   }
   md.appendMarkdown(
-    `| Latest | ${row(display(update.latestRaw ?? update.latest, ecosystem), latestDate)} |\n`,
+    `| Latest | ${row(displayVersion(update.latestRaw ?? update.latest), latestDate)} |\n`,
   );
   if (update.satisfying) {
-    md.appendMarkdown(`| Newest in range | \`${display(update.satisfying, ecosystem)}\` |\n`);
+    md.appendMarkdown(`| Newest in range | \`${displayVersion(update.satisfying)}\` |\n`);
   } else if (ecosystem === 'bazel') {
     md.appendMarkdown('| Module | a newer registry version is available; compatibility levels and module resolution are not evaluated |\n');
   } else if (ecosystem === 'githubActions' || ecosystem === 'docker') {
@@ -85,6 +87,10 @@ export function buildHover(
     const constraint = ecosystem === 'python' ? 'specifier' : 'range';
     md.appendMarkdown(`| In range | no - the ${constraint} needs to be widened |\n`);
   }
+  if (update.dep.resolvedVersion === update.current) md.appendMarkdown('| Baseline | resolved from lockfile |\n');
+  if (update.compatible) md.appendMarkdown(`| Runtime-compatible release | ${row(update.compatible, undefined)} |\n`);
+  if (meta.runtimeRequirement) md.appendMarkdown(`| Latest runtime requirement | ${escapeMarkdown(meta.runtimeRequirement)} |\n`);
+  if (meta.compatibilityLevel !== undefined) md.appendMarkdown(`| Latest module compatibility level | ${meta.compatibilityLevel} |\n`);
   if (meta.license) {
     md.appendMarkdown(`| License | ${escapeMarkdown(meta.license)} |\n`);
   }
@@ -113,7 +119,7 @@ export function buildHover(
   }
 
   if (ecosystem === 'vcpkg') {
-    md.appendMarkdown('\nHints compare explicit declarations with the current builtin registry. Updating may require refreshing builtin-baseline and the local vcpkg checkout. Baseline selections, triplets and transitive resolution are not evaluated.\n');
+    md.appendMarkdown('\nHints compare explicit declarations or selected baseline versions with the current registry. Updating may require refreshing builtin-baseline or a custom registry baseline and the local checkout. Triplets and transitive resolution are not evaluated.\n');
   }
 
   md.appendMarkdown(`\n${links(update, ecosystem, meta.homepage, meta.repository)}`);
@@ -131,6 +137,22 @@ function links(
   repository: string | undefined,
 ): string {
   const parts: string[] = [];
+  if (update.dep.runtime) {
+    const downloads = { go: 'https://go.dev/dl/', node: 'https://nodejs.org/en/download', python: 'https://www.python.org/downloads/',
+      gradle: 'https://gradle.org/releases/', terraform: 'https://releases.hashicorp.com/terraform/', opentofu: 'https://github.com/opentofu/opentofu/releases', dotnet: 'https://dotnet.microsoft.com/download/dotnet' };
+    return `[Runtime downloads](${downloads[update.dep.runtime]})`;
+  }
+  if (update.dep.source && ['python', 'rust', 'dotnet', 'php', 'dart', 'ruby', 'elixir', 'clojure', 'scala'].includes(ecosystem)) {
+    const sources = update.dep.source.split('|').flatMap((source) => {
+      try {
+        const url = new URL(source.replace(/^sparse\+/, ''));
+        if (!['https:', 'http:'].includes(url.protocol)) return [];
+        url.username = ''; url.password = '';
+        return [`[Package source](<${url.href.replace(/[<>]/g, encodeURIComponent)}>)`];
+      } catch { return []; }
+    });
+    if (sources.length) return sources.join(' · ');
+  }
   if (ecosystem === 'ansible') {
     const [namespace, name] = update.dep.name.split('.');
     parts.push(`[Ansible Galaxy](https://galaxy.ansible.com/ui/${update.dep.section === 'roles' ? 'standalone/roles' : 'repo/published'}/${namespace}/${name}/)`);
@@ -139,11 +161,13 @@ function links(
   } else if (ecosystem === 'vcpkg') {
     parts.push(`[vcpkg](https://vcpkg.io/en/package/${encodeURIComponent(update.dep.name)})`);
   } else if (ecosystem === 'docker') {
-    parts.push(`[Docker Hub](https://hub.docker.com/r/${update.dep.name}/tags)`);
+    parts.push(update.dep.source ? `[Container registry](https://${update.dep.source}/)` : `[Docker Hub](https://hub.docker.com/r/${update.dep.name}/tags)`);
   } else if (ecosystem === 'helm') {
-    parts.push(`[Chart repository](<${update.dep.source}/index.yaml>)`);
+    parts.push(update.dep.source?.startsWith('oci://') ? `[OCI registry](<${update.dep.source.replace(/^oci:/, 'https:')}>)`
+      : `[Chart repository](<${update.dep.source}/index.yaml>)`);
   } else if (ecosystem === 'swift') {
-    parts.push(`[GitHub](https://github.com/${update.dep.name}/tree/${encodeURIComponent(update.latest)})`);
+    parts.push(update.dep.source ? `[Package source](<${update.dep.source.startsWith('https:') ? update.dep.source : `https://${update.dep.source}/${update.dep.name}`}>)`
+      : `[GitHub](https://github.com/${update.dep.name}/tree/${encodeURIComponent(update.latest)})`);
   } else if (ecosystem === 'conan') {
     parts.push(`[Conan Center](https://conan.io/center/recipes/${encodeURIComponent(update.dep.name)})`);
   } else if (ecosystem === 'conda') {
@@ -191,9 +215,10 @@ function links(
   } else if (ecosystem === 'ruby') {
     parts.push(`[RubyGems](https://rubygems.org/gems/${encodeURIComponent(update.dep.name)}/versions/${encodeURIComponent(update.latest)})`);
   } else if (ecosystem === 'terraform') {
-    const tofu = update.dep.name.startsWith('registry.opentofu.org/');
-    const name = tofu ? update.dep.name.slice('registry.opentofu.org/'.length) : update.dep.name;
-    const registry = tofu ? 'registry.opentofu.org' : 'registry.terraform.io';
+    const address = update.dep.name.split('/');
+    const registry = address.length === 3 ? address.shift()! : 'registry.terraform.io';
+    const tofu = registry === 'registry.opentofu.org';
+    const name = address.join('/');
     parts.push(`[${tofu ? 'OpenTofu' : 'Terraform'} Registry](https://${registry}/providers/${name}/${encodeURIComponent(update.latest)}/docs)`);
   } else if (ecosystem === 'elixir') {
     parts.push(`[Hex](https://hex.pm/packages/${encodeURIComponent(update.dep.name)}/${encodeURIComponent(update.latest)})`);

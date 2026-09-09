@@ -14,6 +14,19 @@ export interface DependencyRef {
   specRaw?: string;
   /** Explicit registry or channel selected by the manifest. */
   source?: string;
+  /** A declaration routed through another ecosystem, such as Conda's pip entries. */
+  ecosystem?: Ecosystem;
+  /** Source or syntax cannot be resolved without guessing. Never fetch this reference. */
+  skipReason?: string;
+  /** A uniquely resolved version read from a lockfile. */
+  resolvedVersion?: string;
+  revision?: string;
+  variants?: string[];
+  minimumStability?: 'dev' | 'alpha' | 'beta' | 'rc' | 'stable';
+  preferStable?: boolean;
+  runtime?: 'node' | 'python' | 'go' | 'terraform' | 'opentofu' | 'gradle' | 'dotnet';
+  runtimeVersion?: string;
+  versionScheme?: VersionScheme;
   /** An explicit vcpkg override must retain its declared versioning scheme. */
   vcpkgVersionField?: 'version' | 'version-semver' | 'version-date';
   /** Declarations such as SDK roll-forward ranges and Ansible role tags use semver. */
@@ -32,9 +45,7 @@ export interface DependencyRef {
 }
 
 /**
- * Descriptive detail about a package. Every field is optional and every one of
- * them rides along on a response the version lookup already makes, so gathering
- * them costs no extra request.
+ * Registry metadata, optionally extended by a lazy hover-detail lookup.
  */
 export interface PackageMeta {
   description?: string;
@@ -50,9 +61,13 @@ export interface PackageMeta {
   fileCount?: number;
   /** When the latest version was published, ISO 8601. */
   latestPublishedAt?: string;
+  runtimeRequirement?: string;
+  compatibilityLevel?: number;
 }
 
 export interface RegistryVersions {
+  baseline?: string;
+  revision?: string;
   /** Version tagged as latest by the registry, normalised for comparison. */
   latest?: string;
   /** Version exactly as the registry spells it, for display (Go `+incompatible`). */
@@ -64,6 +79,8 @@ export interface RegistryVersions {
   path?: string;
   /** Whatever the lookup happened to learn about the package along the way. */
   meta?: PackageMeta;
+  /** Runtime requirements keyed by release; absent metadata means unknown compatibility. */
+  requirements?: Record<string, string[]>;
   error?: string;
 }
 
@@ -104,6 +121,7 @@ export interface DependencyUpdate {
   /** Import path the update lives under, when the package moved (Go major versions). */
   alternatePath?: string;
   meta?: PackageMeta;
+  compatible?: string;
 }
 
 export interface ResolveOptions {

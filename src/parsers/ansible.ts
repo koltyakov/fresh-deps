@@ -2,6 +2,7 @@ import { isMap, isSeq, LineCounter, parseDocument } from 'yaml';
 import { ansibleScheme, semverScheme } from '../schemes';
 import type { DependencyRef } from '../types';
 import { yamlString } from './yaml';
+import { repositoryUrl } from './helm';
 
 export function parseAnsible(text: string): DependencyRef[] {
   const counter = new LineCounter();
@@ -21,12 +22,14 @@ export function parseAnsible(text: string): DependencyRef[] {
       if (!name || !/^[A-Za-z0-9_][A-Za-z0-9_-]*\.[A-Za-z0-9_][A-Za-z0-9_-]*$/.test(name) || !spec) continue;
       if (section === 'collections') {
         const source = entry.get('source', true);
-        if (source !== undefined && !/^https:\/\/galaxy\.ansible\.com\/?$/.test(yamlString(source) ?? '')) continue;
+        if (source !== undefined && !repositoryUrl(yamlString(source) ?? '')) continue;
         const type = entry.get('type', true);
         if (type !== undefined && yamlString(type) !== 'galaxy') continue;
         if (!ansibleScheme.baseline(spec)) continue;
       } else if (!semverScheme.isVersion(spec) || entry.has('source')) continue;
       deps.push({ name, spec, section, ...(section === 'roles' ? { semver: true } : {}),
+        ...(section === 'collections' && entry.has('source') && !/^https:\/\/galaxy\.ansible\.com\/?$/.test(yamlString(entry.get('source', true)) ?? '')
+          ? { source: repositoryUrl(yamlString(entry.get('source', true))!) } : {}),
         line: counter.linePos((node as { range: number[] }).range[0]).line - 1 });
     }
   }

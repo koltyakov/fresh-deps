@@ -1,6 +1,7 @@
 import * as semver from 'semver';
 import { fetchJson } from '../http';
 import type { PackageMeta, RegistryVersions } from '../types';
+import { goEnv } from '../goenv';
 
 const DEFAULT_PROXY = 'https://proxy.golang.org';
 /** How far past the current major to look before giving up. */
@@ -111,9 +112,9 @@ export class GoClient {
   }
 }
 
-function proxyExclusion(modulePath: string): string | undefined {
-  const source = process.env.GONOPROXY ? 'GONOPROXY' : 'GOPRIVATE';
-  if (matchesPrefixPatterns(process.env[source] ?? '', modulePath)) {
+export function proxyExclusion(modulePath: string): string | undefined {
+  const source = goEnv('GONOPROXY') ? 'GONOPROXY' : 'GOPRIVATE';
+  if (matchesPrefixPatterns(goEnv(source) ?? '', modulePath)) {
     return `skipped: module excluded from proxy requests by ${source}`;
   }
   return undefined;
@@ -228,7 +229,7 @@ export function majorLayout(modulePath: string): MajorLayout {
 
 /** Picks the first HTTP proxy out of GOPROXY, honouring `off`. */
 export function resolveProxy(override?: string): string | undefined {
-  const raw = (override || process.env.GOPROXY || DEFAULT_PROXY).trim();
+  const raw = (override || goEnv('GOPROXY') || DEFAULT_PROXY).trim();
   if (raw === '' ) {
     return DEFAULT_PROXY;
   }

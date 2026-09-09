@@ -1,4 +1,7 @@
 import * as semver from 'semver';
+import { makeAnsibleScheme } from './ansible';
+import { bazelScheme } from './bazel';
+import { vcpkgScheme } from './vcpkg';
 import * as pep440 from './pep440';
 import { nugetScheme } from './nuget';
 import * as mavenVersion from './mavenVersion';
@@ -230,7 +233,12 @@ export const mavenScheme: VersionScheme = {
   classify: mavenVersion.classify,
 };
 
+export const ansibleScheme = makeAnsibleScheme(semverScheme);
+
 export function schemeFor(ecosystem: Ecosystem): VersionScheme {
+  if (ecosystem === 'ansible') return ansibleScheme;
+  if (ecosystem === 'bazel') return bazelScheme;
+  if (ecosystem === 'vcpkg') return vcpkgScheme;
   if (ecosystem === 'docker') return dockerScheme;
   if (ecosystem === 'conan') return conanScheme;
   if (ecosystem === 'conda') return condaScheme;

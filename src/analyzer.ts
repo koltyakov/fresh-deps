@@ -1,4 +1,11 @@
 import * as path from 'path';
+import { existsSync } from 'fs';
+import { parseAnsible } from './parsers/ansible';
+import { parseBazel } from './parsers/bazel';
+import { parseVcpkg } from './parsers/vcpkg';
+import { AnsibleClient } from './registries/ansible';
+import { BazelClient } from './registries/bazel';
+import { VcpkgClient } from './registries/vcpkg';
 import { parseDockerfile, parseCompose } from './parsers/docker';
 import { parseHelm } from './parsers/helm';
 import { parseSwift } from './parsers/swift';
@@ -38,7 +45,7 @@ import { parsePyProject } from './parsers/pyproject';
 import { parseRequirementsTxt } from './parsers/requirementsTxt';
 import { parseGemfile } from './parsers/gemfile';
 import { parseMixExs } from './parsers/mixExs';
-import { parseTerraform } from './parsers/terraform';
+import { parseTerraform, parseTflint } from './parsers/terraform';
 import { CratesClient } from './registries/crates';
 import { GoClient } from './registries/go';
 import { NpmClient } from './registries/npm';
@@ -86,6 +93,7 @@ export interface AnalyzeResult {
 
 /** Which manifest a file is, since Python spreads its dependencies over several. */
 export type ManifestKind =
+  | 'ansible' | 'bazel' | 'vcpkg'
   | 'dockerfile' | 'compose' | 'helm' | 'swift' | 'conan-txt' | 'conan-py' | 'sbt' | 'conda' | 'clojure'
   | 'dotnet-tools' | 'dotnet-sdk' | 'yarn-catalog'
   | 'package.json'
@@ -105,7 +113,8 @@ export type ManifestKind =
   | 'nuget'
   | 'Gemfile'
   | 'mix.exs'
-  | 'terraform';
+  | 'terraform'
+  | 'tflint';
 
 interface Manifest {
   ecosystem: Ecosystem;
@@ -131,6 +140,9 @@ function isRequirementsFile(fsPath: string): boolean {
 
 export function manifestOf(fsPath: string): Manifest | undefined {
   const name = path.basename(fsPath);
+  if (/^requirements\.ya?ml$/.test(name)) return { ecosystem: 'ansible', kind: 'ansible' };
+  if (name === 'MODULE.bazel') return { ecosystem: 'bazel', kind: 'bazel' };
+  if (name === 'vcpkg.json') return { ecosystem: 'vcpkg', kind: 'vcpkg' };
   if (/^(?:Dockerfile|Containerfile)(?:[._-][\w.-]+)?$/.test(name) || /\.(?:Dockerfile|Containerfile)$/.test(name)) return { ecosystem: 'docker', kind: 'dockerfile' };
   if (/^(?:docker-)?compose(?:[._-][\w.-]+)?\.ya?ml$/.test(name)) return { ecosystem: 'docker', kind: 'compose' };
   if (name === 'Chart.yaml') return { ecosystem: 'helm', kind: 'helm' };
@@ -152,6 +164,7 @@ export function manifestOf(fsPath: string): Manifest | undefined {
   if (name === 'pnpm-workspace.yaml') return { ecosystem: 'npm', kind: 'pnpm-workspace.yaml' };
   if (name === 'Gemfile') return { ecosystem: 'ruby', kind: 'Gemfile' };
   if (name === 'mix.exs') return { ecosystem: 'elixir', kind: 'mix.exs' };
+  if (name === '.tflint.hcl') return { ecosystem: 'terraform', kind: 'tflint' };
   if (name.endsWith('.tf') || name.endsWith('.tofu')) return { ecosystem: 'terraform', kind: 'terraform' };
   if (name.endsWith('.versions.toml')) return { ecosystem: 'gradle', kind: 'gradle-catalog' };
   if (name === 'package.json') {
@@ -281,6 +294,9 @@ function enabledFor(ecosystem: Ecosystem, settings: Settings): boolean {
 function parseManifest(kind: ManifestKind, request: AnalyzeRequest): DependencyRef[] {
   const { settings, text } = request;
   switch (kind) {
+    case 'ansible': return parseAnsible(text);
+    case 'bazel': return parseBazel(text);
+    case 'vcpkg': return existsSync(path.join(path.dirname(request.fsPath), 'vcpkg-configuration.json')) ? [] : parseVcpkg(text);
     case 'dockerfile': return parseDockerfile(text);
     case 'compose': return parseCompose(text);
     case 'helm': return parseHelm(text);
@@ -318,6 +334,7 @@ function parseManifest(kind: ManifestKind, request: AnalyzeRequest): DependencyR
       return parseNugetManifest(text);
     case 'Gemfile': return parseGemfile(text);
     case 'mix.exs': return parseMixExs(text);
+    case 'tflint': return parseTflint(text);
     case 'terraform': return parseTerraform(text, settings.terraform.defaultRegistry
       || (request.fsPath.endsWith('.tofu') ? 'registry.opentofu.org' : 'registry.terraform.io'));
   }
@@ -357,6 +374,20 @@ export interface PackageDetails {
  */
 export function lookupFor(ecosystem: Ecosystem, fsPath: string, settings: Settings): Lookup | undefined {
   switch (ecosystem) {
+    case 'ansible': {
+      const client = new AnsibleClient(settings.requestTimeoutMs);
+      return { key: (dep) => `ansible|galaxy.ansible.com|${dep.section}|${dep.name}`,
+        fetch: (dep) => client.fetchVersions(dep.name, dep.section === 'roles') };
+    }
+    case 'bazel': {
+      const client = new BazelClient(settings.requestTimeoutMs);
+      return { key: (dep) => `bazel|bcr.bazel.build|${dep.name}`, fetch: (dep) => client.fetchVersions(dep.name) };
+    }
+    case 'vcpkg': {
+      const client = new VcpkgClient(settings.requestTimeoutMs);
+      return { key: (dep) => `vcpkg|microsoft/vcpkg|${dep.name}|${dep.spec}|${dep.source}|${dep.vcpkgVersionField ?? ''}`,
+        fetch: (dep) => client.fetchVersions(dep.name, dep.spec, dep.vcpkgVersionField) };
+    }
     case 'docker': {
       const client = new DockerClient(settings.requestTimeoutMs);
       return { key: (dep) => `docker|hub.docker.com|${dep.name}|${dockerTag(dep.spec)?.style}`,

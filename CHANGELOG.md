@@ -2,18 +2,18 @@
 
 ## 0.3.0
 
-- Docker Hub image hints in Dockerfiles and Compose, preserving tag precision and image variants.
-- Helm chart dependencies, GitHub-hosted Swift packages, Conan Center recipes, sbt Maven coordinates, Conda channels, and Clojure Maven dependencies.
-- Terraform/OpenTofu registry module hints, .NET tool pins and SDK roll-forward hints, and Yarn catalogs.
-- Per-ecosystem settings, registry links, cache keys, and manifest-specific comment markers for the new manifests.
-
-- Runtime hints for GitHub Actions `setup-node`, `setup-python`, and `setup-go`, preserving version precision.
-- Update hints for Composer, Dart/Flutter, Ruby, Elixir, and Terraform/OpenTofu using their public registries and native version constraints.
-- Gradle dependency and plugin hints in version catalogs and build scripts, with shared version references and configurable Maven repositories.
-- pnpm catalog hints in `pnpm-workspace.yaml`, using existing npm registry settings and audits.
-- Deno hints for npm and JSR imports in configs and import maps, including scopes and package subpaths.
-- GitHub Actions hints for version-tagged actions and reusable workflows, preserving tag precision.
-- Separate Deno and GitHub Actions enable settings, registry links in hovers, and manifest-specific comment markers.
+- Add Ansible Galaxy collection and role hints in requirements YAML, with collection constraints and paginated version lookups.
+- Add Bazel Central Registry hints for literal `bazel_dep` declarations in `MODULE.bazel`, with relaxed version ordering, override handling, and yanked-release filtering.
+- Add C/C++ vcpkg hints for explicit minimums and overrides in `vcpkg.json`, including port revisions and version-scheme-aware comparisons.
+- Docker Hub image hints in Dockerfiles, Containerfiles, and Compose, preserving tag precision and image variants. Recognizes hyphen- and underscore-suffixed Compose files.
+- Dependency hints for Composer, Dart/Flutter, Ruby, Elixir, Helm, GitHub-hosted Swift packages, Conan Center, sbt, Conda, and Clojure.
+- Terraform/OpenTofu provider and registry module hints, plus TFLint plugin hints from GitHub releases using the Terraform enable setting.
+- .NET tool pins and SDK roll-forward hints.
+- Gradle dependency and plugin hints in catalogs and build scripts, with shared version references and configurable Maven repositories.
+- Yarn and pnpm catalog hints, with pnpm using existing npm registry settings and audits.
+- Deno npm and JSR hints in configs and import maps, including scopes and package subpaths.
+- GitHub Actions hints for version-tagged actions, reusable workflows, and `setup-node`, `setup-python`, and `setup-go` runtimes, preserving version precision.
+- Per-ecosystem settings, registry links in hovers, cache keys, and manifest-specific comment markers for new manifests.
 
 ## 0.2.0
 

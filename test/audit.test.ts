@@ -6,6 +6,7 @@ import { VersionCache } from '../src/cache';
 import { NpmClient } from '../src/registries/npm';
 import type { AuditResponse } from '../src/types';
 import npmrc = require('../src/npmrc');
+import { createSettings } from './settings';
 
 const vulnerable: AuditResponse = {
   status: 'checked',
@@ -28,28 +29,13 @@ function setup(t: TestContext, spec = '1.0.0') {
   const request: AnalyzeRequest = {
     fsPath: '/audit/package.json',
     text: JSON.stringify({ dependencies: { pkg: spec } }, null, 2),
-    settings: {
-      enabled: true, auditEnabled: true, cacheDurationMinutes: 60,
-      concurrency: 8, requestTimeoutMs: 1000,
-      includePrerelease: false, showSatisfyingUpdates: true,
+    settings: createSettings({
+      auditEnabled: true, requestTimeoutMs: 1000,
       npm: {
         enabled: true, registry: 'https://registry.example',
         sections: ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'],
       },
-      go: { enabled: true, proxy: '', includeIndirect: false, checkMajorVersions: true },
-      python: { enabled: true, indexUrl: '', includeBuildRequires: false },
-      rust: { enabled: true },
-      dotnet: { enabled: true, indexUrl: '' },
-      java: { enabled: true, repository: '' },
-      php: { enabled: true },
-      dart: { enabled: true },
-      gradle: { enabled: true, repositories: [] },
-      ruby: { enabled: true }, terraform: { enabled: true, defaultRegistry: '' }, elixir: { enabled: true },
-      deno: { enabled: true }, githubActions: { enabled: true },
-      docker: { enabled: true }, helm: { enabled: true }, swift: { enabled: true }, conan: { enabled: true },
-      scala: { enabled: true, repositories: [], scalaBinaryVersion: '', sbtBinaryVersion: '' },
-      conda: { enabled: true, subdir: '' }, clojure: { enabled: true, repositories: [] },
-    },
+    }),
     cache: new VersionCache(60 * 60_000),
     auditCache: new AuditCache(),
     allowNetwork: true,

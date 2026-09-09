@@ -6,7 +6,7 @@ See available dependency updates directly in your VS Code manifest files.
 
 Fresh Deps adds inline version hints for **npm, Go, Python, Rust, Java, .NET, PHP, Dart / Flutter,
 Ruby, Terraform / OpenTofu, Elixir, Deno / JSR, GitHub Actions, Docker, Helm, Swift,
-Conan, Scala, Conda, and Clojure**.
+Conan, Scala, Conda, Clojure, Ansible, Bazel, and vcpkg**.
 Compare the newest version your range allows with the latest release, then hover for details and a
 link to the package registry. Hints are editor decorations, so your files stay untouched.
 
@@ -43,17 +43,20 @@ editor title bar or run `Fresh Deps: Check for Updates` from the Command Palette
 | PHP / Composer | `composer.json` | Packagist |
 | Dart / Flutter | `pubspec.yaml` | pub.dev |
 | Ruby | `Gemfile` | RubyGems.org |
-| Terraform / OpenTofu | `*.tf`, `*.tofu` provider and registry module requirements | Terraform Registry or OpenTofu Registry |
+| Terraform / OpenTofu | `*.tf`, `*.tofu` provider and registry module requirements; `.tflint.hcl` plugins | Terraform Registry, OpenTofu Registry, GitHub releases |
 | Elixir | `mix.exs` | Hex.pm |
 | Deno / JSR | `deno.json`, `deno.jsonc`, `import_map.json`, `import-map.json`, and JSONC variants of the import maps | JSR and the configured npm registry |
 | GitHub Actions | `.github/workflows/*.yml`, `*.yaml`; composite `action.yml`, `action.yaml` | Public GitHub tags API |
-| Docker / Compose | `Dockerfile`, `Dockerfile.*`, `*.Dockerfile`, `compose.yml`, `compose.yaml`, `docker-compose.*`, including override files | Public Docker Hub tags API |
+| Docker / Compose | `Dockerfile`, `Containerfile`, and their variants; `compose.yml`, `compose.yaml`, `docker-compose.yml`, `docker-compose.yaml`, including suffixed files | Public Docker Hub tags API |
 | Kubernetes / Helm | `Chart.yaml` dependencies | Explicit HTTPS chart repository `index.yaml` |
 | Swift | `Package.swift` | Public GitHub tags API |
 | C / C++ / Conan | `conanfile.txt`, `conanfile.py` | Conan Center recipe index |
 | Scala / sbt | `build.sbt`, `project/plugins.sbt` | Configurable Maven repositories |
 | Conda | `environment.yml`, `environment.yaml` | Explicit anaconda.org channels |
 | Clojure | `deps.edn` | Maven Central and Clojars, or configured Maven repositories |
+| Ansible | `requirements.yml`, `requirements.yaml` collections and roles | Public Ansible Galaxy |
+| Bazel / Bzlmod | `MODULE.bazel` | Bazel Central Registry |
+| C / C++ / vcpkg | `vcpkg.json` explicit minimums and overrides | Builtin Microsoft vcpkg version database |
 
 ## Inline hints
 
@@ -232,6 +235,7 @@ Customize the colors through `workbench.colorCustomizations` using `freshDeps.co
 ### Terraform / OpenTofu
 
 - Reads literal `version` constraints inside `terraform.required_providers` blocks in `*.tf` and `*.tofu` files.
+- Reads pinned plugin versions in `.tflint.hcl` with `github.com/owner/repo` sources and checks published, non-prerelease GitHub releases. Disabled plugins, bundled plugins without a source/version, and computed values are skipped.
 - Supports full public provider addresses, implied `hashicorp/<local-name>` addresses, comparison constraints,
   exclusions, and Terraform's `~>` operator. Local aliases are shown in hover details.
 - Providers on `registry.terraform.io` and `registry.opentofu.org` are checked against their respective registries. Custom registry hosts, computed constraints,
@@ -278,6 +282,9 @@ Customize the colors through `workbench.colorCustomizations` using `freshDeps.co
   Private repositories and GitHub Enterprise are not supported.
 
 ### Docker / Compose
+
+- Recognizes dot, hyphen, and underscore suffixes, such as `docker-compose-db.yml`, `compose_test.yaml`,
+  `Dockerfile.prod`, and `Containerfile-dev`, plus prefixed names such as `prod.Containerfile` and `prod.Dockerfile`.
 
 - Reads literal `FROM` images, including platform flags and build stages, and `services.*.image` in Compose.
 - Checks Docker Hub images, including unqualified official images and `docker.io` references.
@@ -355,6 +362,40 @@ Customize the colors through `workbench.colorCustomizations` using `freshDeps.co
 - Git and local dependencies are skipped. Files with reader macros or `:mvn/repos` are skipped rather than
   guessing reader behavior or querying a different source. User-level `deps.edn` configuration is not read.
 
+### Ansible
+
+- Reads versioned collections and roles in `requirements.yml` and `requirements.yaml`, including legacy top-level role lists.
+  Hints appear on the version field. Role `src` names take precedence over local `name` aliases.
+- Collections support full semver pins and comma-separated `>=`, `>`, `<=`, `<`, `==`, `=`, and `!=` constraints with a lower bound.
+  Roles support exact semver tags, including a `v` prefix.
+- Checks public Galaxy names such as `ansible.posix` and `geerlingguy.docker`. Explicit collection sources must be
+  `https://galaxy.ansible.com`. Git sources, URLs, local paths, custom sources, YAML aliases, templates, and unversioned entries are skipped.
+- Collection and role versions use separate Galaxy APIs. Pagination stops at 100 pages; incomplete lists report a lookup failure.
+  Ansible configuration, authentication, and `requires_ansible` compatibility are not evaluated.
+
+### Bazel / Bzlmod
+
+- Reads literal `bazel_dep(name = "rules_cc", version = "0.1.0")` declarations in `MODULE.bazel`, including multiline calls
+  and development dependencies. Hints appear on the version field.
+- Uses Bazel's relaxed version ordering, including releases such as `20240116.2.bcr.1`. Yanked versions are excluded.
+- Dependencies with module overrides are skipped. Files with computed override names or `include()` calls are skipped because
+  the effective overrides cannot be determined from that file alone. Starlark is never executed.
+- Uses the public Bazel Central Registry. `.bazelrc`, custom registries, compatibility levels, extension-generated repositories,
+  and minimum-version selection across the dependency graph are not evaluated. Hints report newer registry versions.
+
+### C / C++ / vcpkg
+
+- Reads explicit `version>=` minimums in dependencies and feature dependencies, plus exact `overrides` in `vcpkg.json`.
+  Overrides suppress hints on the corresponding minimum declarations. Bare dependency names are skipped.
+- Requires a literal 40-character `builtin-baseline` commit. Embedded `vcpkg-configuration` and sibling
+  `vcpkg-configuration.json` files skip the manifest because they can select different registries or overlay ports.
+- Checks the current public `microsoft/vcpkg` version database. Supports dotted numeric `version`, `version-semver`,
+  and `version-date` entries, including `#port-version` minimums and override `port-version` fields.
+  A port revision increase counts as a patch update. `version-string` entries and comparisons across versioning schemes are skipped.
+- Hints compare explicit declarations, not the versions selected by `builtin-baseline` or installed locally. Updating may require
+  refreshing the baseline and local vcpkg checkout. Triplets, platform compatibility, command-line overlays, and transitive resolution
+  are not evaluated. JSON comments and computed declarations are unsupported.
+
 ## Security audits
 
 Enable `freshDeps.audit.enabled` to show security warnings alongside update hints, including
@@ -416,7 +457,7 @@ query the audit provider. Both refresh and Clear Version Cache discard audit res
 | `freshDeps.gradle.enabled` | `true` | Check Gradle catalogs and literal build-script declarations |
 | `freshDeps.gradle.repositories` | Maven Central, Google Maven, Gradle Plugin Portal | Ordered Maven repository URLs for Gradle catalogs |
 | `freshDeps.ruby.enabled` | `true` | Check `Gemfile` using RubyGems.org |
-| `freshDeps.terraform.enabled` | `true` | Check public provider and registry module requirements in `*.tf` and `*.tofu` files |
+| `freshDeps.terraform.enabled` | `true` | Check public provider and registry module requirements in `*.tf` and `*.tofu`, and GitHub-hosted plugins in `.tflint.hcl` |
 | `freshDeps.terraform.defaultRegistry` | `""` | Registry for two-part sources; empty selects one from the file extension |
 | `freshDeps.elixir.enabled` | `true` | Check literal dependencies in `mix.exs` using Hex.pm |
 | `freshDeps.deno.enabled` | `true` | Check npm and JSR imports in Deno configs and conventional import maps |
@@ -441,6 +482,9 @@ Additional ecosystem settings:
 | `freshDeps.conda.subdir` | `""` | Target platform such as `linux-64`; empty uses the extension host |
 | `freshDeps.clojure.enabled` | `true` | Check Maven dependencies in `deps.edn` |
 | `freshDeps.clojure.repositories` | Maven Central, Clojars | Ordered Maven repositories for Clojure |
+| `freshDeps.ansible.enabled` | `true` | Check public Galaxy collections and role pins in Ansible requirements YAML |
+| `freshDeps.bazel.enabled` | `true` | Check literal Bzlmod dependencies using the Bazel Central Registry |
+| `freshDeps.vcpkg.enabled` | `true` | Check explicit builtin-registry vcpkg minimums and overrides, including port revisions |
 
 ## Development
 

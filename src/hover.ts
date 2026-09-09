@@ -76,6 +76,8 @@ export function buildHover(
   );
   if (update.satisfying) {
     md.appendMarkdown(`| Newest in range | \`${display(update.satisfying, ecosystem)}\` |\n`);
+  } else if (ecosystem === 'bazel') {
+    md.appendMarkdown('| Module | a newer registry version is available; compatibility levels and module resolution are not evaluated |\n');
   } else if (ecosystem === 'githubActions' || ecosystem === 'docker') {
     md.appendMarkdown(update.dep.actionRuntime ? '| Runtime | a newer version is available |\n'
       : '| Reference | a newer tag is available |\n');
@@ -110,6 +112,10 @@ export function buildHover(
     md.appendMarkdown(`\n$(warning) **Deprecated** - ${escapeMarkdown(meta.deprecated)}\n`);
   }
 
+  if (ecosystem === 'vcpkg') {
+    md.appendMarkdown('\nHints compare explicit declarations with the current builtin registry. Updating may require refreshing builtin-baseline and the local vcpkg checkout. Baseline selections, triplets and transitive resolution are not evaluated.\n');
+  }
+
   md.appendMarkdown(`\n${links(update, ecosystem, meta.homepage, meta.repository)}`);
   return md;
 }
@@ -125,7 +131,14 @@ function links(
   repository: string | undefined,
 ): string {
   const parts: string[] = [];
-  if (ecosystem === 'docker') {
+  if (ecosystem === 'ansible') {
+    const [namespace, name] = update.dep.name.split('.');
+    parts.push(`[Ansible Galaxy](https://galaxy.ansible.com/ui/${update.dep.section === 'roles' ? 'standalone/roles' : 'repo/published'}/${namespace}/${name}/)`);
+  } else if (ecosystem === 'bazel') {
+    parts.push(`[Bazel Central Registry](https://registry.bazel.build/modules/${encodeURIComponent(update.dep.name)})`);
+  } else if (ecosystem === 'vcpkg') {
+    parts.push(`[vcpkg](https://vcpkg.io/en/package/${encodeURIComponent(update.dep.name)})`);
+  } else if (ecosystem === 'docker') {
     parts.push(`[Docker Hub](https://hub.docker.com/r/${update.dep.name}/tags)`);
   } else if (ecosystem === 'helm') {
     parts.push(`[Chart repository](<${update.dep.source}/index.yaml>)`);
@@ -142,6 +155,8 @@ function links(
     parts.push(`[Maven Repository](https://mvnrepository.com/artifact/${group}/${artifact}/${encodeURIComponent(update.latest)})`);
   } else if (ecosystem === 'dotnet' && update.dep.section === 'sdk') {
     parts.push('[.NET downloads](https://dotnet.microsoft.com/download/dotnet)');
+  } else if (ecosystem === 'terraform' && update.dep.name.startsWith('tflint:')) {
+    parts.push(`[GitHub releases](https://github.com/${update.dep.name.slice(7)}/releases)`);
   } else if (ecosystem === 'terraform' && update.dep.name.startsWith('module:')) {
     const [host, ...path] = update.dep.name.slice(7).split('/');
     parts.push(`[Module registry](https://${host}/modules/${path.join('/')}/${encodeURIComponent(update.latest)})`);

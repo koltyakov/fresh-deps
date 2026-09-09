@@ -1,9 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { matchesGlob } from 'node:path';
 import { analyze, manifestOf, lookupFor, type AnalyzeRequest } from '../src/analyzer';
 import { AuditCache } from '../src/audit';
 import { VersionCache } from '../src/cache';
-import type { Settings } from '../src/config';
+import { createSettings, configurationProperties } from './settings';
 import { parseDockerfile, parseCompose, imageDependency } from '../src/parsers/docker';
 import { parseHelm } from '../src/parsers/helm';
 import { parseSwift } from '../src/parsers/swift';
@@ -25,21 +26,12 @@ import { SwiftClient } from '../src/registries/swift';
 import { sdkVersions } from '../src/registries/dotnetSdk';
 import manifest from '../package.json';
 
-const settings: Settings = {
-  enabled: true, auditEnabled: false, cacheDurationMinutes: 60, concurrency: 4, requestTimeoutMs: 1000,
-  includePrerelease: false, showSatisfyingUpdates: true,
-  npm: { enabled: true, registry: 'https://registry.npmjs.org', sections: ['dependencies'] },
-  go: { enabled: true, proxy: '', includeIndirect: false, checkMajorVersions: true },
-  python: { enabled: true, indexUrl: '', includeBuildRequires: false }, rust: { enabled: true },
-  dotnet: { enabled: true, indexUrl: '' }, java: { enabled: true, repository: '' },
-  php: { enabled: true }, dart: { enabled: true }, gradle: { enabled: true, repositories: [] },
-  ruby: { enabled: true }, terraform: { enabled: true, defaultRegistry: '' }, elixir: { enabled: true },
-  deno: { enabled: true }, githubActions: { enabled: true }, docker: { enabled: true }, helm: { enabled: true },
-  swift: { enabled: true }, conan: { enabled: true },
-  scala: { enabled: true, repositories: ['https://repo.maven.apache.org/maven2'], scalaBinaryVersion: '', sbtBinaryVersion: '' },
-  conda: { enabled: true, subdir: 'linux-64' },
-  clojure: { enabled: true, repositories: ['https://repo.maven.apache.org/maven2', 'https://repo.clojars.org'] },
-};
+const settings = createSettings({
+  concurrency: 4, requestTimeoutMs: 1000,
+  npm: { registry: 'https://registry.npmjs.org', sections: ['dependencies'] },
+  gradle: { repositories: [] },
+  conda: { subdir: 'linux-64' },
+});
 
 test('new manifest names select ecosystems without claiming unrelated files', () => {
   for (const [file, ecosystem] of [
@@ -54,7 +46,7 @@ test('new manifest names select ecosystems without claiming unrelated files', ()
     assert.equal(manifestOf(`/workspace/${file}`), undefined, file);
   }
   for (const ecosystem of ['docker', 'helm', 'swift', 'conan', 'scala', 'conda', 'clojure']) {
-    assert.equal((manifest.contributes.configuration.properties as Record<string, { default?: unknown }>)[`freshDeps.${ecosystem}.enabled`]?.default, true);
+    assert.equal(configurationProperties[`freshDeps.${ecosystem}.enabled`]?.default, true);
   }
 });
 
@@ -72,6 +64,37 @@ test('Docker parses literal images and skips stages, heredocs, digests, variable
   assert.equal(parseCompose('services:\n  api:\n    image: &image node:20\n  copy:\n    image: *image').length, 1);
   assert.deepEqual(parseDockerfile('RUN \\\n cat <<ONE <<TWO\nFROM fake:1\nONE\nFROM fake:2\nTWO\nFROM node:20')
     .map((dep) => dep.name), ['library/node']);
+});
+
+test('Compose suffixes and Containerfiles activate and analyze image updates', async (t) => {
+  const compose = ['docker-compose-db.yml', 'docker-compose-dev.yml', 'docker-compose-otel.yml',
+    'docker-compose_test.yaml', 'compose-prod.yaml', 'compose_test.yml', 'compose.override.yaml'];
+  const containers = ['Containerfile', 'Containerfile.dev', 'Containerfile-prod', 'Containerfile_test',
+    'production.Containerfile', 'Dockerfile-prod', 'Dockerfile_test', 'production.Dockerfile'];
+  let calls = 0;
+  t.mock.method(globalThis, 'fetch', async (url: string) => {
+    calls++;
+    if (url.startsWith('https://auth.docker.io/')) return Response.json({ token: 'anonymous' });
+    assert.equal(url, 'https://registry-1.docker.io/v2/library/postgres/tags/list?n=10000');
+    return Response.json({ tags: ['15.3-alpine', '15.4-alpine', '16.1-alpine', '17-alpine', '17.1-bookworm'] });
+  });
+  const cache = new VersionCache(60_000);
+  for (const file of [...compose, ...containers]) {
+    const fsPath = `/workspace/nested/${file}`;
+    const isCompose = compose.includes(file);
+    assert.equal(manifestOf(fsPath)?.kind, isCompose ? 'compose' : 'dockerfile', file);
+    assert.ok(manifest.activationEvents.some((event) => event.startsWith('workspaceContains:')
+      && matchesGlob(fsPath, event.slice('workspaceContains:'.length))), `activation: ${file}`);
+    const text = isCompose ? 'services:\n  db:\n    image: postgres:15.3-alpine\n    ports:\n      - 5432:5432'
+      : 'FROM postgres:15.3-alpine';
+    const result = await analyze({ fsPath, text, settings, cache, auditCache: new AuditCache(), allowNetwork: true });
+    assert.equal(result?.updates[0]?.latest, '16.1-alpine', file);
+    assert.equal(result?.updates[0]?.dep.line, isCompose ? 2 : 0, file);
+  }
+  assert.equal(calls, 2, 'all filenames share the image tag cache');
+  for (const file of ['Containerfilex', 'docker-composefoo.yml', 'composefoo.yaml', 'my-compose.yml', 'Containerfile.json.bak~']) {
+    assert.equal(manifestOf(`/workspace/${file}`), undefined, file);
+  }
 });
 
 test('Docker tags keep precision and suffix instead of confusing variants with prereleases', () => {

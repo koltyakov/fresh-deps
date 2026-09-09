@@ -99,6 +99,7 @@ test('gray markers have zero layout width and versions reserve aligned space for
     ['deno', '//', ''], ['githubActions', '#', ''],
     ['docker', '#', ''], ['helm', '#', ''], ['swift', '//', ''], ['conan', '#', ''],
     ['scala', '//', ''], ['conda', '#', ''], ['clojure', ';', ''],
+    ['ansible', '#', ''], ['bazel', '#', ''], ['vcpkg', '//', ''],
   ] as const) {
     renderer.render(editor, updates, ecosystem, []);
     for (const [type, hints] of decorations) {

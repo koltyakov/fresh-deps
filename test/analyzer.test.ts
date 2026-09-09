@@ -3,28 +3,15 @@ import assert from 'node:assert/strict';
 import { analyze, type AnalyzeRequest } from '../src/analyzer';
 import { AuditCache } from '../src/audit';
 import { VersionCache } from '../src/cache';
-import type { Settings } from '../src/config';
+import { createSettings } from './settings';
 import npmrc = require('../src/npmrc');
-import manifest from '../package.json';
 
-const settings: Settings = {
-  enabled: true, auditEnabled: false, cacheDurationMinutes: 60,
-  concurrency: 8, requestTimeoutMs: 1000, includePrerelease: false, showSatisfyingUpdates: true,
-  npm: { enabled: true, registry: 'https://registry.example', sections: ['dependencies'] },
-  go: { enabled: true, proxy: '', includeIndirect: false, checkMajorVersions: true },
-  python: { enabled: true, indexUrl: '', includeBuildRequires: false },
-  rust: { enabled: true },
-  dotnet: { enabled: true, indexUrl: '' },
-  java: { enabled: true, repository: '' },
-  php: { enabled: true },
-  dart: { enabled: true },
-  gradle: { enabled: true, repositories: ['https://repo.maven.apache.org/maven2'] },
-  ruby: { enabled: true }, terraform: { enabled: true, defaultRegistry: '' }, elixir: { enabled: true },
-  deno: { enabled: true }, githubActions: { enabled: true },
-  docker: { enabled: true }, helm: { enabled: true }, swift: { enabled: true }, conan: { enabled: true },
-  scala: { enabled: true, repositories: ['https://repo.maven.apache.org/maven2'], scalaBinaryVersion: '', sbtBinaryVersion: '' },
-  conda: { enabled: true, subdir: 'linux-64' }, clojure: { enabled: true, repositories: ['https://repo.clojars.org'] },
-};
+const settings = createSettings({
+  requestTimeoutMs: 1000,
+  npm: { registry: 'https://registry.example', sections: ['dependencies'] },
+  gradle: { repositories: ['https://repo.maven.apache.org/maven2'] },
+  conda: { subdir: 'linux-64' }, clojure: { repositories: ['https://repo.clojars.org'] },
+});
 
 test('Actions analyzes and caches setup inputs independently from action tags', async (t) => {
   const calls: string[] = [];
@@ -203,7 +190,7 @@ test('npm checks Volta pins through the configured registry and reuses cached up
       concurrency: 8, requestTimeoutMs: 1000, includePrerelease: false, showSatisfyingUpdates: true,
       npm: {
         enabled: true, registry: 'https://registry.example',
-        sections: manifest.contributes.configuration.properties['freshDeps.npm.sections'].default,
+        sections: createSettings().npm.sections,
       },
     },
     cache: new VersionCache(60_000), auditCache: new AuditCache(), allowNetwork: true,

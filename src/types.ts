@@ -2,7 +2,7 @@ import type { VersionScheme } from './schemes';
 
 export type Ecosystem = 'npm' | 'go' | 'python' | 'rust' | 'dotnet' | 'java' | 'php' | 'dart' | 'gradle'
   | 'ruby' | 'terraform' | 'elixir' | 'deno' | 'githubActions'
-  | 'docker' | 'helm' | 'swift' | 'conan' | 'scala' | 'conda' | 'clojure';
+  | 'docker' | 'helm' | 'swift' | 'conan' | 'scala' | 'conda' | 'clojure' | 'ansible' | 'bazel' | 'vcpkg';
 
 /** A dependency declaration found in a manifest, with its position in the document. */
 export interface DependencyRef {
@@ -14,7 +14,9 @@ export interface DependencyRef {
   specRaw?: string;
   /** Explicit registry or channel selected by the manifest. */
   source?: string;
-  /** SDK roll-forward ranges use semver rather than NuGet requirements. */
+  /** An explicit vcpkg override must retain its declared versioning scheme. */
+  vcpkgVersionField?: 'version' | 'version-semver' | 'version-date';
+  /** Declarations such as SDK roll-forward ranges and Ansible role tags use semver. */
   semver?: boolean;
   allowPrerelease?: boolean;
   /** Zero-based line of the declaration, where the hint is anchored. */

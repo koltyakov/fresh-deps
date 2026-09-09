@@ -1,5 +1,5 @@
 import type { DependencyRef } from '../types';
-import { codeTokens, groupEnd } from './codeTokens';
+import { codeTokens, groupEnd, type CodeToken } from './codeTokens';
 
 function closingBrace(text: string, open: number): number {
   let depth = 0;
@@ -80,6 +80,50 @@ function maskComments(text: string): string {
     }
   }
   return result;
+}
+
+export function parseTflint(text: string): DependencyRef[] {
+  const tokens = codeTokens(maskComments(text));
+  const deps: DependencyRef[] = [];
+  for (let i = 0; i < tokens.length; i++) {
+    const plugin = tokens[i].kind === 'word' && tokens[i].value === 'plugin'
+      && tokens[i + 1]?.kind === 'string' && tokens[i + 2]?.value === '{';
+    if (plugin) {
+      const end = groupEnd(tokens, i + 2);
+      if (end < 0) break;
+      const fields = new Map<string, CodeToken>();
+      for (let j = i + 3; j < end; j++) {
+        const token = tokens[j];
+        if (['{', '[', '('].includes(token.value) && token.kind === 'punct') {
+          const close = groupEnd(tokens, j);
+          if (close >= 0) j = close;
+          continue;
+        }
+        const value = tokens[j + 2];
+        const next = tokens[j + 3];
+        if (token.kind === 'word' && tokens[j + 1]?.value === '=' && value
+          && (j + 3 === end || next.line > value.line)
+          && (value.kind === 'string' || (value.kind === 'word' && /^(true|false)$/.test(value.value)))) {
+          fields.set(token.value, value);
+          j += 2;
+        }
+      }
+      const source = fields.get('source');
+      const version = fields.get('version');
+      const enabled = fields.get('enabled');
+      const match = source?.kind === 'string' && /^github\.com\/([\w-]+\/[\w.-]+)$/.exec(source.value);
+      if (match && version?.kind === 'string' && /^\d+\.\d+\.\d+(?:-[\w.-]+)?(?:\+[\w.-]+)?$/.test(version.value)
+        && !(enabled?.kind === 'word' && enabled.value === 'false')) {
+        deps.push({ name: `tflint:${match[1]}`, spec: version.value, alias: tokens[i + 1].value,
+          line: version.line, section: 'plugins', semver: true });
+      }
+      i = end;
+    } else if (tokens[i].kind === 'punct' && tokens[i].value === '{') {
+      const end = groupEnd(tokens, i);
+      if (end >= 0) i = end;
+    }
+  }
+  return deps;
 }
 
 export function parseTerraform(text: string, defaultRegistry = 'registry.terraform.io'): DependencyRef[] {

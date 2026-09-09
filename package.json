@@ -42,7 +42,10 @@
     "conan",
     "scala",
     "conda",
-    "clojure"
+    "clojure",
+    "ansible",
+    "bazel",
+    "vcpkg"
   ],
   "main": "./dist/extension.js",
   "icon": "assets/logo.png",
@@ -51,6 +54,11 @@
     "theme": "dark"
   },
   "activationEvents": [
+    "onLanguage:starlark",
+    "onLanguage:bazel",
+    "workspaceContains:**/requirements.{yml,yaml}",
+    "workspaceContains:**/MODULE.bazel",
+    "workspaceContains:**/vcpkg.json",
     "onLanguage:dockerfile",
     "onLanguage:swift",
     "onLanguage:scala",
@@ -109,7 +117,8 @@
     "workspaceContains:**/Gemfile",
     "workspaceContains:**/mix.exs",
     "workspaceContains:**/*.tf",
-    "workspaceContains:**/*.tofu"
+    "workspaceContains:**/*.tofu",
+    "workspaceContains:**/.tflint.hcl"
   ],
   "contributes": {
     "commands": [
@@ -136,9 +145,66 @@
         }
       ]
     },
-    "configuration": {
+    "configuration": [{
       "title": "Fresh Deps",
+      "order": 0,
       "properties": {
+        "freshDeps.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show inline hints for dependencies that have newer versions."
+        },
+        "freshDeps.cacheDurationMinutes": {
+          "type": "number",
+          "default": 60,
+          "minimum": 0,
+          "description": "How long resolved versions are cached before the registry is queried again."
+        },
+        "freshDeps.audit.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show security audit warnings using the configured npm registry's audit API or public PyPI. Sends package names and baseline versions to that registry. Checks manifest declarations, not installed or transitive dependencies. Other ecosystems and custom Python indexes are not supported."
+        },
+        "freshDeps.concurrency": {
+          "type": "number",
+          "default": 8,
+          "minimum": 1,
+          "maximum": 32,
+          "description": "Maximum number of parallel registry requests."
+        },
+        "freshDeps.requestTimeoutMs": {
+          "type": "number",
+          "default": 10000,
+          "minimum": 1000,
+          "description": "Timeout for a single registry request, in milliseconds."
+        },
+        "freshDeps.showSatisfyingUpdates": {
+          "type": "boolean",
+          "default": true,
+          "description": "When the latest version is outside the declared range, also report the newest version that still satisfies it."
+        },
+        "freshDeps.includePrerelease": {
+          "type": "boolean",
+          "default": false,
+          "description": "Consider prerelease versions (for example 2.0.0-beta.1) as updates."
+        }
+      }
+    }, {
+      "title": "Fresh Deps: Ecosystems",
+      "order": 1,
+      "properties": {
+        "freshDeps.ansible.enabled": {
+          "type": "boolean", "default": true,
+          "description": "Check public Ansible Galaxy collections and role pins in requirements.yml and requirements.yaml. Ansible configuration files are not read."
+        },
+        "freshDeps.bazel.enabled": {
+          "type": "boolean", "default": true,
+          "description": "Check literal bazel_dep versions in MODULE.bazel using the Bazel Central Registry. Overrides are skipped; .bazelrc and custom registries are not read."
+        },
+        "freshDeps.vcpkg.enabled": {
+          "type": "boolean", "default": true,
+          "description": "Check explicit vcpkg version minimums and overrides against the current builtin registry, including port revisions. Requires builtin-baseline. Custom configurations are skipped; baseline selections are not resolved."
+        },
         "freshDeps.docker.enabled": {
           "type": "boolean", "default": true,
           "description": "Check versioned Docker Hub images in Dockerfiles, Containerfiles and Compose services, preserving tag precision and variants."
@@ -189,60 +255,21 @@
           "default": ["https://repo.maven.apache.org/maven2", "https://repo.clojars.org"],
           "description": "Ordered Maven repositories for Clojure. Files declaring :mvn/repos are skipped."
         },
-        "freshDeps.enabled": {
+        "freshDeps.npm.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Show inline hints for dependencies that have newer versions."
+          "description": "Check npm dependencies in package.json, pnpm-workspace.yaml catalogs and .yarnrc.yml catalogs."
         },
-        "freshDeps.cacheDurationMinutes": {
-          "type": "number",
-          "default": 60,
-          "minimum": 0,
-          "description": "How long resolved versions are cached before the registry is queried again."
-        },
-        "freshDeps.audit.enabled": {
-          "type": "boolean",
-          "default": false,
-          "description": "Show security audit warnings using the configured npm registry's audit API or public PyPI. Sends package names and baseline versions to that registry. Checks manifest declarations, not installed or transitive dependencies. Other ecosystems and custom Python indexes are not supported."
-        },
-        "freshDeps.concurrency": {
-          "type": "number",
-          "default": 8,
-          "minimum": 1,
-          "maximum": 32,
-          "description": "Maximum number of parallel registry requests."
-        },
-        "freshDeps.requestTimeoutMs": {
-          "type": "number",
-          "default": 10000,
-          "minimum": 1000,
-          "description": "Timeout for a single registry request, in milliseconds."
-        },
-        "freshDeps.showSatisfyingUpdates": {
+        "freshDeps.deno.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "When the latest version is outside the declared range, also report the newest version that still satisfies it."
+          "description": "Check npm and JSR imports in deno.json, deno.jsonc and conventional import map files."
         },
-        "freshDeps.includePrerelease": {
-          "type": "boolean",
-          "default": false,
-          "description": "Consider prerelease versions (for example 2.0.0-beta.1) as updates."
-        },
-      "freshDeps.npm.enabled": {
+        "freshDeps.githubActions.enabled": {
           "type": "boolean",
           "default": true,
-        "description": "Check npm dependencies in package.json, pnpm-workspace.yaml catalogs and .yarnrc.yml catalogs."
-      },
-      "freshDeps.deno.enabled": {
-        "type": "boolean",
-        "default": true,
-        "description": "Check npm and JSR imports in deno.json, deno.jsonc and conventional import map files."
-      },
-      "freshDeps.githubActions.enabled": {
-        "type": "boolean",
-        "default": true,
-        "description": "Check action version tags and Node.js, Python and Go setup inputs in GitHub Actions workflows and composite actions using public GitHub data."
-      },
+          "description": "Check action version tags and Node.js, Python and Go setup inputs in GitHub Actions workflows and composite actions using public GitHub data."
+        },
         "freshDeps.npm.registry": {
           "type": "string",
           "default": "",
@@ -355,7 +382,7 @@
         "freshDeps.terraform.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Check Terraform and OpenTofu providers and registry modules in *.tf and *.tofu files using their public registries."
+          "description": "Check Terraform and OpenTofu providers and registry modules in *.tf and *.tofu files, and GitHub-hosted TFLint plugins in .tflint.hcl."
         },
         "freshDeps.terraform.defaultRegistry": {
           "type": "string",
@@ -369,7 +396,7 @@
           "description": "Check Mix dependencies in mix.exs using public Hex."
         }
       }
-    },
+    }],
     "colors": [
       {
         "id": "freshDeps.commentForeground",

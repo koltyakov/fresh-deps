@@ -1,6 +1,7 @@
 import test, { type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import type { ExtensionContext } from 'vscode';
+import { matchesGlob } from 'node:path';
 
 const Module = require('node:module') as {
   _load: (id: string, parent: NodeModule | null | undefined, isMain?: boolean) => unknown;
@@ -17,6 +18,7 @@ function setup(t: TestContext) {
   // Activation registers these listeners before setup returns.
   const events = {} as Events;
   const calls: string[] = [];
+  const hoverPatterns: string[] = [];
   const pending: {
     request: { isCancelled(): boolean };
     resolve: (value: ReturnType<typeof result> | undefined) => void;
@@ -42,7 +44,7 @@ function setup(t: TestContext) {
       onDidChangeConfiguration: (cb: Events['config']) => { events.config = cb; },
     },
     commands: { executeCommand: noop, registerCommand: noop },
-    languages: { registerHoverProvider: noop },
+    languages: { registerHoverProvider: (selector: { pattern: string }[]) => { hoverPatterns.push(...selector.map((filter) => filter.pattern)); } },
     StatusBarAlignment: { Right: 1 }, MarkdownString: class {},
   };
   const mocks: Record<string, unknown> = {
@@ -69,11 +71,27 @@ function setup(t: TestContext) {
   const { activate } = require(filename) as typeof import('../src/extension');
   activate({ subscriptions: [], globalState: { get: noop, update: noop } } as unknown as ExtensionContext);
   const configure = () => events.config({ affectsConfiguration: () => true });
-  return { calls, pending, settings, editors, events, configure };
+  return { calls, pending, settings, editors, events, configure, hoverPatterns };
 }
 
 const result = () => ({ ecosystem: 'npm', updates: [{}], failures: new Map(), incomplete: false });
 const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
+
+test('hover registration covers Compose suffixes and Containerfiles', (t) => {
+  const state = setup(t);
+  for (const file of ['docker-compose-db.yml', 'docker-compose-dev.yml', 'docker-compose-otel.yml',
+    'compose-prod.yaml', 'compose_test.yml', 'Containerfile', 'Containerfile.dev', 'Containerfile-prod',
+    'Containerfile_test', 'prod.Containerfile', 'Dockerfile-prod', 'Dockerfile_test']) {
+    assert.ok(state.hoverPatterns.some((pattern) => matchesGlob(`/workspace/${file}`, pattern)), file);
+  }
+});
+
+test('hover registration covers Ansible, Bazel and vcpkg manifests', (t) => {
+  const state = setup(t);
+  for (const file of ['requirements.yml', 'collections/requirements.yaml', 'MODULE.bazel', 'vcpkg.json']) {
+    assert.ok(state.hoverPatterns.some((pattern) => matchesGlob(`/workspace/${file}`, pattern)), file);
+  }
+});
 
 for (const reject of [false, true]) {
   test(`disabling hints cancels in-flight ${reject ? 'failures' : 'results'} and clears all editors`, async (t) => {

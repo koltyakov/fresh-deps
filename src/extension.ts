@@ -149,6 +149,9 @@ export function activate(context: vscode.ExtensionContext): void {
   // Every language a supported manifest can be opened as. The provider itself only
   // answers on a line the last check reported an update for.
   const MANIFEST_SELECTOR: vscode.DocumentSelector = [
+    { scheme: 'file', pattern: '**/requirements.{yml,yaml}' },
+    { scheme: 'file', pattern: '**/MODULE.bazel' },
+    { scheme: 'file', pattern: '**/vcpkg.json' },
     { scheme: 'file', pattern: '**/{Dockerfile,Containerfile}{,.*,-*,_*}' },
     { scheme: 'file', pattern: '**/*.{Dockerfile,Containerfile}' },
     { scheme: 'file', pattern: '**/{compose,docker-compose}{,.*,-*,_*}.{yml,yaml}' },
@@ -184,6 +187,7 @@ export function activate(context: vscode.ExtensionContext): void {
     { scheme: 'file', pattern: '**/mix.exs' },
     { scheme: 'file', pattern: '**/*.tf' },
     { scheme: 'file', pattern: '**/*.tofu' },
+    { scheme: 'file', pattern: '**/.tflint.hcl' },
   ];
 
   context.subscriptions.push(

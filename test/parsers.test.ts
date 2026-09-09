@@ -3,9 +3,9 @@ import assert from 'node:assert';
 import { parsePackageJson } from '../src/parsers/packageJson';
 import { parseGoMod } from '../src/parsers/goMod';
 import { parseCargoToml } from '../src/parsers/cargoToml';
-import packageJson from '../package.json';
+import { createSettings } from './settings';
 
-const SECTIONS = packageJson.contributes.configuration.properties['freshDeps.npm.sections'].default;
+const SECTIONS = createSettings().npm.sections;
 
 test('package.json: reads the configured sections', () => {
   const text = [

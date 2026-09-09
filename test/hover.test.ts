@@ -47,6 +47,7 @@ test('new ecosystems link to their package listings', () => {
     ['gradle', 'org.example:org.example.gradle.plugin', 'plugins', 'https://plugins.gradle.org/plugin/org.example/1.136.0'],
     ['ruby', 'rails', 'gems', 'https://rubygems.org/gems/rails/versions/1.136.0'],
     ['terraform', 'hashicorp/aws', 'required_providers', 'https://registry.terraform.io/providers/hashicorp/aws/1.136.0/docs'],
+    ['terraform', 'tflint:terraform-linters/tflint-ruleset-azurerm', 'plugins', 'https://github.com/terraform-linters/tflint-ruleset-azurerm/releases'],
     ['elixir', 'phoenix', 'deps', 'https://hex.pm/packages/phoenix/1.136.0'],
     ['deno', 'jsr:@std/assert', 'imports', 'https://jsr.io/@std/assert@1.136.0'],
     ['deno', 'npm:react', 'imports', 'https://www.npmjs.com/package/react/v/1.136.0'],
@@ -54,6 +55,10 @@ test('new ecosystems link to their package listings', () => {
     ['docker', 'library/node', 'FROM', 'https://hub.docker.com/r/library/node/tags'],
     ['swift', 'apple/example', 'dependencies', 'https://github.com/apple/example/tree/1.136.0'],
     ['conan', 'fmt', 'requires', 'https://conan.io/center/recipes/fmt'],
+    ['ansible', 'ansible.posix', 'collections', 'https://galaxy.ansible.com/ui/repo/published/ansible/posix/'],
+    ['ansible', 'geerlingguy.docker', 'roles', 'https://galaxy.ansible.com/ui/standalone/roles/geerlingguy/docker/'],
+    ['bazel', 'rules_cc', 'bazel_dep', 'https://registry.bazel.build/modules/rules_cc'],
+    ['vcpkg', 'fmt', 'dependencies', 'https://vcpkg.io/en/package/fmt'],
     ['scala', 'org.example:core', 'libraryDependencies', 'https://mvnrepository.com/artifact/org.example/core/1.136.0'],
     ['clojure', 'org.clojure:clojure', 'deps', 'https://mvnrepository.com/artifact/org.clojure/clojure/1.136.0'],
     ['terraform', 'module:registry.terraform.io/a/b/c', 'modules', 'https://registry.terraform.io/modules/a/b/c/1.136.0'],
@@ -65,6 +70,13 @@ test('new ecosystems link to their package listings', () => {
     .value.includes('https://charts.example/index.yaml'));
   assert.ok(buildHover({ ...update, dep: { ...update.dep, name: 'numpy', source: 'conda-forge' } }, 'conda')
     .value.includes('https://anaconda.org/conda-forge/numpy'));
+});
+
+test('vcpkg and Bazel hovers explain registry availability without claiming resolution', () => {
+  assert.match(buildHover(update, 'vcpkg').value, /refreshing builtin-baseline/);
+  const bazel = buildHover(update, 'bazel').value;
+  assert.match(bazel, /compatibility levels and module resolution are not evaluated/);
+  assert.ok(!bazel.includes('range needs to be widened'));
 });
 
 test('project link shows the homepage URL and retains a distinct repository link', () => {

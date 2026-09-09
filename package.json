@@ -2,7 +2,7 @@
   "name": "fresh-deps",
   "displayName": "Fresh Deps",
   "description": "Highlights dependencies that have newer versions available, inline in your manifest files.",
-  "version": "0.2.3",
+  "version": "0.3.0",
   "license": "MIT",
   "publisher": "koltyakov",
   "repository": {
@@ -30,7 +30,7 @@
   "main": "./dist/extension.js",
   "icon": "assets/logo.png",
   "galleryBanner": {
-    "color": "#0b4d80",
+    "color": "#3b2600",
     "theme": "dark"
   },
   "activationEvents": [

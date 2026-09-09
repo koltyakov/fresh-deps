@@ -32,7 +32,10 @@
     "pnpm",
     "ruby",
     "terraform",
-    "elixir"
+    "elixir",
+    "deno",
+    "jsr",
+    "github-actions"
   ],
   "main": "./dist/extension.js",
   "icon": "assets/logo.png",
@@ -47,6 +50,8 @@
     "onLanguage:gomod",
     "onLanguage:toml",
     "onLanguage:yaml",
+    "onLanguage:groovy",
+    "onLanguage:kotlin",
     "onLanguage:xml",
     "onLanguage:ruby",
     "onLanguage:elixir",
@@ -58,6 +63,13 @@
     "workspaceContains:**/pubspec.yaml",
     "workspaceContains:**/pnpm-workspace.yaml",
     "workspaceContains:**/*.versions.toml",
+    "workspaceContains:**/build.gradle",
+    "workspaceContains:**/build.gradle.kts",
+    "workspaceContains:**/deno.json",
+    "workspaceContains:**/deno.jsonc",
+    "workspaceContains:**/import{_,-}map.{json,jsonc}",
+    "workspaceContains:**/.github/workflows/*.{yml,yaml}",
+    "workspaceContains:**/action.{yml,yaml}",
     "workspaceContains:**/go.mod",
     "workspaceContains:**/Cargo.toml",
     "workspaceContains:**/pom.xml",
@@ -142,11 +154,21 @@
           "default": false,
           "description": "Consider prerelease versions (for example 2.0.0-beta.1) as updates."
         },
-        "freshDeps.npm.enabled": {
+      "freshDeps.npm.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Check npm dependencies in package.json and pnpm-workspace.yaml catalogs."
-        },
+        "description": "Check npm dependencies in package.json and pnpm-workspace.yaml catalogs."
+      },
+      "freshDeps.deno.enabled": {
+        "type": "boolean",
+        "default": true,
+        "description": "Check npm and JSR imports in deno.json, deno.jsonc and conventional import map files."
+      },
+      "freshDeps.githubActions.enabled": {
+        "type": "boolean",
+        "default": true,
+        "description": "Check version tags in GitHub Actions workflows and composite actions using the public GitHub API."
+      },
         "freshDeps.npm.registry": {
           "type": "string",
           "default": "",
@@ -234,7 +256,7 @@
         "freshDeps.gradle.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Check libraries and plugins in Gradle *.versions.toml catalogs."
+          "description": "Check Gradle *.versions.toml catalogs and literal dependencies and plugins in build.gradle and build.gradle.kts."
         },
         "freshDeps.gradle.repositories": {
           "type": "array",
@@ -244,7 +266,7 @@
             "https://dl.google.com/dl/android/maven2",
             "https://plugins.gradle.org/m2"
           ],
-          "description": "Maven repositories for Gradle catalogs, checked in order until a package is found. Build-script repository declarations are not read."
+          "description": "Maven repositories for Gradle catalogs and build scripts, checked in order until a package is found. Build-script repository declarations are not read."
         },
         "freshDeps.java.repository": {
           "type": "string",

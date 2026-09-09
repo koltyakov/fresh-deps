@@ -22,6 +22,8 @@ const COMMENT_TOKEN: Record<Ecosystem, string> = {
   ruby: '#',
   terraform: '#',
   elixir: '#',
+  deno: '//',
+  githubActions: '#',
 };
 
 /**
@@ -90,7 +92,9 @@ export class DecorationRenderer implements vscode.Disposable {
       // past the closing comma or an existing comment - and reads as one.
       const line = editor.document.lineAt(Math.min(update.dep.line, editor.document.lineCount - 1));
       const padding = (columnOf.get(update.dep.section) ?? 0) - (lineWidth.get(update.dep.line) ?? 0);
-      const token = editor.document.uri.fsPath.endsWith('pnpm-workspace.yaml') ? '#' : COMMENT_TOKEN[ecosystem];
+      const file = editor.document.uri.fsPath;
+      const token = file.endsWith('pnpm-workspace.yaml') ? '#'
+        : ecosystem === 'gradle' && /\.gradle(?:\.kts)?$/.test(file) ? '//' : COMMENT_TOKEN[ecosystem];
       byKind.get(update.kind)?.push({
         range: new vscode.Range(line.range.end, line.range.end),
         renderOptions: {

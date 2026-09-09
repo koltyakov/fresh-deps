@@ -75,6 +75,8 @@ export function buildHover(
   );
   if (update.satisfying) {
     md.appendMarkdown(`| Newest in range | \`${display(update.satisfying, ecosystem)}\` |\n`);
+  } else if (ecosystem === 'githubActions') {
+    md.appendMarkdown('| Reference | a newer tag is available |\n');
   } else if (!update.inRange && ecosystem !== 'go') {
     const constraint = ecosystem === 'python' ? 'specifier' : 'range';
     md.appendMarkdown(`| In range | no - the ${constraint} needs to be widened |\n`);
@@ -121,7 +123,13 @@ function links(
   repository: string | undefined,
 ): string {
   const parts: string[] = [];
-  if (ecosystem === 'go') {
+  if (ecosystem === 'deno') {
+    const name = update.dep.name.slice(4);
+    parts.push(update.dep.name.startsWith('jsr:') ? `[JSR](https://jsr.io/${name}@${update.latest})`
+      : `[npm](https://www.npmjs.com/package/${name}/v/${update.latest})`);
+  } else if (ecosystem === 'githubActions') {
+    parts.push(`[GitHub](https://github.com/${update.dep.name}/tree/${encodeURIComponent(update.latest)})`);
+  } else if (ecosystem === 'go') {
     const modulePath = update.alternatePath ?? update.dep.name;
     parts.push(`[pkg.go.dev](https://pkg.go.dev/${modulePath}@v${update.latest})`);
   } else if (ecosystem === 'python') {

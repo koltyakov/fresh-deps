@@ -6,6 +6,12 @@ import { parseCargoToml } from './parsers/cargoToml';
 import { parseComposerJson } from './parsers/composerJson';
 import { parseGoMod } from './parsers/goMod';
 import { parseGradleCatalog } from './parsers/gradleCatalog';
+import { parseGradleBuild } from './parsers/gradleBuild';
+import { parseDeno } from './parsers/deno';
+import { parseGithubActions } from './parsers/githubActions';
+import { JsrClient } from './registries/jsr';
+import { GithubActionsClient } from './registries/githubActions';
+import { actionTagStyle } from './githubActions';
 import { parseNugetManifest } from './parsers/nuget';
 import { parsePackageJson } from './parsers/packageJson';
 import { parsePipfile } from './parsers/pipfile';
@@ -68,6 +74,9 @@ export type ManifestKind =
   | 'composer.json'
   | 'pubspec.yaml'
   | 'gradle-catalog'
+  | 'gradle-build'
+  | 'deno'
+  | 'github-actions'
   | 'pnpm-workspace.yaml'
   | 'go.mod'
   | 'Cargo.toml'
@@ -104,6 +113,11 @@ function isRequirementsFile(fsPath: string): boolean {
 
 export function manifestOf(fsPath: string): Manifest | undefined {
   const name = path.basename(fsPath);
+  if (/^build\.gradle(?:\.kts)?$/.test(name)) return { ecosystem: 'gradle', kind: 'gradle-build' };
+  if (/^(?:deno\.jsonc?|import[_-]map\.jsonc?)$/.test(name)) return { ecosystem: 'deno', kind: 'deno' };
+  if (/^action\.ya?ml$/.test(name) || /(?:^|\/)\.github\/workflows\/[^/]+\.ya?ml$/.test(fsPath.replace(/\\/g, '/'))) {
+    return { ecosystem: 'githubActions', kind: 'github-actions' };
+  }
   if (name === 'composer.json') return { ecosystem: 'php', kind: 'composer.json' };
   if (name === 'pubspec.yaml') return { ecosystem: 'dart', kind: 'pubspec.yaml' };
   if (name === 'pnpm-workspace.yaml') return { ecosystem: 'npm', kind: 'pnpm-workspace.yaml' };
@@ -239,6 +253,9 @@ function parseManifest(kind: ManifestKind, request: AnalyzeRequest): DependencyR
     case 'composer.json': return parseComposerJson(text);
     case 'pubspec.yaml': return parsePubspec(text, process.env.PUB_HOSTED_URL);
     case 'gradle-catalog': return parseGradleCatalog(text);
+    case 'gradle-build': return parseGradleBuild(text);
+    case 'deno': return parseDeno(text);
+    case 'github-actions': return parseGithubActions(text);
     case 'pnpm-workspace.yaml': return parsePnpmWorkspace(text);
     case 'package.json':
       return parsePackageJson(text, settings.npm.sections);
@@ -297,6 +314,26 @@ export interface PackageDetails {
  */
 export function lookupFor(ecosystem: Ecosystem, fsPath: string, settings: Settings): Lookup | undefined {
   switch (ecosystem) {
+    case 'deno': {
+      const npm = npmLookup(fsPath, settings);
+      const jsr = new JsrClient(settings.requestTimeoutMs);
+      const unprefixed = (dep: DependencyRef): DependencyRef => ({ ...dep, name: dep.name.slice(4) });
+      return {
+        key: (dep) => dep.name.startsWith('npm:') ? npm.key(unprefixed(dep)) : `deno|jsr.io|${dep.name}`,
+        fetch: (dep) => dep.name.startsWith('npm:') ? npm.fetch(unprefixed(dep)) : jsr.fetchVersions(dep.name.slice(4)),
+        fetchAll: (dep) => dep.name.startsWith('npm:') ? npm.fetchAll!(unprefixed(dep)) : jsr.fetchVersions(dep.name.slice(4)),
+        fetchAudit: (dep, version) => dep.name.startsWith('npm:') ? npm.fetchAudit!(unprefixed(dep), version)
+          : Promise.resolve({ status: 'unsupported' }),
+        fetchDetails: (dep, versions) => dep.name.startsWith('npm:') ? npm.fetchDetails!(unprefixed(dep), versions) : Promise.resolve({}),
+      };
+    }
+    case 'githubActions': {
+      const client = new GithubActionsClient(settings.requestTimeoutMs);
+      return {
+        key: (dep) => `githubActions|github.com|${dep.name.toLowerCase()}|${actionTagStyle(dep.spec)}`,
+        fetch: (dep) => client.fetchVersions(dep.name, dep.spec),
+      };
+    }
     case 'php':
       return composerLookup(settings);
     case 'dart':

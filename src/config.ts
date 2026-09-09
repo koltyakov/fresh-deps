@@ -41,6 +41,8 @@ export interface Settings {
   ruby: { enabled: boolean };
   terraform: { enabled: boolean; defaultRegistry: string };
   elixir: { enabled: boolean };
+  deno: { enabled: boolean };
+  githubActions: { enabled: boolean };
 }
 
 export function readSettings(scope?: vscode.Uri): Settings {
@@ -91,5 +93,7 @@ export function readSettings(scope?: vscode.Uri): Settings {
     ruby: { enabled: cfg.get('ruby.enabled', true) },
     terraform: { enabled: cfg.get('terraform.enabled', true), defaultRegistry: cfg.get('terraform.defaultRegistry', '') },
     elixir: { enabled: cfg.get('elixir.enabled', true) },
+    deno: { enabled: cfg.get('deno.enabled', true) },
+    githubActions: { enabled: cfg.get('githubActions.enabled', true) },
   };
 }

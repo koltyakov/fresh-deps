@@ -24,7 +24,7 @@ test('new manifests are recognized and activate the extension', () => {
     assert.equal(manifestOf(`/project/${file}`)?.ecosystem, ecosystem);
     assert.ok(manifest.activationEvents.includes(`workspaceContains:**/${activation}`));
   }
-  assert.equal(manifestOf('/project/build.gradle.kts'), undefined);
+  assert.equal(manifestOf('/project/build.gradle.kts')?.kind, 'gradle-build');
   assert.equal(manifestOf('/project/unrelated.toml'), undefined);
 });
 

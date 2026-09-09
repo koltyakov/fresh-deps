@@ -67,6 +67,11 @@ test('audit hints merge with updates and remain visible without updates', () => 
   (editor.document.uri as unknown as { fsPath: string }).fsPath = '/project/pnpm-workspace.yaml';
   renderer.render(editor, updates, 'npm', []);
   assert.equal([...decorations.values()].flat()[0].renderOptions.before.contentText, '#');
+  for (const file of ['build.gradle', 'build.gradle.kts']) {
+    (editor.document.uri as unknown as { fsPath: string }).fsPath = `/project/${file}`;
+    renderer.render(editor, updates, 'gradle', []);
+    assert.equal([...decorations.values()].flat()[0].renderOptions.before.contentText, '//');
+  }
   renderer.dispose();
 });
 
@@ -91,6 +96,7 @@ test('gray markers have zero layout width and versions reserve aligned space for
     ['npm', '//', ''], ['go', '//', ''], ['python', '#', ''],
     ['rust', '#', ''], ['dotnet', '<!--', ' -->'], ['java', '<!--', ' -->'],
     ['php', '//', ''], ['dart', '#', ''], ['gradle', '#', ''],
+    ['deno', '//', ''], ['githubActions', '#', ''],
   ] as const) {
     renderer.render(editor, updates, ecosystem, []);
     for (const [type, hints] of decorations) {

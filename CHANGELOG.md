@@ -9,6 +9,10 @@
 - Ruby update hints in `Gemfile` using RubyGems.org, with RubyGems version and pessimistic constraint handling.
 - Terraform and OpenTofu provider hints in `*.tf` and `*.tofu` files using their public registries.
 - Elixir dependency hints in `mix.exs` using Hex.pm, including package aliases and Hex constraints.
+- Gradle build-script hints for literal dependencies and plugins in `build.gradle` and `build.gradle.kts`, using existing Maven repository settings.
+- Deno hints for versioned npm and JSR imports in Deno configs and conventional import maps, including scoped imports and package subpaths.
+- GitHub Actions hints for version-tagged actions and reusable workflows, preserving moving-tag precision and handling paginated tag lookups.
+- Separate enable settings for Deno and GitHub Actions, with registry links in hover details and manifest-specific comment markers.
 
 ## 0.2.0
 

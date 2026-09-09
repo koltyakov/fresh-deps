@@ -20,6 +20,7 @@ const settings: Settings = {
   dart: { enabled: true },
   gradle: { enabled: true, repositories: ['https://repo.maven.apache.org/maven2'] },
   ruby: { enabled: true }, terraform: { enabled: true, defaultRegistry: '' }, elixir: { enabled: true },
+  deno: { enabled: true }, githubActions: { enabled: true },
 };
 
 for (const fixture of [
@@ -44,6 +45,10 @@ for (const fixture of [
   {
     file: 'mix.exs', ecosystem: 'elixir', text: 'defp deps do\n[{:phoenix, "~> 1.0"}]\nend',
     url: 'https://hex.pm/api/packages/phoenix', response: { latest_stable_version: '2.0.0', releases: [{ version: '1.5.0' }, { version: '2.0.0' }] },
+  },
+  {
+    file: 'deno.jsonc', ecosystem: 'deno', text: '{"imports":{"assert":"jsr:@std/assert@^1.0.0"}}',
+    url: 'https://jsr.io/@std/assert/meta.json', response: { latest: '2.0.0', versions: { '1.5.0': {}, '2.0.0': {} } },
   },
 ] as const) {
   test(`${fixture.ecosystem} analyzes updates, caches lookups and respects disabled settings`, async (t) => {
@@ -88,9 +93,55 @@ test('Gradle queries configured repositories in order and only falls through on 
   ]);
   await analyze({ ...request, allowNetwork: false });
   assert.equal(calls.length, 2);
+  const build = await analyze({ ...request, fsPath: '/project/build.gradle.kts', text: 'dependencies { implementation("org.example:core:1.0") }', allowNetwork: false });
+  assert.equal(build?.updates[0].latest, '2.0');
+  assert.equal(calls.length, 2);
   t.mock.method(globalThis, 'fetch', async () => new Response('', { status: 403 }));
   const failed = await analyze({ ...request, cache: new VersionCache(60_000) });
   assert.match(failed?.failures.get('org.example:core') ?? '', /403/);
+});
+
+test('Deno routes mixed imports to JSR and configured npm registries and reuses npm cache', async (t) => {
+  t.mock.method(npmrc, 'readNpmConfig', () => new Map());
+  const calls: string[] = [];
+  t.mock.method(globalThis, 'fetch', async (url: string) => {
+    calls.push(url);
+    if (url === 'https://jsr.io/@std/assert/meta.json') return Response.json({ latest: '2.0.0', versions: { '2.0.0': {} } });
+    assert.equal(url, 'https://registry.example/react/latest');
+    return Response.json({ version: '2.0.0' });
+  });
+  const request: AnalyzeRequest = {
+    fsPath: '/project/deno.json', text: '{"imports":{"react":"npm:react@1.0.0","assert":"jsr:@std/assert@1.0.0"}}',
+    settings, cache: new VersionCache(60_000), auditCache: new AuditCache(), allowNetwork: true,
+  };
+  const result = await analyze(request);
+  assert.equal(result?.updates.length, 2);
+  assert.equal(result?.failures.size, 0);
+  const npm = await analyze({ ...request, fsPath: '/project/package.json', text: '{"dependencies":{"react":"1.0.0"}}', allowNetwork: false });
+  assert.equal(npm?.updates[0].latest, '2.0.0');
+  assert.equal(npm?.incomplete, false);
+  assert.equal(calls.length, 2);
+});
+
+test('Actions caches tag styles separately, avoids network while typing and respects disablement', async (t) => {
+  let calls = 0;
+  t.mock.method(globalThis, 'fetch', async (url: string) => {
+    calls++;
+    assert.equal(url, 'https://api.github.com/repos/actions/checkout/tags?per_page=100&page=1');
+    return Response.json([{ name: 'v5' }, { name: 'v5.1.0' }]);
+  });
+  const request: AnalyzeRequest = {
+    fsPath: '/project/.github/workflows/ci.yml', text: 'jobs:\n  build:\n    steps:\n      - uses: actions/checkout@v4\n      - uses: actions/checkout@v4.0.0',
+    settings: { ...settings, auditEnabled: true }, cache: new VersionCache(60_000), auditCache: new AuditCache(), allowNetwork: false,
+  };
+  assert.equal((await analyze(request))?.incomplete, true);
+  assert.equal(calls, 0);
+  const result = await analyze({ ...request, allowNetwork: true });
+  assert.deepEqual(result?.updates.map((update) => update.latest), ['v5', 'v5.1.0']);
+  assert.ok(result?.audits.every((audit) => audit.result.status === 'unsupported'));
+  assert.deepEqual((await analyze(request))?.updates, result?.updates);
+  assert.equal(calls, 1);
+  assert.equal(await analyze({ ...request, settings: { ...settings, githubActions: { enabled: false } } }), undefined);
 });
 
 test('pnpm catalogs reuse npm registry resolution and cache keys', async (t) => {

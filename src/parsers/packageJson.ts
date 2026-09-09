@@ -11,7 +11,7 @@ interface Token {
  * Tolerant JSON(C) tokenizer: only strings and structural punctuation are kept,
  * which is all that is needed to locate dependency declarations and their positions.
  */
-function tokenize(text: string): Token[] {
+export function tokenize(text: string): Token[] {
   const tokens: Token[] = [];
   let line = 0;
   let i = 0;
@@ -30,6 +30,7 @@ function tokenize(text: string): Token[] {
 
     if (ch === '"') {
       const startLine = line;
+      const start = i;
       let value = '';
       advance();
       while (i < text.length && text[i] !== '"') {
@@ -43,6 +44,7 @@ function tokenize(text: string): Token[] {
         }
       }
       advance(); // closing quote
+      try { value = JSON.parse(text.slice(start, i)); } catch { /* Keep partially typed strings usable. */ }
       tokens.push({ type: 'string', value, line: startLine });
       continue;
     }

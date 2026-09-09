@@ -48,6 +48,9 @@ test('new ecosystems link to their package listings', () => {
     ['ruby', 'rails', 'gems', 'https://rubygems.org/gems/rails/versions/1.136.0'],
     ['terraform', 'hashicorp/aws', 'required_providers', 'https://registry.terraform.io/providers/hashicorp/aws/1.136.0/docs'],
     ['elixir', 'phoenix', 'deps', 'https://hex.pm/packages/phoenix/1.136.0'],
+    ['deno', 'jsr:@std/assert', 'imports', 'https://jsr.io/@std/assert@1.136.0'],
+    ['deno', 'npm:react', 'imports', 'https://www.npmjs.com/package/react/v/1.136.0'],
+    ['githubActions', 'actions/checkout', 'jobs.build', 'https://github.com/actions/checkout/tree/1.136.0'],
   ] as const) {
     assert.ok(buildHover({ ...update, dep: { ...update.dep, name, section } }, ecosystem).value.includes(url));
   }
@@ -99,6 +102,24 @@ test('ranges date the current baseline without dating the declared range', () =>
   const hover = buildHover({ ...update, dep: { ...update.dep, spec: '^1.120.0' } }, 'npm', dates);
   assert.match(hover.value, /Declared \| `\^1\.120\.0` \|/);
   assert.match(hover.value, /Current \| `1\.120\.0` .*published/);
+});
+
+test('Deno multiline import aliases retain hovers on the specifier line', async () => {
+  let text = '    "jsr:@std/assert@1.0.0",';
+  const document = {
+    uri: { fsPath: '/project/deno.json' },
+    lineAt: () => ({ text, firstNonWhitespaceCharacterIndex: 4, range: { end: { character: text.length } } }),
+  } as unknown as TextDocument;
+  const provider = new DependencyHoverProvider(
+    () => ({ ecosystem: 'deno', updates: [{ ...update, dep: { name: 'jsr:@std/assert', spec: '1.0.0', alias: 'check', line: 0, section: 'imports' } }], audits: [] } as unknown as AnalyzeResult),
+    () => ({} as Settings),
+    { resolve: async () => ({}) } as unknown as DetailsResolver,
+  );
+  const position = { line: 0, character: 5 } as Position;
+  const token = { isCancellationRequested: false } as CancellationToken;
+  assert.ok(await provider.provideHover(document, position, token));
+  text = '    "jsr:@std/path@1.0.0",';
+  assert.equal(await provider.provideHover(document, position, token), undefined);
 });
 
 test('unavailable or invalid publication dates leave version rows usable', () => {

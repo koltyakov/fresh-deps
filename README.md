@@ -5,7 +5,7 @@
 See available dependency updates directly in your VS Code manifest files.
 
 Fresh Deps adds inline version hints for **npm, Go, Python, Rust, Java, .NET, PHP, Dart / Flutter,
-Ruby, Terraform / OpenTofu, and Elixir**.
+Ruby, Terraform / OpenTofu, Elixir, Deno / JSR, and GitHub Actions**.
 Compare the newest version your range allows with the latest release, then hover for details and a
 link to the package registry. Hints are editor decorations, so your files stay untouched.
 
@@ -37,13 +37,15 @@ editor title bar or run `Fresh Deps: Check for Updates` from the Command Palette
 | Go | `go.mod` | Go module proxy |
 | Python | `pyproject.toml`, `Pipfile`, requirements and constraints files | PyPI or a custom index |
 | Rust | `Cargo.toml` | crates.io |
-| Java / Kotlin / Android | Maven `pom.xml`; Gradle `*.versions.toml`, including `gradle/libs.versions.toml` | Maven Central or a custom repository; Gradle also checks Google Maven and the Gradle Plugin Portal by default |
+| Java / Kotlin / Android | Maven `pom.xml`; Gradle `*.versions.toml`, `build.gradle`, `build.gradle.kts` | Maven Central or a custom repository; Gradle also checks Google Maven and the Gradle Plugin Portal by default |
 | .NET | `*.csproj`, `*.fsproj`, `*.vbproj`, `Directory.Packages.props`, `Directory.Build.props`, `packages.config` | NuGet V3 feed |
 | PHP / Composer | `composer.json` | Packagist |
 | Dart / Flutter | `pubspec.yaml` | pub.dev |
 | Ruby | `Gemfile` | RubyGems.org |
 | Terraform / OpenTofu | `*.tf`, `*.tofu` provider requirements | Terraform Registry or OpenTofu Registry |
 | Elixir | `mix.exs` | Hex.pm |
+| Deno / JSR | `deno.json`, `deno.jsonc`, `import_map.json`, `import-map.json`, and JSONC variants of the import maps | JSR and the configured npm registry |
+| GitHub Actions | `.github/workflows/*.yml`, `*.yaml`; composite `action.yml`, `action.yaml` | Public GitHub tags API |
 
 ## Inline hints
 
@@ -89,7 +91,7 @@ available update; hover to check whether it satisfies your range.
 
 Hover details include the declared range, latest version, range compatibility, and a link to npm,
 pkg.go.dev, PyPI, crates.io, Maven Central, NuGet, Packagist, pub.dev, RubyGems.org, the Terraform
-Registry, Hex.pm, or a Gradle package listing.
+Registry, Hex.pm, JSR, GitHub, or a Gradle package listing.
 
 Hints follow the manifest's comment syntax and appear after any trailing comma or existing comment.
 Major updates use the theme's warning color, minor updates use its info color, and patch updates
@@ -170,7 +172,17 @@ Customize the colors through `workbench.colorCustomizations` using `freshDeps.co
 - Hints appear on each library or plugin declaration, including when several declarations share a version reference.
 - Queries `freshDeps.gradle.repositories` in order, using the first repository where the artifact exists.
   Defaults are Maven Central, Google Maven, and the Gradle Plugin Portal. Authentication and repository declarations in build scripts are not read.
-- Rich constraints, dynamic versions, bundles, and executable `build.gradle` / `build.gradle.kts` files are not checked.
+- Rich constraints, dynamic versions, and bundles are not checked.
+
+#### Gradle build scripts
+
+- Reads literal dependency coordinates in `dependencies` blocks in `build.gradle` and `build.gradle.kts`.
+  Supports Groovy calls such as `implementation 'org.example:core:1.0.0'` and Kotlin calls such as
+  `implementation("org.example:core:1.0.0")`, including multiline calls and `platform`, `enforcedPlatform`, and `testFixtures` wrappers.
+- Reads literal plugin IDs and versions in `plugins` blocks, including Kotlin's `kotlin("jvm")` shorthand.
+- Uses the same configured repositories and cache as Gradle catalogs. Build scripts are never executed.
+  Variables, interpolation, map-style declarations, dynamic versions, classifier notation, and versionless dependencies are skipped.
+  Build-script repository declarations and authentication are not read.
 
 ### PHP / Composer
 
@@ -220,6 +232,24 @@ Customize the colors through `workbench.colorCustomizations` using `freshDeps.co
 - Git, GitHub, path, umbrella, private organization, and custom repository dependencies are skipped.
 - `mix.exs` is not executed. Dynamically assembled dependency lists and requirements are not checked.
 
+### Deno / JSR
+
+- Reads `imports` and `scopes` in `deno.json`, `deno.jsonc`, and conventional `import_map.json` / `import-map.json` files, including their `.jsonc` variants.
+- Checks explicitly versioned `jsr:` and `npm:` specifiers, including scoped packages, aliases, ranges, and subpaths such as `npm:react@^18.0.0/jsx-runtime`.
+- JSR lookups exclude yanked versions. npm lookups reuse `.npmrc`, the npm registry override, cached versions, and optional npm audits.
+- URL imports, local paths, unversioned imports, and npm dist-tags are skipped. Referenced import map files and workspace members are not followed;
+  each supported file is checked when opened. Arbitrarily named import maps and source-code imports are not checked.
+
+### GitHub Actions
+
+- Reads literal `uses` references in workflow steps, reusable workflow jobs, and composite action steps.
+- Compares version tags with the same precision and `v` prefix. For example, `v4` is compared with other major tags,
+  while `v4.1.0` is compared with full version tags. Patch releases within a moving major tag do not produce an update hint.
+- Local actions, Docker references, branches, commit-SHA pins, expressions, and YAML aliases are skipped.
+- Uses the public GitHub tags API without authentication. GitHub rate-limit failures appear in the output channel.
+  Lookups read at most ten pages of 100 tags; reaching that limit reports a failed lookup rather than comparing a partial list.
+  Private repositories and GitHub Enterprise are not supported.
+
 ## Security audits
 
 Enable `freshDeps.audit.enabled` to show security warnings alongside update hints, including
@@ -230,7 +260,7 @@ checked and how many have warnings. Failed checks are logged in the Fresh Deps o
 - npm uses the configured registry's bulk advisory endpoint, respecting scoped registries and
   authentication. Registries without that endpoint are marked unsupported.
 - Python uses public PyPI's release vulnerability data. Custom Python indexes are not supported.
-- Go, Rust, Java, .NET, PHP, Dart, Ruby, Terraform, and Elixir audits are not implemented yet. Their version checks still work.
+- Go, Rust, Java, .NET, PHP, Dart, Ruby, Terraform, Elixir, JSR, and GitHub Actions audits are not implemented yet. Their version checks still work.
 
 Audit checks are off by default. Enabling them sends package names and checked versions to the
 configured npm registry or public PyPI, with no fallback to another service. Exact pins check the
@@ -278,12 +308,14 @@ query the audit provider. Both refresh and Clear Version Cache discard audit res
 | `freshDeps.dotnet.indexUrl` | `""` | NuGet V3 service index; empty uses nuget.org |
 | `freshDeps.php.enabled` | `true` | Check `composer.json` using Packagist |
 | `freshDeps.dart.enabled` | `true` | Check `pubspec.yaml` using pub.dev |
-| `freshDeps.gradle.enabled` | `true` | Check Gradle `*.versions.toml` catalogs |
+| `freshDeps.gradle.enabled` | `true` | Check Gradle catalogs and literal build-script declarations |
 | `freshDeps.gradle.repositories` | Maven Central, Google Maven, Gradle Plugin Portal | Ordered Maven repository URLs for Gradle catalogs |
 | `freshDeps.ruby.enabled` | `true` | Check `Gemfile` using RubyGems.org |
 | `freshDeps.terraform.enabled` | `true` | Check public provider requirements in `*.tf` and `*.tofu` files |
 | `freshDeps.terraform.defaultRegistry` | `""` | Registry for two-part sources; empty selects one from the file extension |
 | `freshDeps.elixir.enabled` | `true` | Check literal dependencies in `mix.exs` using Hex.pm |
+| `freshDeps.deno.enabled` | `true` | Check npm and JSR imports in Deno configs and conventional import maps |
+| `freshDeps.githubActions.enabled` | `true` | Check version tags in GitHub Actions workflows and composite actions |
 
 Version results are cached for an hour by default and persisted across window reloads. Change
 `freshDeps.cacheDurationMinutes` to adjust the duration.

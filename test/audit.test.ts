@@ -45,6 +45,7 @@ function setup(t: TestContext, spec = '1.0.0') {
       dart: { enabled: true },
       gradle: { enabled: true, repositories: [] },
       ruby: { enabled: true }, terraform: { enabled: true, defaultRegistry: '' }, elixir: { enabled: true },
+      deno: { enabled: true }, githubActions: { enabled: true },
     },
     cache: new VersionCache(60 * 60_000),
     auditCache: new AuditCache(),

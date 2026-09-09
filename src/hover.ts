@@ -130,6 +130,15 @@ function links(
     parts.push(`[crates.io](https://crates.io/crates/${update.dep.name}/${update.latest})`);
   } else if (ecosystem === 'dotnet') {
     parts.push(`[NuGet](https://www.nuget.org/packages/${update.dep.name}/${update.latest})`);
+  } else if (ecosystem === 'php') {
+    parts.push(`[Packagist](https://packagist.org/packages/${update.dep.name})`);
+  } else if (ecosystem === 'dart') {
+    parts.push(`[pub.dev](https://pub.dev/packages/${update.dep.name}/versions/${update.latest})`);
+  } else if (ecosystem === 'gradle' && update.dep.section === 'plugins') {
+    parts.push(`[Gradle Plugin Portal](https://plugins.gradle.org/plugin/${update.dep.name.split(':')[0]}/${update.latest})`);
+  } else if (ecosystem === 'gradle') {
+    const [groupId, artifactId] = update.dep.name.split(':');
+    parts.push(`[Maven Repository](https://mvnrepository.com/artifact/${groupId}/${artifactId}/${update.latest})`);
   } else if (ecosystem === 'java') {
     const [groupId, artifactId] = update.dep.name.split(':');
     parts.push(`[Maven Central](https://central.sonatype.com/artifact/${groupId}/${artifactId}/${update.latest})`);

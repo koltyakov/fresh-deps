@@ -35,6 +35,9 @@ export interface Settings {
     enabled: boolean;
     repository: string;
   };
+  php: { enabled: boolean };
+  dart: { enabled: boolean };
+  gradle: { enabled: boolean; repositories: string[] };
 }
 
 export function readSettings(scope?: vscode.Uri): Settings {
@@ -73,6 +76,14 @@ export function readSettings(scope?: vscode.Uri): Settings {
     java: {
       enabled: cfg.get('java.enabled', true),
       repository: cfg.get('java.repository', ''),
+    },
+    php: { enabled: cfg.get('php.enabled', true) },
+    dart: { enabled: cfg.get('dart.enabled', true) },
+    gradle: {
+      enabled: cfg.get('gradle.enabled', true),
+      repositories: cfg.get('gradle.repositories', [
+        'https://repo.maven.apache.org/maven2', 'https://dl.google.com/dl/android/maven2', 'https://plugins.gradle.org/m2',
+      ]),
     },
   };
 }

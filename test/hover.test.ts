@@ -40,6 +40,16 @@ const dates = {
   latestPublishedAt: '2026-09-02T12:00:00Z',
 };
 
+test('new ecosystems link to their package listings', () => {
+  for (const [ecosystem, name, section, url] of [
+    ['php', 'vendor/pkg', 'require', 'https://packagist.org/packages/vendor/pkg'],
+    ['dart', 'http', 'dependencies', 'https://pub.dev/packages/http/versions/1.136.0'],
+    ['gradle', 'org.example:org.example.gradle.plugin', 'plugins', 'https://plugins.gradle.org/plugin/org.example/1.136.0'],
+  ] as const) {
+    assert.ok(buildHover({ ...update, dep: { ...update.dep, name, section } }, ecosystem).value.includes(url));
+  }
+});
+
 test('project link shows the homepage URL and retains a distinct repository link', () => {
   const homepage = 'https://www.typescriptlang.org/';
   const repository = 'https://github.com/microsoft/TypeScript';

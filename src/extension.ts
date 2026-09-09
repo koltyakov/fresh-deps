@@ -150,6 +150,10 @@ export function activate(context: vscode.ExtensionContext): void {
   // answers on a line the last check reported an update for.
   const MANIFEST_SELECTOR: vscode.DocumentSelector = [
     { scheme: 'file', pattern: '**/package.json' },
+    { scheme: 'file', pattern: '**/composer.json' },
+    { scheme: 'file', pattern: '**/pubspec.yaml' },
+    { scheme: 'file', pattern: '**/pnpm-workspace.yaml' },
+    { scheme: 'file', pattern: '**/*.versions.toml' },
     { scheme: 'file', pattern: '**/go.mod' },
     { scheme: 'file', pattern: '**/Cargo.toml' },
     { scheme: 'file', pattern: '**/pom.xml' },

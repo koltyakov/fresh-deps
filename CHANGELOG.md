@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.0
+
+- Composer update hints in `composer.json` using public Packagist, with Composer-specific numeric constraint handling.
+- Dart and Flutter update hints in `pubspec.yaml` using pub.dev, including Dart caret bounds, build suffix ordering, and retracted-release filtering.
+- Gradle library and plugin hints in `*.versions.toml`, with shared version references and configurable Maven repository order.
+- pnpm default and named catalog hints in `pnpm-workspace.yaml`, using existing npm registry configuration and audits.
+- Added `freshDeps.php.enabled`, `freshDeps.dart.enabled`, `freshDeps.gradle.enabled`, and `freshDeps.gradle.repositories` settings.
+
 ## 0.2.0
 
 - Volta support: inline update hints for `node`, `npm`, `yarn`, and `pnpm` pins in the

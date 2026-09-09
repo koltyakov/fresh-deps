@@ -4,7 +4,7 @@
 
 See available dependency updates directly in your VS Code manifest files.
 
-Fresh Deps adds inline version hints for **npm, Go, Python, Rust, Maven, and NuGet**.
+Fresh Deps adds inline version hints for **npm, Go, Python, Rust, Java, .NET, PHP, and Dart / Flutter**.
 Compare the newest version your range allows with the latest release, then hover for details and a
 link to the package registry. Hints are editor decorations, so your files stay untouched.
 
@@ -32,12 +32,14 @@ editor title bar or run `Fresh Deps: Check for Updates` from the Command Palette
 
 | Ecosystem | Manifests | Package source |
 |---|---|---|
-| JavaScript / TypeScript | `package.json`, including Volta tool pins | npm registry |
+| JavaScript / TypeScript | `package.json`, including Volta tool pins; `pnpm-workspace.yaml` catalogs | npm registry |
 | Go | `go.mod` | Go module proxy |
 | Python | `pyproject.toml`, `Pipfile`, requirements and constraints files | PyPI or a custom index |
 | Rust | `Cargo.toml` | crates.io |
-| Java | `pom.xml` | Maven Central or a custom repository |
+| Java / Kotlin / Android | Maven `pom.xml`; Gradle `*.versions.toml`, including `gradle/libs.versions.toml` | Maven Central or a custom repository; Gradle also checks Google Maven and the Gradle Plugin Portal by default |
 | .NET | `*.csproj`, `*.fsproj`, `*.vbproj`, `Directory.Packages.props`, `Directory.Build.props`, `packages.config` | NuGet V3 feed |
+| PHP / Composer | `composer.json` | Packagist |
+| Dart / Flutter | `pubspec.yaml` | pub.dev |
 
 ## Inline hints
 
@@ -82,7 +84,7 @@ The second is the latest release and requires changing that range. A single vers
 available update; hover to check whether it satisfies your range.
 
 Hover details include the declared range, latest version, range compatibility, and a link to npm,
-pkg.go.dev, PyPI, crates.io, Maven Central, or NuGet.
+pkg.go.dev, PyPI, crates.io, Maven Central, NuGet, Packagist, pub.dev, or a Gradle package listing.
 
 Hints follow the manifest's comment syntax and appear after any trailing comma or existing comment.
 Major updates use the theme's warning color, minor updates use its info color, and patch updates
@@ -101,6 +103,9 @@ Customize the colors through `workbench.colorCustomizations` using `freshDeps.co
 - The `volta` block in `package.json` checks `node`, `npm`, `yarn`, and `pnpm` pins using their npm registry versions.
 - `extends` paths are not followed. Only pins declared in the current file are checked.
 - If you have customized `freshDeps.npm.sections`, add `"volta"` to enable these hints. Remove it to disable them.
+- Reads the default `catalog` and named `catalogs` in `pnpm-workspace.yaml`, including npm aliases.
+  These use the same registry configuration, cache, and audit provider as `package.json`.
+  `freshDeps.npm.sections` applies only to `package.json`; `freshDeps.npm.enabled` controls both manifests.
 
 ### Go
 
@@ -143,12 +148,43 @@ Customize the colors through `workbench.colorCustomizations` using `freshDeps.co
   including legacy four-part versions.
 - Versions containing MSBuild properties are skipped because checking them would require evaluating the project.
 
-### Java
+### Java / Kotlin / Android
+
+#### Maven
 
 - Reads dependencies and dependency management in Maven `pom.xml` files.
 - Maven versions use Maven qualifier ordering, including `alpha`, `beta`, `milestone`, `rc`, `snapshot`, `final`, and `sp`.
 - Maven interval ranges such as `[1.0,2.0)` and unions such as `(,1.0],[1.2,)` are supported.
 - Versions declared through properties in the same POM are resolved. Dependencies with inherited or otherwise unresolved versions are skipped.
+
+#### Gradle catalogs
+
+- Reads libraries and plugins in `*.versions.toml`, including `gradle/libs.versions.toml`.
+- Supports `group:artifact:version` strings, module or group/name declarations, literal versions, and references to string values in `[versions]`.
+  Plugin IDs resolve through their Maven plugin marker coordinates.
+- Hints appear on each library or plugin declaration, including when several declarations share a version reference.
+- Queries `freshDeps.gradle.repositories` in order, using the first repository where the artifact exists.
+  Defaults are Maven Central, Google Maven, and the Gradle Plugin Portal. Authentication and repository declarations in build scripts are not read.
+- Rich constraints, dynamic versions, bundles, and executable `build.gradle` / `build.gradle.kts` files are not checked.
+
+### PHP / Composer
+
+- Reads `require` and `require-dev` in `composer.json`. Platform requirements such as `php` and `ext-json` are skipped.
+- Supports numeric exact versions, comparisons, caret, Composer tilde, wildcard, hyphen, and OR constraints.
+  For example, `~1.2` allows versions below `2.0.0`, while `~1.2.3` stops below `1.3.0`.
+- Branch constraints, aliases, stability flags, exclusion constraints, and unconstrained `*` declarations are skipped.
+  Composer's `minimum-stability` and `prefer-stable` settings are not evaluated; prerelease visibility follows `freshDeps.includePrerelease`.
+  Four-part versions with a nonzero fourth component and patch-level suffixes are not compared.
+- Uses public Packagist. Manifests with nonempty `repositories` declarations are skipped because custom repositories can shadow public package names.
+
+### Dart / Flutter
+
+- Reads `dependencies`, `dev_dependencies`, and `dependency_overrides` in `pubspec.yaml`.
+- Supports exact versions, comparison bounds, and Dart caret constraints. `^0.0.3` allows updates below `0.1.0`.
+- Build suffixes participate in version ordering, so `1.0.0+2` can show an update to `1.0.0+3`. Retracted releases are ignored.
+- Checks default pub.dev dependencies and explicitly declared pub.dev hosted dependencies. Git, path, SDK, private hosted sources, YAML aliases, and `any` requirements are skipped.
+  If `PUB_HOSTED_URL` selects a different host, only explicitly declared pub.dev dependencies are checked.
+  SDK compatibility and `pubspec_overrides.yaml` are not evaluated.
 
 ## Security audits
 
@@ -160,7 +196,7 @@ checked and how many have warnings. Failed checks are logged in the Fresh Deps o
 - npm uses the configured registry's bulk advisory endpoint, respecting scoped registries and
   authentication. Registries without that endpoint are marked unsupported.
 - Python uses public PyPI's release vulnerability data. Custom Python indexes are not supported.
-- Go, Rust, Maven and NuGet audits are not implemented yet. Their version checks still work.
+- Go, Rust, Java, .NET, PHP, and Dart audits are not implemented yet. Their version checks still work.
 
 Audit checks are off by default. Enabling them sends package names and checked versions to the
 configured npm registry or public PyPI, with no fallback to another service. Exact pins check the
@@ -191,7 +227,7 @@ query the audit provider. Both refresh and Clear Version Cache discard audit res
 | `freshDeps.requestTimeoutMs` | `10000` | Per-request timeout |
 | `freshDeps.showSatisfyingUpdates` | `true` | Also report the newest in-range version |
 | `freshDeps.includePrerelease` | `false` | Treat prereleases as updates |
-| `freshDeps.npm.enabled` | `true` | Check `package.json` |
+| `freshDeps.npm.enabled` | `true` | Check `package.json` and pnpm catalogs |
 | `freshDeps.npm.registry` | `""` | Registry override; empty reads `.npmrc` |
 | `freshDeps.npm.sections` | the four dependency sections plus `volta` | Which sections to inspect |
 | `freshDeps.go.enabled` | `true` | Check `go.mod` |
@@ -206,6 +242,10 @@ query the audit provider. Both refresh and Clear Version Cache discard audit res
 | `freshDeps.java.repository` | `""` | Repository override; empty uses Maven Central |
 | `freshDeps.dotnet.enabled` | `true` | Check NuGet package declarations |
 | `freshDeps.dotnet.indexUrl` | `""` | NuGet V3 service index; empty uses nuget.org |
+| `freshDeps.php.enabled` | `true` | Check `composer.json` using Packagist |
+| `freshDeps.dart.enabled` | `true` | Check `pubspec.yaml` using pub.dev |
+| `freshDeps.gradle.enabled` | `true` | Check Gradle `*.versions.toml` catalogs |
+| `freshDeps.gradle.repositories` | Maven Central, Google Maven, Gradle Plugin Portal | Ordered Maven repository URLs for Gradle catalogs |
 
 Version results are cached for an hour by default and persisted across window reloads. Change
 `freshDeps.cacheDurationMinutes` to adjust the duration.
@@ -224,7 +264,7 @@ installs it with `code --install-extension --force`; reload the window afterward
 `FRESH_DEPS_VSCODE_CLI` to target another CLI (`code-insiders`, `cursor`, an absolute path).
 
 Registry lookups are network-dependent, so the test suite covers the pure parts: manifest parsing,
-position anchoring, version comparison, Cargo, Maven, and PEP 440 requirement matching, `.npmrc` and
+position anchoring, version comparison, Cargo, Maven, Composer, Dart, and PEP 440 requirement matching, `.npmrc` and
 `pip.conf` resolution, Go path handling, and registry response handling.
 
 ## License

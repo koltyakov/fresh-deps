@@ -37,7 +37,7 @@ test('audit hints merge with updates and remain visible without updates', () => 
   const decorations = new Map<MockDecorationType, MockHint[]>();
   const editor = {
     options: { tabSize: 2 },
-    document: { lineCount: 2, lineAt: (line: number) => ({ text: 'package', range: { end: { line, character: 7 } } }) },
+    document: { uri: { fsPath: '/project/package.json' }, lineCount: 2, lineAt: (line: number) => ({ text: 'package', range: { end: { line, character: 7 } } }) },
     setDecorations: (type: MockDecorationType, values: MockHint[]) => decorations.set(type, values),
   } as unknown as TextEditor;
   const dep = { name: 'pkg', spec: '^1.0.0', line: 0, section: 'dependencies' };
@@ -64,6 +64,9 @@ test('audit hints merge with updates and remain visible without updates', () => 
   }
   renderer.render(editor, [], 'npm', []);
   assert.equal([...decorations.values()].flat().length, 0);
+  (editor.document.uri as unknown as { fsPath: string }).fsPath = '/project/pnpm-workspace.yaml';
+  renderer.render(editor, updates, 'npm', []);
+  assert.equal([...decorations.values()].flat()[0].renderOptions.before.contentText, '#');
   renderer.dispose();
 });
 
@@ -74,6 +77,7 @@ test('gray markers have zero layout width and versions reserve aligned space for
   const editor = {
     options: { tabSize: 4 },
     document: {
+      uri: { fsPath: '/project/package.json' },
       lineCount: lines.length,
       lineAt: (line: number) => ({ text: lines[line], range: { end: { line, character: lines[line].length } } }),
     },
@@ -86,6 +90,7 @@ test('gray markers have zero layout width and versions reserve aligned space for
   for (const [ecosystem, token, suffix] of [
     ['npm', '//', ''], ['go', '//', ''], ['python', '#', ''],
     ['rust', '#', ''], ['dotnet', '<!--', ' -->'], ['java', '<!--', ' -->'],
+    ['php', '//', ''], ['dart', '#', ''], ['gradle', '#', ''],
   ] as const) {
     renderer.render(editor, updates, ecosystem, []);
     for (const [type, hints] of decorations) {

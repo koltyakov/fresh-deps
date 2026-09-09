@@ -3,11 +3,15 @@ import { AuditCache } from './audit';
 import type { VersionCache } from './cache';
 import type { Settings } from './config';
 import { parseCargoToml } from './parsers/cargoToml';
+import { parseComposerJson } from './parsers/composerJson';
 import { parseGoMod } from './parsers/goMod';
+import { parseGradleCatalog } from './parsers/gradleCatalog';
 import { parseNugetManifest } from './parsers/nuget';
 import { parsePackageJson } from './parsers/packageJson';
 import { parsePipfile } from './parsers/pipfile';
+import { parsePnpmWorkspace } from './parsers/pnpmWorkspace';
 import { parsePomXml } from './parsers/pomXml';
+import { parsePubspec } from './parsers/pubspec';
 import { parsePyProject } from './parsers/pyproject';
 import { parseRequirementsTxt } from './parsers/requirementsTxt';
 import { CratesClient } from './registries/crates';
@@ -15,6 +19,8 @@ import { GoClient } from './registries/go';
 import { NpmClient } from './registries/npm';
 import { MavenClient } from './registries/maven';
 import { NugetClient } from './registries/nuget';
+import { PackagistClient } from './registries/packagist';
+import { PubClient } from './registries/pub';
 import { normalizeName, PyPiClient } from './registries/pypi';
 import { schemeFor } from './schemes';
 import type {
@@ -53,6 +59,10 @@ export interface AnalyzeResult {
 /** Which manifest a file is, since Python spreads its dependencies over several. */
 export type ManifestKind =
   | 'package.json'
+  | 'composer.json'
+  | 'pubspec.yaml'
+  | 'gradle-catalog'
+  | 'pnpm-workspace.yaml'
   | 'go.mod'
   | 'Cargo.toml'
   | 'pyproject.toml'
@@ -85,6 +95,10 @@ function isRequirementsFile(fsPath: string): boolean {
 
 export function manifestOf(fsPath: string): Manifest | undefined {
   const name = path.basename(fsPath);
+  if (name === 'composer.json') return { ecosystem: 'php', kind: 'composer.json' };
+  if (name === 'pubspec.yaml') return { ecosystem: 'dart', kind: 'pubspec.yaml' };
+  if (name === 'pnpm-workspace.yaml') return { ecosystem: 'npm', kind: 'pnpm-workspace.yaml' };
+  if (name.endsWith('.versions.toml')) return { ecosystem: 'gradle', kind: 'gradle-catalog' };
   if (name === 'package.json') {
     return { ecosystem: 'npm', kind: 'package.json' };
   }
@@ -210,6 +224,10 @@ function enabledFor(ecosystem: Ecosystem, settings: Settings): boolean {
 function parseManifest(kind: ManifestKind, request: AnalyzeRequest): DependencyRef[] {
   const { settings, text } = request;
   switch (kind) {
+    case 'composer.json': return parseComposerJson(text);
+    case 'pubspec.yaml': return parsePubspec(text, process.env.PUB_HOSTED_URL);
+    case 'gradle-catalog': return parseGradleCatalog(text);
+    case 'pnpm-workspace.yaml': return parsePnpmWorkspace(text);
     case 'package.json':
       return parsePackageJson(text, settings.npm.sections);
     case 'go.mod':
@@ -263,6 +281,12 @@ export interface PackageDetails {
  */
 export function lookupFor(ecosystem: Ecosystem, fsPath: string, settings: Settings): Lookup | undefined {
   switch (ecosystem) {
+    case 'php':
+      return composerLookup(settings);
+    case 'dart':
+      return dartLookup(settings);
+    case 'gradle':
+      return gradleLookup(settings);
     case 'npm':
       return npmLookup(fsPath, settings);
     case 'go':
@@ -367,6 +391,30 @@ function mavenLookup(settings: Settings): Lookup {
   return {
     key: (dep) => `maven|${client.repository}|${dep.name}`,
     fetch: (dep) => client.fetchVersions(dep.name),
+  };
+}
+
+function composerLookup(settings: Settings): Lookup {
+  const client = new PackagistClient(settings.requestTimeoutMs);
+  return { key: (dep) => `php|packagist.org|${dep.name}`, fetch: (dep) => client.fetchVersions(dep.name) };
+}
+
+function dartLookup(settings: Settings): Lookup {
+  const client = new PubClient(settings.requestTimeoutMs);
+  return { key: (dep) => `dart|pub.dev|${dep.name}`, fetch: (dep) => client.fetchVersions(dep.name) };
+}
+
+function gradleLookup(settings: Settings): Lookup {
+  const clients = settings.gradle.repositories.map((repository) => new MavenClient(repository, settings.requestTimeoutMs));
+  return {
+    key: (dep) => `gradle|${clients.map((client) => client.repository).join('|')}|${dep.name}`,
+    async fetch(dep) {
+      for (const client of clients) {
+        const result = await client.fetchVersions(dep.name);
+        if (result.error !== 'not found') return result;
+      }
+      return { error: 'not found' };
+    },
   };
 }
 

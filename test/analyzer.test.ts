@@ -16,7 +16,86 @@ const settings: Settings = {
   rust: { enabled: true },
   dotnet: { enabled: true, indexUrl: '' },
   java: { enabled: true, repository: '' },
+  php: { enabled: true },
+  dart: { enabled: true },
+  gradle: { enabled: true, repositories: ['https://repo.maven.apache.org/maven2'] },
 };
+
+for (const fixture of [
+  {
+    file: 'composer.json', ecosystem: 'php',
+    text: '{"require":{"vendor/pkg":"^1.0"}}',
+    url: 'https://repo.packagist.org/p2/vendor/pkg.json',
+    response: { packages: { 'vendor/pkg': [{ version: '1.5.0' }, { version: '2.0.0' }] } },
+  },
+  {
+    file: 'pubspec.yaml', ecosystem: 'dart', text: 'dependencies:\n  http: ^1.0.0',
+    url: 'https://pub.dev/api/packages/http', response: { versions: [{ version: '1.5.0' }, { version: '2.0.0' }] },
+  },
+] as const) {
+  test(`${fixture.ecosystem} analyzes updates, caches lookups and respects disabled settings`, async (t) => {
+    let calls = 0;
+    t.mock.method(globalThis, 'fetch', async (url: string) => {
+      calls++;
+      assert.equal(url, fixture.url);
+      return Response.json(fixture.response);
+    });
+    const request: AnalyzeRequest = {
+      fsPath: `/project/${fixture.file}`, text: fixture.text, settings: { ...settings, auditEnabled: true },
+      cache: new VersionCache(60_000), auditCache: new AuditCache(), allowNetwork: false,
+    };
+    assert.equal((await analyze(request))?.incomplete, true);
+    assert.equal(calls, 0);
+    const result = await analyze({ ...request, allowNetwork: true });
+    assert.equal(result?.updates[0].latest, '2.0.0');
+    assert.equal(result?.updates[0].satisfying, '1.5.0');
+    assert.equal(result?.audits[0].result.status, 'unsupported');
+    assert.deepEqual((await analyze(request))?.updates, result?.updates);
+    assert.equal(calls, 1);
+    assert.equal(await analyze({ ...request, settings: { ...settings, [fixture.ecosystem]: { enabled: false } } }), undefined);
+  });
+}
+
+test('Gradle queries configured repositories in order and only falls through on missing artifacts', async (t) => {
+  const calls: string[] = [];
+  t.mock.method(globalThis, 'fetch', async (url: string) => {
+    calls.push(url);
+    return url.startsWith('https://first.example') ? new Response('', { status: 404 })
+      : new Response('<metadata><versioning><versions><version>1.0</version><version>2.0</version></versions></versioning></metadata>');
+  });
+  const request: AnalyzeRequest = {
+    fsPath: '/project/gradle/libs.versions.toml', text: '[libraries]\ncore = "org.example:core:1.0"',
+    settings: { ...settings, gradle: { enabled: true, repositories: ['https://first.example', 'https://second.example'] } },
+    cache: new VersionCache(60_000), auditCache: new AuditCache(), allowNetwork: true,
+  };
+  assert.equal((await analyze(request))?.updates[0].latest, '2.0');
+  assert.deepEqual(calls, [
+    'https://first.example/org/example/core/maven-metadata.xml',
+    'https://second.example/org/example/core/maven-metadata.xml',
+  ]);
+  await analyze({ ...request, allowNetwork: false });
+  assert.equal(calls.length, 2);
+  t.mock.method(globalThis, 'fetch', async () => new Response('', { status: 403 }));
+  const failed = await analyze({ ...request, cache: new VersionCache(60_000) });
+  assert.match(failed?.failures.get('org.example:core') ?? '', /403/);
+});
+
+test('pnpm catalogs reuse npm registry resolution and cache keys', async (t) => {
+  t.mock.method(npmrc, 'readNpmConfig', () => new Map());
+  let calls = 0;
+  t.mock.method(globalThis, 'fetch', async (url: string) => {
+    calls++;
+    assert.equal(url, 'https://registry.example/react/latest');
+    return Response.json({ version: '19.0.0' });
+  });
+  const request: AnalyzeRequest = {
+    fsPath: '/project/pnpm-workspace.yaml', text: 'catalog:\n  react: 18.0.0', settings,
+    cache: new VersionCache(60_000), auditCache: new AuditCache(), allowNetwork: true,
+  };
+  assert.equal((await analyze(request))?.updates[0].latest, '19.0.0');
+  assert.equal((await analyze({ ...request, fsPath: '/project/package.json', text: '{"dependencies":{"react":"18.0.0"}}', allowNetwork: false }))?.updates[0].latest, '19.0.0');
+  assert.equal(calls, 1);
+});
 
 test('npm checks Volta pins through the configured registry and reuses cached updates', async (t) => {
   t.mock.method(npmrc, 'readNpmConfig', () => new Map());

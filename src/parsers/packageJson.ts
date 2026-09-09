@@ -1,4 +1,4 @@
-import { normalizeNpmSpec } from '../versions';
+import { normalizeNpmSpec, type NormalizedSpec } from '../versions';
 import type { DependencyRef } from '../types';
 
 interface Token {
@@ -77,6 +77,12 @@ function tokenize(text: string): Token[] {
 
 /** Extracts dependency declarations from the requested top-level sections of a package.json. */
 export function parsePackageJson(text: string, sections: string[]): DependencyRef[] {
+  return parseJsonDependencies(text, sections, normalizeNpmSpec);
+}
+
+export function parseJsonDependencies(
+  text: string, sections: string[], normalize: (name: string, spec: string) => NormalizedSpec | undefined,
+): DependencyRef[] {
   const tokens = tokenize(text);
   const deps: DependencyRef[] = [];
 
@@ -116,7 +122,7 @@ export function parsePackageJson(text: string, sections: string[]): DependencyRe
       if (section === 'volta' && !['node', 'npm', 'yarn', 'pnpm'].includes(token.value)) {
         continue;
       }
-      const normalized = normalizeNpmSpec(token.value, value.value);
+      const normalized = normalize(token.value, value.value);
       if (normalized) {
         deps.push({
           name: normalized.name,

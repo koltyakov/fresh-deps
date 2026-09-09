@@ -2,7 +2,11 @@ import * as semver from 'semver';
 import * as pep440 from './pep440';
 import { nugetScheme } from './nuget';
 import * as mavenVersion from './mavenVersion';
+import { composerRange } from './composer';
+import { dartScheme } from './dart';
 import type { Ecosystem, UpdateKind } from './types';
+
+export { dartScheme } from './dart';
 
 const LOOSE = { loose: true } as const;
 
@@ -125,6 +129,27 @@ export const cargoScheme: VersionScheme = {
   },
 };
 
+export const composerScheme: VersionScheme = {
+  ...semverScheme,
+  baseline: (spec) => {
+    const range = composerRange(spec);
+    return range ? baselineOf(range) : undefined;
+  },
+  isPinned: (spec) => {
+    const range = composerRange(spec);
+    return !!range && semver.valid(range.replace(/^=/, '')) !== null;
+  },
+  isRange: (spec) => composerRange(spec) !== undefined,
+  satisfies: (version, spec, opts) => {
+    const range = composerRange(spec);
+    return !!range && semverScheme.satisfies(version, range, opts);
+  },
+  maxSatisfying: (versions, spec, opts) => {
+    const range = composerRange(spec);
+    return range ? semverScheme.maxSatisfying(versions, range, opts) : undefined;
+  },
+};
+
 /**
  * Python has no `major.minor.patch` contract, so the step is read off the
  * release tuple: a change in the first component is a major move, the second a
@@ -177,6 +202,8 @@ export const mavenScheme: VersionScheme = {
 export function schemeFor(ecosystem: Ecosystem): VersionScheme {
   if (ecosystem === 'python') return pep440Scheme;
   if (ecosystem === 'rust') return cargoScheme;
-  if (ecosystem === 'java') return mavenScheme;
+  if (ecosystem === 'java' || ecosystem === 'gradle') return mavenScheme;
+  if (ecosystem === 'php') return composerScheme;
+  if (ecosystem === 'dart') return dartScheme;
   return ecosystem === 'dotnet' ? nugetScheme : semverScheme;
 }

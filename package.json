@@ -25,7 +25,11 @@
     "python",
     "cargo",
     "maven",
-    "nuget"
+    "nuget",
+    "composer",
+    "flutter",
+    "gradle",
+    "pnpm"
   ],
   "main": "./dist/extension.js",
   "icon": "assets/logo.png",
@@ -39,9 +43,14 @@
     "onLanguage:go.mod",
     "onLanguage:gomod",
     "onLanguage:toml",
+    "onLanguage:yaml",
     "onLanguage:xml",
     "onLanguage:pip-requirements",
     "workspaceContains:**/package.json",
+    "workspaceContains:**/composer.json",
+    "workspaceContains:**/pubspec.yaml",
+    "workspaceContains:**/pnpm-workspace.yaml",
+    "workspaceContains:**/*.versions.toml",
     "workspaceContains:**/go.mod",
     "workspaceContains:**/Cargo.toml",
     "workspaceContains:**/pom.xml",
@@ -125,7 +134,7 @@
         "freshDeps.npm.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Check npm dependencies in package.json."
+          "description": "Check npm dependencies in package.json and pnpm-workspace.yaml catalogs."
         },
         "freshDeps.npm.registry": {
           "type": "string",
@@ -201,6 +210,31 @@
           "default": true,
           "description": "Check Maven dependencies in pom.xml."
         },
+        "freshDeps.php.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Check Composer dependencies in composer.json using public Packagist."
+        },
+        "freshDeps.dart.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Check Dart and Flutter dependencies in pubspec.yaml using pub.dev."
+        },
+        "freshDeps.gradle.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Check libraries and plugins in Gradle *.versions.toml catalogs."
+        },
+        "freshDeps.gradle.repositories": {
+          "type": "array",
+          "items": { "type": "string", "format": "uri" },
+          "default": [
+            "https://repo.maven.apache.org/maven2",
+            "https://dl.google.com/dl/android/maven2",
+            "https://plugins.gradle.org/m2"
+          ],
+          "description": "Maven repositories for Gradle catalogs, checked in order until a package is found. Build-script repository declarations are not read."
+        },
         "freshDeps.java.repository": {
           "type": "string",
           "default": "",
@@ -271,7 +305,8 @@
     "vscode:install": "node scripts/vscode-install.mjs"
   },
   "dependencies": {
-    "semver": "^7.8.5"
+    "semver": "^7.8.5",
+    "yaml": "^2.8.1"
   },
   "devDependencies": {
     "@types/node": "^26.5.0",

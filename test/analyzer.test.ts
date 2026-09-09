@@ -21,7 +21,33 @@ const settings: Settings = {
   gradle: { enabled: true, repositories: ['https://repo.maven.apache.org/maven2'] },
   ruby: { enabled: true }, terraform: { enabled: true, defaultRegistry: '' }, elixir: { enabled: true },
   deno: { enabled: true }, githubActions: { enabled: true },
+  docker: { enabled: true }, helm: { enabled: true }, swift: { enabled: true }, conan: { enabled: true },
+  scala: { enabled: true, repositories: ['https://repo.maven.apache.org/maven2'], scalaBinaryVersion: '', sbtBinaryVersion: '' },
+  conda: { enabled: true, subdir: 'linux-64' }, clojure: { enabled: true, repositories: ['https://repo.clojars.org'] },
 };
+
+test('Actions analyzes and caches setup inputs independently from action tags', async (t) => {
+  const calls: string[] = [];
+  t.mock.method(globalThis, 'fetch', async (url: string) => {
+    calls.push(url);
+    return Response.json(url.includes('raw.githubusercontent.com')
+      ? [{ version: '22.1.0' }] : [{ name: 'v5' }]);
+  });
+  const request: AnalyzeRequest = {
+    fsPath: '/project/.github/workflows/ci.yml',
+    text: 'jobs:\n  build:\n    steps:\n      - uses: actions/setup-node@v4\n        with:\n          node-version: 20',
+    settings, cache: new VersionCache(60_000), auditCache: new AuditCache(), allowNetwork: false,
+  };
+  assert.equal((await analyze(request))?.incomplete, true);
+  assert.equal(calls.length, 0);
+  const result = await analyze({ ...request, allowNetwork: true });
+  assert.deepEqual(result?.updates.map((update) => [update.dep.name, update.dep.line, update.latest]), [
+    ['actions/setup-node', 3, 'v5'], ['node', 5, '22'],
+  ]);
+  assert.deepEqual((await analyze(request))?.updates, result?.updates);
+  assert.equal(calls.length, 2);
+  assert.equal(await analyze({ ...request, settings: { ...settings, githubActions: { enabled: false } } }), undefined);
+});
 
 for (const fixture of [
   {

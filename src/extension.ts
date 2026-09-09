@@ -149,6 +149,18 @@ export function activate(context: vscode.ExtensionContext): void {
   // Every language a supported manifest can be opened as. The provider itself only
   // answers on a line the last check reported an update for.
   const MANIFEST_SELECTOR: vscode.DocumentSelector = [
+    { scheme: 'file', pattern: '**/{Dockerfile,Containerfile}{,.*,-*,_*}' },
+    { scheme: 'file', pattern: '**/*.{Dockerfile,Containerfile}' },
+    { scheme: 'file', pattern: '**/{compose,docker-compose}{,.*,-*,_*}.{yml,yaml}' },
+    { scheme: 'file', pattern: '**/Chart.yaml' },
+    { scheme: 'file', pattern: '**/Package.swift' },
+    { scheme: 'file', pattern: '**/conanfile.{txt,py}' },
+    { scheme: 'file', pattern: '**/build.sbt' },
+    { scheme: 'file', pattern: '**/project/plugins.sbt' },
+    { scheme: 'file', pattern: '**/environment.{yml,yaml}' },
+    { scheme: 'file', pattern: '**/deps.edn' },
+    { scheme: 'file', pattern: '**/.yarnrc.yml' },
+    { scheme: 'file', pattern: '**/{dotnet-tools,global}.json' },
     { scheme: 'file', pattern: '**/package.json' },
     { scheme: 'file', pattern: '**/composer.json' },
     { scheme: 'file', pattern: '**/pubspec.yaml' },

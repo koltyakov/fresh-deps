@@ -5,7 +5,7 @@ import { parseGradleBuild } from '../src/parsers/gradleBuild';
 import { parseDeno } from '../src/parsers/deno';
 import { parseGithubActions } from '../src/parsers/githubActions';
 import { actionVersion, githubActionsScheme } from '../src/githubActions';
-import { GithubActionsClient, githubActionVersions } from '../src/registries/githubActions';
+import { GithubActionsClient, githubActionVersions, actionRuntimeVersions } from '../src/registries/githubActions';
 import { JsrClient, jsrVersions } from '../src/registries/jsr';
 import { computeUpdate } from '../src/versions';
 import { schemeFor } from '../src/schemes';
@@ -130,6 +130,65 @@ test('Actions preserves tag precision and prefix without suggesting updates with
   assert.equal(computeUpdate(exact, githubActionVersions(tags, exact.spec), { ...opts, includePrerelease: true })?.latest, 'v6.0.0-beta.1');
   for (const tag of ['main', 'v01', 'v1-beta', '1234567890123456789012345678901234567890']) assert.equal(actionVersion(tag), undefined);
   assert.equal(schemeFor('githubActions'), githubActionsScheme);
+});
+
+test('Actions reads setup inputs, retaining numeric spelling and the input line', () => {
+  const deps = parseGithubActions([
+    'jobs:', '  build:', '    steps:',
+    '      - uses: actions/setup-node@v4', '        with:', '          node-version: 20 # runtime',
+    '          cache: npm',
+    '      - uses: actions/setup-python@main', '        with:', '          python-version: 3.10',
+    '      - uses: actions/setup-go@0123456789abcdef0123456789abcdef01234567',
+    '        with:', '          go-version: "1.22.0"',
+  ].join('\r\n'));
+  assert.deepEqual(deps.map((dep) => [dep.name, dep.spec, dep.line, dep.actionRuntime]), [
+    ['actions/setup-node', 'v4', 3, undefined], ['node', '20', 5, 'node'],
+    ['python', '3.10', 9, 'python'], ['go', '1.22.0', 12, 'go'],
+  ]);
+  assert.equal(deps[1].section, 'jobs.build.with.node-version');
+  const composite = parseGithubActions('runs:\n  using: composite\n  steps:\n    - uses: actions/setup-node@main\n      with:\n        node-version: "20"');
+  assert.equal(composite[0]?.actionRuntime, 'node');
+});
+
+test('Actions skips dynamic inputs, unrelated actions and reusable workflow inputs', () => {
+  for (const value of ['${{ matrix.node }}', 'lts/*', 'latest', '20.x', '>=20', '[20, 22]', 'true', '|\n            20\n            22']) {
+    assert.deepEqual(parseGithubActions(`jobs:\n  build:\n    steps:\n      - uses: actions/setup-node@main\n        with:\n          node-version: ${value}`), []);
+  }
+  for (const action of ['owner/setup-node@main', './actions/setup-node', 'actions/setup-node/subpath@main']) {
+    assert.deepEqual(parseGithubActions(`jobs:\n  build:\n    steps:\n      - uses: ${action}\n        with:\n          node-version: 20`), []);
+  }
+  assert.deepEqual(parseGithubActions('jobs:\n  reuse:\n    uses: actions/setup-node@main\n    with:\n      node-version: 20'), []);
+});
+
+test('Runtime suggestions preserve precision and exclude unreleased moving selectors', () => {
+  const versions = ['20.0.0', '20.19.0', '22.1.0', '24.0.0-beta.1'];
+  assert.equal(actionRuntimeVersions(versions, '20').latest, '22');
+  assert.equal(actionRuntimeVersions(versions, 'v20.0').latest, 'v22.1');
+  assert.equal(actionRuntimeVersions(versions, '20.0.0').latest, '22.1.0');
+  assert.deepEqual(actionRuntimeVersions(versions, '20').all, ['20', '22']);
+  const opts = { scheme: githubActionsScheme, includePrerelease: false, showSatisfyingUpdates: true };
+  const dep = { name: 'node', spec: '20', line: 0, section: 'with' };
+  assert.equal(computeUpdate(dep, actionRuntimeVersions(['20.19.0'], dep.spec), opts), undefined);
+  assert.equal(computeUpdate(dep, actionRuntimeVersions(versions, dep.spec), opts)?.kind, 'major');
+  const exact = { ...dep, spec: '20.0.0' };
+  assert.equal(computeUpdate(exact, actionRuntimeVersions(versions, exact.spec), { ...opts, includePrerelease: true })?.latest, '24.0.0-beta.1');
+});
+
+test('Runtime manifests share requests across precisions and report malformed responses', async (t) => {
+  const calls: string[] = [];
+  t.mock.method(globalThis, 'fetch', async (url: string) => {
+    calls.push(url);
+    return Response.json([{ version: '22.1.0' }]);
+  });
+  const client = new GithubActionsClient(1000);
+  const [major, exact] = await Promise.all([client.fetchRuntimeVersions('node', '20'), client.fetchRuntimeVersions('node', '20.0.0')]);
+  assert.equal(major.latest, '22');
+  assert.equal(exact.latest, '22.1.0');
+  assert.deepEqual(calls, ['https://raw.githubusercontent.com/actions/node-versions/main/versions-manifest.json']);
+  t.mock.method(globalThis, 'fetch', async () => Response.json([null]));
+  await assert.rejects(new GithubActionsClient(1000).fetchRuntimeVersions('python', '3.10'), /invalid GitHub runtime manifest/);
+  t.mock.method(globalThis, 'fetch', async () => new Response('', { status: 404 }));
+  assert.equal((await new GithubActionsClient(1000).fetchRuntimeVersions('go', '1.22')).error, 'not found');
 });
 
 test('GitHub paginates tags and shares a repository lookup across tag styles', async (t) => {

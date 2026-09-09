@@ -43,6 +43,13 @@ export interface Settings {
   elixir: { enabled: boolean };
   deno: { enabled: boolean };
   githubActions: { enabled: boolean };
+  docker: { enabled: boolean };
+  helm: { enabled: boolean };
+  swift: { enabled: boolean };
+  conan: { enabled: boolean };
+  scala: { enabled: boolean; repositories: string[]; scalaBinaryVersion: string; sbtBinaryVersion: string };
+  conda: { enabled: boolean; subdir: string };
+  clojure: { enabled: boolean; repositories: string[] };
 }
 
 export function readSettings(scope?: vscode.Uri): Settings {
@@ -95,5 +102,19 @@ export function readSettings(scope?: vscode.Uri): Settings {
     elixir: { enabled: cfg.get('elixir.enabled', true) },
     deno: { enabled: cfg.get('deno.enabled', true) },
     githubActions: { enabled: cfg.get('githubActions.enabled', true) },
+    docker: { enabled: cfg.get('docker.enabled', true) },
+    helm: { enabled: cfg.get('helm.enabled', true) },
+    swift: { enabled: cfg.get('swift.enabled', true) },
+    conan: { enabled: cfg.get('conan.enabled', true) },
+    scala: {
+      enabled: cfg.get('scala.enabled', true),
+      repositories: cfg.get('scala.repositories', ['https://repo.maven.apache.org/maven2']),
+      scalaBinaryVersion: cfg.get('scala.scalaBinaryVersion', ''),
+      sbtBinaryVersion: cfg.get('scala.sbtBinaryVersion', ''),
+    },
+    conda: { enabled: cfg.get('conda.enabled', true), subdir: cfg.get('conda.subdir', '') },
+    clojure: { enabled: cfg.get('clojure.enabled', true), repositories: cfg.get('clojure.repositories', [
+      'https://repo.maven.apache.org/maven2', 'https://repo.clojars.org',
+    ]) },
   };
 }

@@ -24,6 +24,13 @@ const COMMENT_TOKEN: Record<Ecosystem, string> = {
   elixir: '#',
   deno: '//',
   githubActions: '#',
+  docker: '#',
+  helm: '#',
+  swift: '//',
+  conan: '#',
+  scala: '//',
+  conda: '#',
+  clojure: ';',
 };
 
 /**
@@ -93,7 +100,8 @@ export class DecorationRenderer implements vscode.Disposable {
       const line = editor.document.lineAt(Math.min(update.dep.line, editor.document.lineCount - 1));
       const padding = (columnOf.get(update.dep.section) ?? 0) - (lineWidth.get(update.dep.line) ?? 0);
       const file = editor.document.uri.fsPath;
-      const token = file.endsWith('pnpm-workspace.yaml') ? '#'
+      const token = file.endsWith('pnpm-workspace.yaml') || file.endsWith('.yarnrc.yml') ? '#'
+        : ecosystem === 'dotnet' && /(?:^|[/\\])(?:dotnet-tools|global)\.json$/.test(file) ? '//'
         : ecosystem === 'gradle' && /\.gradle(?:\.kts)?$/.test(file) ? '//' : COMMENT_TOKEN[ecosystem];
       byKind.get(update.kind)?.push({
         range: new vscode.Range(line.range.end, line.range.end),
@@ -103,7 +111,7 @@ export class DecorationRenderer implements vscode.Disposable {
             margin: `0 -${padding + 1}ch 0 ${padding + 1}ch`,
           },
           after: {
-            contentText: update.text + (ecosystem === 'dotnet' || ecosystem === 'java' ? ' -->' : ''),
+            contentText: update.text + (token === '<!--' ? ' -->' : ''),
             margin: `0 0 0 ${padding + token.length + 2}ch`,
           },
         },

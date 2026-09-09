@@ -10,6 +10,12 @@ export class TerraformClient {
   constructor(private readonly timeoutMs: number) {}
 
   async fetchVersions(address: string): Promise<RegistryVersions> {
+    if (address.startsWith('module:')) {
+      const match = /^module:(registry\.terraform\.io|registry\.opentofu\.org)\/([\w-]+\/[\w-]+\/[\w-]+)$/.exec(address);
+      if (!match) return { error: 'invalid module address' };
+      const doc = await fetchJson<{ modules?: TerraformVersions[] }>(`https://${match[1]}/v1/modules/${match[2]}/versions`, { timeoutMs: this.timeoutMs });
+      return doc ? terraformVersions({ versions: doc.modules?.flatMap((module) => module.versions ?? []) }) : { error: 'not found' };
+    }
     const parts = address.toLowerCase().split('/');
     const host = parts.length === 3 ? parts.shift()! : 'registry.terraform.io';
     const [namespace, type] = parts;

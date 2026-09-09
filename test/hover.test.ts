@@ -51,9 +51,20 @@ test('new ecosystems link to their package listings', () => {
     ['deno', 'jsr:@std/assert', 'imports', 'https://jsr.io/@std/assert@1.136.0'],
     ['deno', 'npm:react', 'imports', 'https://www.npmjs.com/package/react/v/1.136.0'],
     ['githubActions', 'actions/checkout', 'jobs.build', 'https://github.com/actions/checkout/tree/1.136.0'],
+    ['docker', 'library/node', 'FROM', 'https://hub.docker.com/r/library/node/tags'],
+    ['swift', 'apple/example', 'dependencies', 'https://github.com/apple/example/tree/1.136.0'],
+    ['conan', 'fmt', 'requires', 'https://conan.io/center/recipes/fmt'],
+    ['scala', 'org.example:core', 'libraryDependencies', 'https://mvnrepository.com/artifact/org.example/core/1.136.0'],
+    ['clojure', 'org.clojure:clojure', 'deps', 'https://mvnrepository.com/artifact/org.clojure/clojure/1.136.0'],
+    ['terraform', 'module:registry.terraform.io/a/b/c', 'modules', 'https://registry.terraform.io/modules/a/b/c/1.136.0'],
+    ['dotnet', 'dotnet-sdk', 'sdk', 'https://dotnet.microsoft.com/download/dotnet'],
   ] as const) {
     assert.ok(buildHover({ ...update, dep: { ...update.dep, name, section } }, ecosystem).value.includes(url));
   }
+  assert.ok(buildHover({ ...update, dep: { ...update.dep, name: 'redis', source: 'https://charts.example' } }, 'helm')
+    .value.includes('https://charts.example/index.yaml'));
+  assert.ok(buildHover({ ...update, dep: { ...update.dep, name: 'numpy', source: 'conda-forge' } }, 'conda')
+    .value.includes('https://anaconda.org/conda-forge/numpy'));
 });
 
 test('project link shows the homepage URL and retains a distinct repository link', () => {

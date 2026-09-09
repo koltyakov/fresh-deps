@@ -35,7 +35,14 @@
     "elixir",
     "deno",
     "jsr",
-    "github-actions"
+    "github-actions",
+    "docker",
+    "helm",
+    "swift",
+    "conan",
+    "scala",
+    "conda",
+    "clojure"
   ],
   "main": "./dist/extension.js",
   "icon": "assets/logo.png",
@@ -44,6 +51,23 @@
     "theme": "dark"
   },
   "activationEvents": [
+    "onLanguage:dockerfile",
+    "onLanguage:swift",
+    "onLanguage:scala",
+    "onLanguage:clojure",
+    "onLanguage:python",
+    "workspaceContains:**/{Dockerfile,Containerfile}{,.*,-*,_*}",
+    "workspaceContains:**/*.{Dockerfile,Containerfile}",
+    "workspaceContains:**/{compose,docker-compose}{,.*,-*,_*}.{yml,yaml}",
+    "workspaceContains:**/Chart.yaml",
+    "workspaceContains:**/Package.swift",
+    "workspaceContains:**/conanfile.{txt,py}",
+    "workspaceContains:**/build.sbt",
+    "workspaceContains:**/project/plugins.sbt",
+    "workspaceContains:**/environment.{yml,yaml}",
+    "workspaceContains:**/deps.edn",
+    "workspaceContains:**/.yarnrc.yml",
+    "workspaceContains:**/{dotnet-tools,global}.json",
     "onLanguage:json",
     "onLanguage:jsonc",
     "onLanguage:go.mod",
@@ -115,6 +139,56 @@
     "configuration": {
       "title": "Fresh Deps",
       "properties": {
+        "freshDeps.docker.enabled": {
+          "type": "boolean", "default": true,
+          "description": "Check versioned Docker Hub images in Dockerfiles, Containerfiles and Compose services, preserving tag precision and variants."
+        },
+        "freshDeps.helm.enabled": {
+          "type": "boolean", "default": true,
+          "description": "Check Chart.yaml dependencies using explicit HTTPS chart repository indexes."
+        },
+        "freshDeps.swift.enabled": {
+          "type": "boolean", "default": true,
+          "description": "Check literal GitHub-hosted package dependencies in Package.swift."
+        },
+        "freshDeps.conan.enabled": {
+          "type": "boolean", "default": true,
+          "description": "Check numeric Conan requirements against the public Conan Center recipe index. Custom remotes and revisions are not evaluated."
+        },
+        "freshDeps.scala.enabled": {
+          "type": "boolean", "default": true,
+          "description": "Check explicit Maven coordinates in build.sbt and project/plugins.sbt."
+        },
+        "freshDeps.scala.repositories": {
+          "type": "array", "items": { "type": "string", "format": "uri" },
+          "default": ["https://repo.maven.apache.org/maven2"],
+          "description": "Ordered Maven repositories for sbt. Build-script resolvers are not evaluated."
+        },
+        "freshDeps.scala.scalaBinaryVersion": {
+          "type": "string", "default": "", "pattern": "^(?:[0-9]+(?:\\.[0-9]+)?)?$",
+          "description": "Scala binary version used for sbt plugin artifacts, for example 2.12. Empty skips plugin declarations."
+        },
+        "freshDeps.scala.sbtBinaryVersion": {
+          "type": "string", "default": "", "pattern": "^(?:[0-9]+\\.[0-9]+)?$",
+          "description": "sbt binary version used for plugin artifacts, for example 1.0. Both binary-version settings must be set to check addSbtPlugin declarations."
+        },
+        "freshDeps.conda.enabled": {
+          "type": "boolean", "default": true,
+          "description": "Check numeric Conda requirements from explicit anaconda.org channels in environment.yml and environment.yaml."
+        },
+        "freshDeps.conda.subdir": {
+          "type": "string", "default": "", "pattern": "^(?:[a-z0-9]+-[a-z0-9_]+)?$",
+          "description": "Conda target subdirectory, for example linux-64 or osx-arm64. Empty uses the extension host platform. noarch packages are included."
+        },
+        "freshDeps.clojure.enabled": {
+          "type": "boolean", "default": true,
+          "description": "Check literal Maven dependencies in deps.edn."
+        },
+        "freshDeps.clojure.repositories": {
+          "type": "array", "items": { "type": "string", "format": "uri" },
+          "default": ["https://repo.maven.apache.org/maven2", "https://repo.clojars.org"],
+          "description": "Ordered Maven repositories for Clojure. Files declaring :mvn/repos are skipped."
+        },
         "freshDeps.enabled": {
           "type": "boolean",
           "default": true,
@@ -157,7 +231,7 @@
       "freshDeps.npm.enabled": {
           "type": "boolean",
           "default": true,
-        "description": "Check npm dependencies in package.json and pnpm-workspace.yaml catalogs."
+        "description": "Check npm dependencies in package.json, pnpm-workspace.yaml catalogs and .yarnrc.yml catalogs."
       },
       "freshDeps.deno.enabled": {
         "type": "boolean",
@@ -167,7 +241,7 @@
       "freshDeps.githubActions.enabled": {
         "type": "boolean",
         "default": true,
-        "description": "Check version tags in GitHub Actions workflows and composite actions using the public GitHub API."
+        "description": "Check action version tags and Node.js, Python and Go setup inputs in GitHub Actions workflows and composite actions using public GitHub data."
       },
         "freshDeps.npm.registry": {
           "type": "string",
@@ -231,7 +305,7 @@
         "freshDeps.dotnet.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Check NuGet dependencies in .NET project and package management files."
+          "description": "Check NuGet dependencies and dotnet-tools.json tool pins, plus global.json SDK pins using .NET release metadata."
         },
         "freshDeps.dotnet.indexUrl": {
           "type": "string",
@@ -281,13 +355,13 @@
         "freshDeps.terraform.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Check Terraform and OpenTofu providers in *.tf and *.tofu files using their public registries."
+          "description": "Check Terraform and OpenTofu providers and registry modules in *.tf and *.tofu files using their public registries."
         },
         "freshDeps.terraform.defaultRegistry": {
           "type": "string",
           "enum": ["", "registry.terraform.io", "registry.opentofu.org"],
           "default": "",
-          "description": "Registry for two-part provider sources. Empty uses OpenTofu for *.tofu files and Terraform for *.tf files."
+          "description": "Registry for provider and module sources without a host. Empty uses OpenTofu for *.tofu files and Terraform for *.tf files."
         },
         "freshDeps.elixir.enabled": {
           "type": "boolean",
@@ -360,7 +434,7 @@
   },
   "dependencies": {
     "semver": "^7.8.5",
-    "yaml": "^2.8.1"
+    "yaml": "^2.9.0"
   },
   "devDependencies": {
     "@types/node": "^26.5.0",

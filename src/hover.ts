@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { actionRuntimes } from './githubActions';
 import type { PackageDetails } from './analyzer';
 import { display, escapeMarkdown, formatSize, publishedOn } from './format';
 import type { DependencyAudit, DependencyUpdate, Ecosystem } from './types';
@@ -75,8 +76,9 @@ export function buildHover(
   );
   if (update.satisfying) {
     md.appendMarkdown(`| Newest in range | \`${display(update.satisfying, ecosystem)}\` |\n`);
-  } else if (ecosystem === 'githubActions') {
-    md.appendMarkdown('| Reference | a newer tag is available |\n');
+  } else if (ecosystem === 'githubActions' || ecosystem === 'docker') {
+    md.appendMarkdown(update.dep.actionRuntime ? '| Runtime | a newer version is available |\n'
+      : '| Reference | a newer tag is available |\n');
   } else if (!update.inRange && ecosystem !== 'go') {
     const constraint = ecosystem === 'python' ? 'specifier' : 'range';
     md.appendMarkdown(`| In range | no - the ${constraint} needs to be widened |\n`);
@@ -123,12 +125,33 @@ function links(
   repository: string | undefined,
 ): string {
   const parts: string[] = [];
-  if (ecosystem === 'deno') {
+  if (ecosystem === 'docker') {
+    parts.push(`[Docker Hub](https://hub.docker.com/r/${update.dep.name}/tags)`);
+  } else if (ecosystem === 'helm') {
+    parts.push(`[Chart repository](<${update.dep.source}/index.yaml>)`);
+  } else if (ecosystem === 'swift') {
+    parts.push(`[GitHub](https://github.com/${update.dep.name}/tree/${encodeURIComponent(update.latest)})`);
+  } else if (ecosystem === 'conan') {
+    parts.push(`[Conan Center](https://conan.io/center/recipes/${encodeURIComponent(update.dep.name)})`);
+  } else if (ecosystem === 'conda') {
+    for (const channel of (update.dep.source ?? '').split('|').filter(Boolean)) {
+      parts.push(`[${escapeMarkdown(channel)}](https://anaconda.org/${encodeURIComponent(channel)}/${encodeURIComponent(update.dep.name)})`);
+    }
+  } else if (ecosystem === 'scala' || ecosystem === 'clojure') {
+    const [group, artifact] = update.dep.name.split(':');
+    parts.push(`[Maven Repository](https://mvnrepository.com/artifact/${group}/${artifact}/${encodeURIComponent(update.latest)})`);
+  } else if (ecosystem === 'dotnet' && update.dep.section === 'sdk') {
+    parts.push('[.NET downloads](https://dotnet.microsoft.com/download/dotnet)');
+  } else if (ecosystem === 'terraform' && update.dep.name.startsWith('module:')) {
+    const [host, ...path] = update.dep.name.slice(7).split('/');
+    parts.push(`[Module registry](https://${host}/modules/${path.join('/')}/${encodeURIComponent(update.latest)})`);
+  } else if (ecosystem === 'deno') {
     const name = update.dep.name.slice(4);
     parts.push(update.dep.name.startsWith('jsr:') ? `[JSR](https://jsr.io/${name}@${update.latest})`
       : `[npm](https://www.npmjs.com/package/${name}/v/${update.latest})`);
   } else if (ecosystem === 'githubActions') {
-    parts.push(`[GitHub](https://github.com/${update.dep.name}/tree/${encodeURIComponent(update.latest)})`);
+    parts.push(update.dep.actionRuntime ? `[Downloads](${actionRuntimes[update.dep.actionRuntime].homepage})`
+      : `[GitHub](https://github.com/${update.dep.name}/tree/${encodeURIComponent(update.latest)})`);
   } else if (ecosystem === 'go') {
     const modulePath = update.alternatePath ?? update.dep.name;
     parts.push(`[pkg.go.dev](https://pkg.go.dev/${modulePath}@v${update.latest})`);

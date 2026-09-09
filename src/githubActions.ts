@@ -1,5 +1,12 @@
 import * as semver from 'semver';
 import type { VersionScheme } from './schemes';
+import type { DependencyRef } from './types';
+
+export const actionRuntimes = {
+  node: { action: 'actions/setup-node', input: 'node-version', repository: 'actions/node-versions', homepage: 'https://nodejs.org/en/download' },
+  python: { action: 'actions/setup-python', input: 'python-version', repository: 'actions/python-versions', homepage: 'https://www.python.org/downloads/' },
+  go: { action: 'actions/setup-go', input: 'go-version', repository: 'actions/go-versions', homepage: 'https://go.dev/dl/' },
+} satisfies Record<NonNullable<DependencyRef['actionRuntime']>, { action: string; input: string; repository: string; homepage: string }>;
 
 /** Moving v4 and v4.1 tags compare only with tags of the same precision. */
 export function actionVersion(tag: string): string | undefined {

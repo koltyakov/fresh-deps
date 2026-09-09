@@ -1,4 +1,5 @@
 import type { DependencyRef } from '../types';
+import { codeTokens, groupEnd } from './codeTokens';
 
 function closingBrace(text: string, open: number): number {
   let depth = 0;
@@ -119,6 +120,31 @@ export function parseTerraform(text: string, defaultRegistry = 'registry.terrafo
         deps.push({ name, spec, line: text.slice(0, absolute).split('\n').length - 1, section: 'required_providers',
           ...(local !== parts[1] ? { alias: local } : {}) });
       }
+    }
+  }
+  const tokens = codeTokens(clean);
+  for (let i = 0; i < tokens.length; i++) {
+    if (tokens[i].value === 'module' && tokens[i + 1]?.kind === 'string' && tokens[i + 2]?.value === '{') {
+      const end = groupEnd(tokens, i + 2);
+      if (end < 0) continue;
+      const body = tokens.slice(i + 3, end);
+      const literal = (key: string) => {
+        const at = body.findIndex((token) => token.kind === 'word' && token.value === key);
+        const value = body[at + 2];
+        return at >= 0 && body[at + 1]?.value === '=' && value?.kind === 'string'
+          && (!body[at + 3] || body[at + 3].line > value.line || body[at + 3].value === ',') ? value : undefined;
+      };
+      const source = literal('source');
+      const version = literal('version');
+      const match = source && /^(?:(registry\.terraform\.io|registry\.opentofu\.org)\/)?([\w-]+\/[\w-]+\/[\w-]+)$/.exec(source.value);
+      if (match && version && !/[$%{}]/.test(version.value)) deps.push({
+        name: `module:${match[1] ?? defaultRegistry}/${match[2]}`, spec: version.value,
+        alias: tokens[i + 1].value, line: version.line, section: 'modules',
+      });
+      i = end;
+    } else if (tokens[i].value === '{') {
+      const end = groupEnd(tokens, i);
+      if (end >= 0) i = end;
     }
   }
   return deps;

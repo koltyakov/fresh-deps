@@ -1,4 +1,20 @@
 import * as path from 'path';
+import { parseDockerfile, parseCompose } from './parsers/docker';
+import { parseHelm } from './parsers/helm';
+import { parseSwift } from './parsers/swift';
+import { parseConan } from './parsers/conan';
+import { parseSbt } from './parsers/scala';
+import { parseConda } from './parsers/conda';
+import { parseClojure } from './parsers/clojure';
+import { parseDotnetPins } from './parsers/dotnetPins';
+import { parseYarnCatalog } from './parsers/yarnCatalog';
+import { DockerClient } from './registries/docker';
+import { HelmClient } from './registries/helm';
+import { SwiftClient } from './registries/swift';
+import { ConanClient } from './registries/conan';
+import { CondaClient, condaSubdir } from './registries/conda';
+import { DotnetSdkClient } from './registries/dotnetSdk';
+import { dockerTag } from './docker';
 import { AuditCache } from './audit';
 import type { VersionCache } from './cache';
 import type { Settings } from './config';
@@ -34,7 +50,7 @@ import { normalizeName, PyPiClient } from './registries/pypi';
 import { RubyGemsClient } from './registries/rubygems';
 import { HexClient } from './registries/hex';
 import { TerraformClient } from './registries/terraform';
-import { schemeFor } from './schemes';
+import { schemeFor, semverScheme } from './schemes';
 import type {
   DependencyRef,
   DependencyAudit,
@@ -70,6 +86,8 @@ export interface AnalyzeResult {
 
 /** Which manifest a file is, since Python spreads its dependencies over several. */
 export type ManifestKind =
+  | 'dockerfile' | 'compose' | 'helm' | 'swift' | 'conan-txt' | 'conan-py' | 'sbt' | 'conda' | 'clojure'
+  | 'dotnet-tools' | 'dotnet-sdk' | 'yarn-catalog'
   | 'package.json'
   | 'composer.json'
   | 'pubspec.yaml'
@@ -113,6 +131,17 @@ function isRequirementsFile(fsPath: string): boolean {
 
 export function manifestOf(fsPath: string): Manifest | undefined {
   const name = path.basename(fsPath);
+  if (/^(?:Dockerfile|Containerfile)(?:[._-][\w.-]+)?$/.test(name) || /\.(?:Dockerfile|Containerfile)$/.test(name)) return { ecosystem: 'docker', kind: 'dockerfile' };
+  if (/^(?:docker-)?compose(?:[._-][\w.-]+)?\.ya?ml$/.test(name)) return { ecosystem: 'docker', kind: 'compose' };
+  if (name === 'Chart.yaml') return { ecosystem: 'helm', kind: 'helm' };
+  if (name === 'Package.swift') return { ecosystem: 'swift', kind: 'swift' };
+  if (name === 'conanfile.txt' || name === 'conanfile.py') return { ecosystem: 'conan', kind: name.endsWith('.py') ? 'conan-py' : 'conan-txt' };
+  if (name === 'build.sbt' || (name === 'plugins.sbt' && path.basename(path.dirname(fsPath)) === 'project')) return { ecosystem: 'scala', kind: 'sbt' };
+  if (/^environment\.ya?ml$/.test(name)) return { ecosystem: 'conda', kind: 'conda' };
+  if (name === 'deps.edn') return { ecosystem: 'clojure', kind: 'clojure' };
+  if (name === '.yarnrc.yml') return { ecosystem: 'npm', kind: 'yarn-catalog' };
+  if (name === 'dotnet-tools.json') return { ecosystem: 'dotnet', kind: 'dotnet-tools' };
+  if (name === 'global.json') return { ecosystem: 'dotnet', kind: 'dotnet-sdk' };
   if (/^build\.gradle(?:\.kts)?$/.test(name)) return { ecosystem: 'gradle', kind: 'gradle-build' };
   if (/^(?:deno\.jsonc?|import[_-]map\.jsonc?)$/.test(name)) return { ecosystem: 'deno', kind: 'deno' };
   if (/^action\.ya?ml$/.test(name) || /(?:^|\/)\.github\/workflows\/[^/]+\.ya?ml$/.test(fsPath.replace(/\\/g, '/'))) {
@@ -171,13 +200,15 @@ export async function analyze(request: AnalyzeRequest): Promise<AnalyzeResult | 
 
   const { settings } = request;
   const result: AnalyzeResult = { ecosystem, updates: [], audits: [], failures: new Map(), incomplete: false };
-  const opts: ResolveOptions = {
+  const baseOptions: ResolveOptions = {
     includePrerelease: settings.includePrerelease,
     showSatisfyingUpdates: settings.showSatisfyingUpdates,
     scheme: schemeFor(ecosystem),
   };
 
   await pool(deps, settings.concurrency, async (dep) => {
+    const opts: ResolveOptions = { ...baseOptions, scheme: dep.semver ? semverScheme : baseOptions.scheme,
+      includePrerelease: baseOptions.includePrerelease && dep.allowPrerelease !== false };
     if (request.isCancelled?.()) {
       return;
     }
@@ -250,6 +281,18 @@ function enabledFor(ecosystem: Ecosystem, settings: Settings): boolean {
 function parseManifest(kind: ManifestKind, request: AnalyzeRequest): DependencyRef[] {
   const { settings, text } = request;
   switch (kind) {
+    case 'dockerfile': return parseDockerfile(text);
+    case 'compose': return parseCompose(text);
+    case 'helm': return parseHelm(text);
+    case 'swift': return parseSwift(text);
+    case 'conan-txt': return parseConan(text, false);
+    case 'conan-py': return parseConan(text, true);
+    case 'sbt': return parseSbt(text, settings.scala);
+    case 'conda': return parseConda(text);
+    case 'clojure': return parseClojure(text);
+    case 'dotnet-tools': return parseDotnetPins(text, false);
+    case 'dotnet-sdk': return parseDotnetPins(text, true);
+    case 'yarn-catalog': return parseYarnCatalog(text);
     case 'composer.json': return parseComposerJson(text);
     case 'pubspec.yaml': return parsePubspec(text, process.env.PUB_HOSTED_URL);
     case 'gradle-catalog': return parseGradleCatalog(text);
@@ -314,6 +357,28 @@ export interface PackageDetails {
  */
 export function lookupFor(ecosystem: Ecosystem, fsPath: string, settings: Settings): Lookup | undefined {
   switch (ecosystem) {
+    case 'docker': {
+      const client = new DockerClient(settings.requestTimeoutMs);
+      return { key: (dep) => `docker|hub.docker.com|${dep.name}|${dockerTag(dep.spec)?.style}`,
+        fetch: (dep) => client.fetchVersions(dep.name, dep.spec) };
+    }
+    case 'helm': {
+      const client = new HelmClient(settings.requestTimeoutMs);
+      return { key: (dep) => `helm|${dep.source}|${dep.name}`, fetch: (dep) => client.fetchVersions(dep.name, dep.source!) };
+    }
+    case 'swift': {
+      const client = new SwiftClient(settings.requestTimeoutMs);
+      return { key: (dep) => `swift|github.com|${dep.name.toLowerCase()}`, fetch: (dep) => client.fetchVersions(dep.name) };
+    }
+    case 'conan': {
+      const client = new ConanClient(settings.requestTimeoutMs);
+      return { key: (dep) => `conan|conan-center-index|${dep.name}`, fetch: (dep) => client.fetchVersions(dep.name) };
+    }
+    case 'conda': {
+      const client = new CondaClient(settings.requestTimeoutMs, settings.conda.subdir || condaSubdir());
+      return { key: (dep) => `conda|${dep.source}|${client.subdir}|${dep.name}`, fetch: (dep) => client.fetchVersions(dep.name, dep.source!) };
+    }
+    case 'scala': case 'clojure': return mavenRepositoriesLookup(ecosystem, settings[ecosystem].repositories, settings.requestTimeoutMs);
     case 'deno': {
       const npm = npmLookup(fsPath, settings);
       const jsr = new JsrClient(settings.requestTimeoutMs);
@@ -330,8 +395,11 @@ export function lookupFor(ecosystem: Ecosystem, fsPath: string, settings: Settin
     case 'githubActions': {
       const client = new GithubActionsClient(settings.requestTimeoutMs);
       return {
-        key: (dep) => `githubActions|github.com|${dep.name.toLowerCase()}|${actionTagStyle(dep.spec)}`,
-        fetch: (dep) => client.fetchVersions(dep.name, dep.spec),
+        key: (dep) => dep.actionRuntime
+          ? `githubActions|runtime|${dep.actionRuntime}|${actionTagStyle(dep.spec)}`
+          : `githubActions|github.com|${dep.name.toLowerCase()}|${actionTagStyle(dep.spec)}`,
+        fetch: (dep) => dep.actionRuntime ? client.fetchRuntimeVersions(dep.actionRuntime, dep.spec)
+          : client.fetchVersions(dep.name, dep.spec),
       };
     }
     case 'php':
@@ -367,15 +435,25 @@ function npmLookup(fsPath: string, settings: Settings): Lookup {
     cwd: path.dirname(fsPath),
     timeoutMs: settings.requestTimeoutMs,
   });
+  const clients = new Map<string, NpmClient>();
+  const clientFor = (dep: DependencyRef) => {
+    if (!dep.source || settings.npm.registry) return client;
+    let scoped = clients.get(dep.source);
+    if (!scoped) {
+      scoped = new NpmClient({ registryOverride: dep.source, cwd: path.dirname(fsPath), timeoutMs: settings.requestTimeoutMs });
+      clients.set(dep.source, scoped);
+    }
+    return scoped;
+  };
   return {
-    key: (dep) => `npm|${client.registryFor(dep.name)}|${dep.name}`,
-    fetch: (dep) => client.fetchLatest(dep.name),
-    fetchAll: (dep) => client.fetchAll(dep.name),
-    fetchAudit: (dep, version) => client.fetchAudit(dep.name, version),
+    key: (dep) => `npm|${clientFor(dep).registryFor(dep.name)}|${dep.name}`,
+    fetch: (dep) => clientFor(dep).fetchLatest(dep.name),
+    fetchAll: (dep) => clientFor(dep).fetchAll(dep.name),
+    fetchAudit: (dep, version) => clientFor(dep).fetchAudit(dep.name, version),
     // The descriptive fields already came back with the version; only the dates
     // are missing, and they live in a document big enough to be worth deferring.
     async fetchDetails(dep, versions) {
-      const dates = await client.fetchPublishDates(dep.name, [versions.current, versions.latest]);
+      const dates = await clientFor(dep).fetchPublishDates(dep.name, [versions.current, versions.latest]);
       return {
         currentPublishedAt: dates.get(versions.current),
         latestPublishedAt: dates.get(versions.latest),
@@ -439,9 +517,10 @@ function rustLookup(settings: Settings): Lookup {
 
 function dotnetLookup(settings: Settings): Lookup {
   const client = new NugetClient(settings.dotnet.indexUrl, settings.requestTimeoutMs);
+  const sdk = new DotnetSdkClient(settings.requestTimeoutMs);
   return {
-    key: (dep) => `dotnet|${client.index}|${dep.name.toLowerCase()}`,
-    fetch: (dep) => client.fetchVersions(dep.name),
+    key: (dep) => dep.section === 'sdk' ? 'dotnet|sdk|release-metadata' : `dotnet|${client.index}|${dep.name.toLowerCase()}`,
+    fetch: (dep) => dep.section === 'sdk' ? sdk.fetchVersions() : client.fetchVersions(dep.name),
   };
 }
 
@@ -464,9 +543,13 @@ function dartLookup(settings: Settings): Lookup {
 }
 
 function gradleLookup(settings: Settings): Lookup {
-  const clients = settings.gradle.repositories.map((repository) => new MavenClient(repository, settings.requestTimeoutMs));
+  return mavenRepositoriesLookup('gradle', settings.gradle.repositories, settings.requestTimeoutMs);
+}
+
+function mavenRepositoriesLookup(ecosystem: string, repositories: string[], timeoutMs: number): Lookup {
+  const clients = repositories.map((repository) => new MavenClient(repository, timeoutMs));
   return {
-    key: (dep) => `gradle|${clients.map((client) => client.repository).join('|')}|${dep.name}`,
+    key: (dep) => `${ecosystem}|${clients.map((client) => client.repository).join('|')}|${dep.name}`,
     async fetch(dep) {
       for (const client of clients) {
         const result = await client.fetchVersions(dep.name);

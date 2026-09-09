@@ -7,6 +7,8 @@ import { dartScheme } from './dart';
 import { rubyScheme } from './ruby';
 import { pessimisticRange } from './pessimistic';
 import { githubActionsScheme } from './githubActions';
+import { dockerScheme } from './docker';
+import { conanScheme, condaScheme } from './numericVersion';
 import type { Ecosystem, UpdateKind } from './types';
 
 export { dartScheme } from './dart';
@@ -229,6 +231,10 @@ export const mavenScheme: VersionScheme = {
 };
 
 export function schemeFor(ecosystem: Ecosystem): VersionScheme {
+  if (ecosystem === 'docker') return dockerScheme;
+  if (ecosystem === 'conan') return conanScheme;
+  if (ecosystem === 'conda') return condaScheme;
+  if (ecosystem === 'scala' || ecosystem === 'clojure') return mavenScheme;
   if (ecosystem === 'githubActions') return githubActionsScheme;
   if (ecosystem === 'python') return pep440Scheme;
   if (ecosystem === 'rust') return cargoScheme;

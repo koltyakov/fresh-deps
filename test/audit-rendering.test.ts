@@ -97,6 +97,8 @@ test('gray markers have zero layout width and versions reserve aligned space for
     ['rust', '#', ''], ['dotnet', '<!--', ' -->'], ['java', '<!--', ' -->'],
     ['php', '//', ''], ['dart', '#', ''], ['gradle', '#', ''],
     ['deno', '//', ''], ['githubActions', '#', ''],
+    ['docker', '#', ''], ['helm', '#', ''], ['swift', '//', ''], ['conan', '#', ''],
+    ['scala', '//', ''], ['conda', '#', ''], ['clojure', ';', ''],
   ] as const) {
     renderer.render(editor, updates, ecosystem, []);
     for (const [type, hints] of decorations) {
@@ -114,6 +116,15 @@ test('gray markers have zero layout width and versions reserve aligned space for
       }
     }
     assert.equal([...decorations.values()].flat().length, 2);
+  }
+  for (const [file, ecosystem, token] of [
+    ['.yarnrc.yml', 'npm', '#'], ['.config/dotnet-tools.json', 'dotnet', '//'], ['global.json', 'dotnet', '//'],
+  ] as const) {
+    (editor.document.uri as unknown as { fsPath: string }).fsPath = `/project/${file}`;
+    renderer.render(editor, updates, ecosystem, []);
+    const hint = [...decorations.values()].flat()[0];
+    assert.equal(hint.renderOptions.before.contentText, token);
+    assert.equal(hint.renderOptions.after.contentText.endsWith(' -->'), false);
   }
   renderer.dispose();
 });

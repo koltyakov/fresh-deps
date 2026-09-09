@@ -5,7 +5,8 @@
 See available dependency updates directly in your VS Code manifest files.
 
 Fresh Deps adds inline version hints for **npm, Go, Python, Rust, Java, .NET, PHP, Dart / Flutter,
-Ruby, Terraform / OpenTofu, Elixir, Deno / JSR, and GitHub Actions**.
+Ruby, Terraform / OpenTofu, Elixir, Deno / JSR, GitHub Actions, Docker, Helm, Swift,
+Conan, Scala, Conda, and Clojure**.
 Compare the newest version your range allows with the latest release, then hover for details and a
 link to the package registry. Hints are editor decorations, so your files stay untouched.
 
@@ -33,19 +34,26 @@ editor title bar or run `Fresh Deps: Check for Updates` from the Command Palette
 
 | Ecosystem | Manifests | Package source |
 |---|---|---|
-| JavaScript / TypeScript | `package.json`, including Volta tool pins; `pnpm-workspace.yaml` catalogs | npm registry |
+| JavaScript / TypeScript | `package.json`, including Volta tool pins; `pnpm-workspace.yaml` and `.yarnrc.yml` catalogs | npm registry |
 | Go | `go.mod` | Go module proxy |
 | Python | `pyproject.toml`, `Pipfile`, requirements and constraints files | PyPI or a custom index |
 | Rust | `Cargo.toml` | crates.io |
 | Java / Kotlin / Android | Maven `pom.xml`; Gradle `*.versions.toml`, `build.gradle`, `build.gradle.kts` | Maven Central or a custom repository; Gradle also checks Google Maven and the Gradle Plugin Portal by default |
-| .NET | `*.csproj`, `*.fsproj`, `*.vbproj`, `Directory.Packages.props`, `Directory.Build.props`, `packages.config` | NuGet V3 feed |
+| .NET | `*.csproj`, `*.fsproj`, `*.vbproj`, `Directory.Packages.props`, `Directory.Build.props`, `packages.config`, `dotnet-tools.json`, `global.json` | NuGet V3 feed; .NET release metadata for SDKs |
 | PHP / Composer | `composer.json` | Packagist |
 | Dart / Flutter | `pubspec.yaml` | pub.dev |
 | Ruby | `Gemfile` | RubyGems.org |
-| Terraform / OpenTofu | `*.tf`, `*.tofu` provider requirements | Terraform Registry or OpenTofu Registry |
+| Terraform / OpenTofu | `*.tf`, `*.tofu` provider and registry module requirements | Terraform Registry or OpenTofu Registry |
 | Elixir | `mix.exs` | Hex.pm |
 | Deno / JSR | `deno.json`, `deno.jsonc`, `import_map.json`, `import-map.json`, and JSONC variants of the import maps | JSR and the configured npm registry |
 | GitHub Actions | `.github/workflows/*.yml`, `*.yaml`; composite `action.yml`, `action.yaml` | Public GitHub tags API |
+| Docker / Compose | `Dockerfile`, `Dockerfile.*`, `*.Dockerfile`, `compose.yml`, `compose.yaml`, `docker-compose.*`, including override files | Public Docker Hub tags API |
+| Kubernetes / Helm | `Chart.yaml` dependencies | Explicit HTTPS chart repository `index.yaml` |
+| Swift | `Package.swift` | Public GitHub tags API |
+| C / C++ / Conan | `conanfile.txt`, `conanfile.py` | Conan Center recipe index |
+| Scala / sbt | `build.sbt`, `project/plugins.sbt` | Configurable Maven repositories |
+| Conda | `environment.yml`, `environment.yaml` | Explicit anaconda.org channels |
+| Clojure | `deps.edn` | Maven Central and Clojars, or configured Maven repositories |
 
 ## Inline hints
 
@@ -112,7 +120,7 @@ Customize the colors through `workbench.colorCustomizations` using `freshDeps.co
 - If you have customized `freshDeps.npm.sections`, add `"volta"` to enable these hints. Remove it to disable them.
 - Reads the default `catalog` and named `catalogs` in `pnpm-workspace.yaml`, including npm aliases.
   These use the same registry configuration, cache, and audit provider as `package.json`.
-  `freshDeps.npm.sections` applies only to `package.json`; `freshDeps.npm.enabled` controls both manifests.
+  `freshDeps.npm.sections` applies only to `package.json`; `freshDeps.npm.enabled` also controls npm-backed catalogs.
 
 ### Go
 
@@ -154,6 +162,14 @@ Customize the colors through `workbench.colorCustomizations` using `freshDeps.co
 - NuGet interval ranges such as `[1.0,2.0)` and floating ranges such as `1.*` use NuGet version ordering,
   including legacy four-part versions.
 - Versions containing MSBuild properties are skipped because checking them would require evaluating the project.
+- Reads exact tool pins in `dotnet-tools.json`, including `.config/dotnet-tools.json`, using the same NuGet settings and cache.
+- Reads `sdk.version` in `global.json` using Microsoft's .NET release index and each channel's SDK releases.
+  `rollForward` determines which newer versions are in range. `patch` and `latestPatch` stay in the feature band,
+  `feature` and `latestFeature` stay in the major/minor release, `minor` and `latestMinor` stay in the major release,
+  and `major` and `latestMajor` allow newer major releases. `disable` is an exact pin. The default is `patch`.
+- SDK hints report available updates, not which SDK the resolver would select from installed versions.
+  `allowPrerelease: false` excludes SDK previews even when extension prereleases are enabled.
+  These two JSON manifests require valid JSON; comments and computed versions are skipped.
 
 ### Java / Kotlin / Android
 
@@ -219,10 +235,13 @@ Customize the colors through `workbench.colorCustomizations` using `freshDeps.co
 - Supports full public provider addresses, implied `hashicorp/<local-name>` addresses, comparison constraints,
   exclusions, and Terraform's `~>` operator. Local aliases are shown in hover details.
 - Providers on `registry.terraform.io` and `registry.opentofu.org` are checked against their respective registries. Custom registry hosts, computed constraints,
-  provider blocks, modules, and `.terraform.lock.hcl` are skipped.
+   provider blocks, and `.terraform.lock.hcl` are skipped.
 - Two-part sources in `.tf` files default to the Terraform Registry, while `.tofu` files default to the OpenTofu Registry.
   Set `freshDeps.terraform.defaultRegistry` when an OpenTofu project uses `.tf` files.
 - Lock-file selections and cross-module constraint resolution are not evaluated.
+- Reads literal `source` and `version` attributes in top-level `module` blocks. Public registry sources use
+  `namespace/name/provider` or an explicit Terraform/OpenTofu registry host. Module aliases appear in hover details.
+  Local paths, Git sources, custom registry hosts, and computed module declarations are skipped.
 
 ### Elixir
 
@@ -246,9 +265,95 @@ Customize the colors through `workbench.colorCustomizations` using `freshDeps.co
 - Compares version tags with the same precision and `v` prefix. For example, `v4` is compared with other major tags,
   while `v4.1.0` is compared with full version tags. Patch releases within a moving major tag do not produce an update hint.
 - Local actions, Docker references, branches, commit-SHA pins, expressions, and YAML aliases are skipped.
+- Checks literal `with` inputs for common setup actions using their public runtime manifests:
+  - `actions/setup-node`: `node-version`
+  - `actions/setup-python`: `python-version`
+  - `actions/setup-go`: `go-version`
+- Runtime hints keep the declared precision. For example, `node-version: 20` can suggest `22`,
+  while `python-version: '3.10'` can suggest `3.13`. These are examples, not fixed update targets.
+  Quoted and unquoted numeric values work, including `3.10`. Setup inputs are checked even when the action uses a branch or SHA pin.
+  Expressions, matrix references, version files, multiline lists, ranges, wildcards, and moving aliases such as `lts/*` are skipped.
 - Uses the public GitHub tags API without authentication. GitHub rate-limit failures appear in the output channel.
   Lookups read at most ten pages of 100 tags; reaching that limit reports a failed lookup rather than comparing a partial list.
   Private repositories and GitHub Enterprise are not supported.
+
+### Docker / Compose
+
+- Reads literal `FROM` images, including platform flags and build stages, and `services.*.image` in Compose.
+- Checks Docker Hub images, including unqualified official images and `docker.io` references.
+  Other registries, digests, variables, unversioned images, and moving tags such as `latest` are skipped.
+- Tags must start with one to three numeric components. Updates preserve the `v` prefix, component count,
+  and exact suffix. `20-alpine` compares with `22-alpine`, while `20.1-bookworm` compares only with other
+  two-component `-bookworm` tags. A suffix identifies a variant, not a newer distribution release.
+- Multi-line `FROM` hints appear on the last line of the instruction. Dockerfile heredoc bodies are skipped.
+  Uses Docker Hub's Distribution tag listing with an anonymous pull token. Pagination is bounded at
+  100 pages of up to 10,000 tag names. A truncated listing reports a failed lookup.
+
+### Helm
+
+- Reads chart `dependencies` with literal names, semver requirements, and explicit HTTPS repository URLs.
+  Hints appear on the version field and preserve chart aliases in hover details.
+- Each repository's `index.yaml` is shared across chart lookups during a check.
+  OCI repositories, repository aliases, local charts, YAML aliases, and repository authentication are not supported.
+
+### Swift Package Manager
+
+- Reads literal `.package(url: ..., from: ...)`, `exact:`, `.exact(...)`, `.upToNextMajor(from: ...)`,
+  `.upToNextMinor(from: ...)`, and closed or half-open version ranges in `Package.swift`.
+- `from:` and next-major requirements allow versions below the next major even for `0.x` packages.
+  Requirements use Swift's bounds rather than npm caret rules.
+- Only public `https://github.com/owner/repository` sources are checked. GitHub tag reads stop at 1,000 tags
+  and report an error if the listing is truncated. Branches, revisions, registries, local paths, interpolation,
+  and dynamically assembled requirements are skipped. Swift code is never executed.
+
+### Conan
+
+- Reads requirements in `conanfile.txt`, literal `requires` assignments in `conanfile.py`, and literal
+  `self.requires(...)`, `self.tool_requires(...)`, `self.build_requires(...)`, and `self.test_requires(...)` calls.
+- Looks up recipe versions in the public `conan-io/conan-center-index` repository.
+  This reports available recipes, not binary availability for a Conan profile.
+- Supports dotted numeric versions and numeric comparison ranges such as `[>=1.0 <2.0]`.
+  Nonnumeric releases, users/channels, revisions, custom remotes, and dynamic Python expressions are skipped.
+  Local Conan remote configuration is not read, so this support is intended for Conan Center dependencies.
+
+### Scala / sbt
+
+- Reads literal `"group" % "artifact" % "version"` Maven coordinates in `build.sbt` and `project/plugins.sbt`.
+  Uses Maven version ordering and checks configured repositories in order.
+- `addSbtPlugin` requires both `freshDeps.scala.scalaBinaryVersion` and `freshDeps.scala.sbtBinaryVersion`.
+  For sbt 1.x plugins these are commonly `2.12` and `1.0`, producing the `_2.12_1.0` artifact suffix.
+  Set them to the binary versions used by your build. Empty settings skip plugin declarations.
+- `%%`, `%%%`, custom cross-version modifiers, interpolated strings, and computed versions are skipped.
+  Build scripts, `project/build.properties`, and custom resolvers are not evaluated.
+
+### Conda
+
+- Reads versioned string dependencies in `environment.yml` and `environment.yaml`.
+  Supports numeric exact pins, `=` prefix requirements, dotted wildcards, comparisons, comma intersections,
+  and `|` alternatives. Build selectors and nonnumeric versions are skipped.
+- Requires explicit named anaconda.org channels, such as `channels: [conda-forge]`, or a per-dependency
+  prefix such as `conda-forge::numpy=1.26`. Checks channels in declaration order with strict priority.
+  `nodefaults` is ignored; implicit channels, `defaults`, local channels, channel URLs, and labels are unsupported.
+  A channel list containing unsupported entries skips unqualified dependencies.
+- Filters package files to the configured `freshDeps.conda.subdir` and `noarch`, using only the main label.
+  The default target is the extension host platform. This does not solve Python compatibility or dependencies.
+  Nested `pip` requirements are skipped.
+
+### Yarn catalogs
+
+- Reads default `catalog` and named `catalogs` in `.yarnrc.yml`, including npm aliases.
+  Uses npm registry lookups, caching, and optional audits.
+- Literal `npmRegistryServer` and per-scope registry URLs are respected. An explicit `freshDeps.npm.registry`
+  overrides them. Without Yarn registry declarations, the usual npm configuration applies.
+- Yarn credentials and parent Yarn configuration files are not read. Catalogs declaring global Yarn auth or
+  `npmRegistries` are skipped; scoped credentials skip the affected scope. Environment-expanded URLs are skipped.
+
+### Clojure
+
+- Reads `:mvn/version` coordinates in `:deps`, `:extra-deps`, `:override-deps`, and `:replace-deps`, including aliases.
+  Uses Maven ordering, with Maven Central and Clojars as the default repositories.
+- Git and local dependencies are skipped. Files with reader macros or `:mvn/repos` are skipped rather than
+  guessing reader behavior or querying a different source. User-level `deps.edn` configuration is not read.
 
 ## Security audits
 
@@ -260,7 +365,7 @@ checked and how many have warnings. Failed checks are logged in the Fresh Deps o
 - npm uses the configured registry's bulk advisory endpoint, respecting scoped registries and
   authentication. Registries without that endpoint are marked unsupported.
 - Python uses public PyPI's release vulnerability data. Custom Python indexes are not supported.
-- Go, Rust, Java, .NET, PHP, Dart, Ruby, Terraform, Elixir, JSR, and GitHub Actions audits are not implemented yet. Their version checks still work.
+- Other ecosystems do not include security audits. Their version checks still work.
 
 Audit checks are off by default. Enabling them sends package names and checked versions to the
 configured npm registry or public PyPI, with no fallback to another service. Exact pins check the
@@ -291,7 +396,7 @@ query the audit provider. Both refresh and Clear Version Cache discard audit res
 | `freshDeps.requestTimeoutMs` | `10000` | Per-request timeout |
 | `freshDeps.showSatisfyingUpdates` | `true` | Also report the newest in-range version |
 | `freshDeps.includePrerelease` | `false` | Treat prereleases as updates |
-| `freshDeps.npm.enabled` | `true` | Check `package.json` and pnpm catalogs |
+| `freshDeps.npm.enabled` | `true` | Check `package.json`, pnpm catalogs, and Yarn catalogs |
 | `freshDeps.npm.registry` | `""` | Registry override; empty reads `.npmrc` |
 | `freshDeps.npm.sections` | the four dependency sections plus `volta` | Which sections to inspect |
 | `freshDeps.go.enabled` | `true` | Check `go.mod` |
@@ -304,21 +409,38 @@ query the audit provider. Both refresh and Clear Version Cache discard audit res
 | `freshDeps.rust.enabled` | `true` | Check crates in `Cargo.toml` |
 | `freshDeps.java.enabled` | `true` | Check Maven dependencies in `pom.xml` |
 | `freshDeps.java.repository` | `""` | Repository override; empty uses Maven Central |
-| `freshDeps.dotnet.enabled` | `true` | Check NuGet package declarations |
+| `freshDeps.dotnet.enabled` | `true` | Check NuGet packages, .NET tools, and SDK pins |
 | `freshDeps.dotnet.indexUrl` | `""` | NuGet V3 service index; empty uses nuget.org |
 | `freshDeps.php.enabled` | `true` | Check `composer.json` using Packagist |
 | `freshDeps.dart.enabled` | `true` | Check `pubspec.yaml` using pub.dev |
 | `freshDeps.gradle.enabled` | `true` | Check Gradle catalogs and literal build-script declarations |
 | `freshDeps.gradle.repositories` | Maven Central, Google Maven, Gradle Plugin Portal | Ordered Maven repository URLs for Gradle catalogs |
 | `freshDeps.ruby.enabled` | `true` | Check `Gemfile` using RubyGems.org |
-| `freshDeps.terraform.enabled` | `true` | Check public provider requirements in `*.tf` and `*.tofu` files |
+| `freshDeps.terraform.enabled` | `true` | Check public provider and registry module requirements in `*.tf` and `*.tofu` files |
 | `freshDeps.terraform.defaultRegistry` | `""` | Registry for two-part sources; empty selects one from the file extension |
 | `freshDeps.elixir.enabled` | `true` | Check literal dependencies in `mix.exs` using Hex.pm |
 | `freshDeps.deno.enabled` | `true` | Check npm and JSR imports in Deno configs and conventional import maps |
-| `freshDeps.githubActions.enabled` | `true` | Check version tags in GitHub Actions workflows and composite actions |
+| `freshDeps.githubActions.enabled` | `true` | Check action tags and Node.js, Python and Go setup inputs in workflows and composite actions |
 
 Version results are cached for an hour by default and persisted across window reloads. Change
 `freshDeps.cacheDurationMinutes` to adjust the duration.
+
+Additional ecosystem settings:
+
+| Setting | Default | Description |
+|---|---|---|
+| `freshDeps.docker.enabled` | `true` | Check Docker Hub image tags in Dockerfiles and Compose |
+| `freshDeps.helm.enabled` | `true` | Check Helm chart dependencies using HTTPS indexes |
+| `freshDeps.swift.enabled` | `true` | Check GitHub-hosted Swift package tags |
+| `freshDeps.conan.enabled` | `true` | Check numeric Conan Center recipe versions |
+| `freshDeps.scala.enabled` | `true` | Check explicit Maven coordinates in sbt files |
+| `freshDeps.scala.repositories` | Maven Central | Ordered Maven repositories for sbt |
+| `freshDeps.scala.scalaBinaryVersion` | `""` | Scala binary suffix for sbt plugins; empty skips plugins |
+| `freshDeps.scala.sbtBinaryVersion` | `""` | sbt binary suffix for plugins; empty skips plugins |
+| `freshDeps.conda.enabled` | `true` | Check numeric Conda dependencies from explicit channels |
+| `freshDeps.conda.subdir` | `""` | Target platform such as `linux-64`; empty uses the extension host |
+| `freshDeps.clojure.enabled` | `true` | Check Maven dependencies in `deps.edn` |
+| `freshDeps.clojure.repositories` | Maven Central, Clojars | Ordered Maven repositories for Clojure |
 
 ## Development
 

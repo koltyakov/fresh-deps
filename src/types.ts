@@ -1,7 +1,8 @@
 import type { VersionScheme } from './schemes';
 
 export type Ecosystem = 'npm' | 'go' | 'python' | 'rust' | 'dotnet' | 'java' | 'php' | 'dart' | 'gradle'
-  | 'ruby' | 'terraform' | 'elixir' | 'deno' | 'githubActions';
+  | 'ruby' | 'terraform' | 'elixir' | 'deno' | 'githubActions'
+  | 'docker' | 'helm' | 'swift' | 'conan' | 'scala' | 'conda' | 'clojure';
 
 /** A dependency declaration found in a manifest, with its position in the document. */
 export interface DependencyRef {
@@ -11,6 +12,11 @@ export interface DependencyRef {
   spec: string;
   /** Original declaration when its comparison requirement was rewritten. */
   specRaw?: string;
+  /** Explicit registry or channel selected by the manifest. */
+  source?: string;
+  /** SDK roll-forward ranges use semver rather than NuGet requirements. */
+  semver?: boolean;
+  allowPrerelease?: boolean;
   /** Zero-based line of the declaration, where the hint is anchored. */
   line: number;
   /** `dependencies`, `devDependencies`, `require`, `project.dependencies`, ... */
@@ -19,6 +25,8 @@ export interface DependencyRef {
   indirect?: boolean;
   /** Original text when the name was rewritten (npm aliases). */
   alias?: string;
+  /** Runtime selected by a supported GitHub Actions setup input. */
+  actionRuntime?: 'node' | 'python' | 'go';
 }
 
 /**

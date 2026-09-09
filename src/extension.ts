@@ -163,6 +163,10 @@ export function activate(context: vscode.ExtensionContext): void {
     { scheme: 'file', pattern: '**/*.{cs,fs,vb}proj' },
     { scheme: 'file', pattern: '**/Directory.{Packages,Build}.props' },
     { scheme: 'file', pattern: '**/packages.config' },
+    { scheme: 'file', pattern: '**/Gemfile' },
+    { scheme: 'file', pattern: '**/*.gemspec' },
+    { scheme: 'file', pattern: '**/mix.exs' },
+    { scheme: 'file', pattern: '**/*.tf' },
   ];
 
   context.subscriptions.push(

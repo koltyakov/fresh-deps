@@ -45,6 +45,9 @@ test('new ecosystems link to their package listings', () => {
     ['php', 'vendor/pkg', 'require', 'https://packagist.org/packages/vendor/pkg'],
     ['dart', 'http', 'dependencies', 'https://pub.dev/packages/http/versions/1.136.0'],
     ['gradle', 'org.example:org.example.gradle.plugin', 'plugins', 'https://plugins.gradle.org/plugin/org.example/1.136.0'],
+    ['ruby', 'rails', 'gems', 'https://rubygems.org/gems/rails/versions/1.136.0'],
+    ['terraform', 'hashicorp/aws', 'required_providers', 'https://registry.terraform.io/providers/hashicorp/aws/1.136.0/docs'],
+    ['elixir', 'phoenix', 'deps', 'https://hex.pm/packages/phoenix/1.136.0'],
   ] as const) {
     assert.ok(buildHover({ ...update, dep: { ...update.dep, name, section } }, ecosystem).value.includes(url));
   }

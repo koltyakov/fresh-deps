@@ -19,6 +19,7 @@ const settings: Settings = {
   php: { enabled: true },
   dart: { enabled: true },
   gradle: { enabled: true, repositories: ['https://repo.maven.apache.org/maven2'] },
+  ruby: { enabled: true }, terraform: { enabled: true }, elixir: { enabled: true },
 };
 
 for (const fixture of [
@@ -31,6 +32,18 @@ for (const fixture of [
   {
     file: 'pubspec.yaml', ecosystem: 'dart', text: 'dependencies:\n  http: ^1.0.0',
     url: 'https://pub.dev/api/packages/http', response: { versions: [{ version: '1.5.0' }, { version: '2.0.0' }] },
+  },
+  {
+    file: 'Gemfile', ecosystem: 'ruby', text: 'gem "rails", "~> 1.0"',
+    url: 'https://rubygems.org/api/v1/versions/rails.json', response: [{ number: '1.5.0' }, { number: '2.0.0' }],
+  },
+  {
+    file: 'providers.tf', ecosystem: 'terraform', text: 'terraform { required_providers { aws = { source = "hashicorp/aws", version = "~> 1.0" } } }',
+    url: 'https://registry.terraform.io/v1/providers/hashicorp/aws/versions', response: { versions: [{ version: '1.5.0' }, { version: '2.0.0' }] },
+  },
+  {
+    file: 'mix.exs', ecosystem: 'elixir', text: 'defp deps do\n[{:phoenix, "~> 1.0"}]\nend',
+    url: 'https://hex.pm/api/packages/phoenix', response: { latest_stable_version: '2.0.0', releases: [{ version: '1.5.0' }, { version: '2.0.0' }] },
   },
 ] as const) {
   test(`${fixture.ecosystem} analyzes updates, caches lookups and respects disabled settings`, async (t) => {

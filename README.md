@@ -4,7 +4,8 @@
 
 See available dependency updates directly in your VS Code manifest files.
 
-Fresh Deps adds inline version hints for **npm, Go, Python, Rust, Java, .NET, PHP, and Dart / Flutter**.
+Fresh Deps adds inline version hints for **npm, Go, Python, Rust, Java, .NET, PHP, Dart / Flutter,
+Ruby, Terraform / OpenTofu, and Elixir**.
 Compare the newest version your range allows with the latest release, then hover for details and a
 link to the package registry. Hints are editor decorations, so your files stay untouched.
 
@@ -40,6 +41,9 @@ editor title bar or run `Fresh Deps: Check for Updates` from the Command Palette
 | .NET | `*.csproj`, `*.fsproj`, `*.vbproj`, `Directory.Packages.props`, `Directory.Build.props`, `packages.config` | NuGet V3 feed |
 | PHP / Composer | `composer.json` | Packagist |
 | Dart / Flutter | `pubspec.yaml` | pub.dev |
+| Ruby | `Gemfile`, `*.gemspec` | RubyGems.org |
+| Terraform / OpenTofu | `*.tf` provider requirements | Terraform Registry |
+| Elixir | `mix.exs` | Hex.pm |
 
 ## Inline hints
 
@@ -84,7 +88,8 @@ The second is the latest release and requires changing that range. A single vers
 available update; hover to check whether it satisfies your range.
 
 Hover details include the declared range, latest version, range compatibility, and a link to npm,
-pkg.go.dev, PyPI, crates.io, Maven Central, NuGet, Packagist, pub.dev, or a Gradle package listing.
+pkg.go.dev, PyPI, crates.io, Maven Central, NuGet, Packagist, pub.dev, RubyGems.org, the Terraform
+Registry, Hex.pm, or a Gradle package listing.
 
 Hints follow the manifest's comment syntax and appear after any trailing comma or existing comment.
 Major updates use the theme's warning color, minor updates use its info color, and patch updates
@@ -186,6 +191,32 @@ Customize the colors through `workbench.colorCustomizations` using `freshDeps.co
   If `PUB_HOSTED_URL` selects a different host, only explicitly declared pub.dev dependencies are checked.
   SDK compatibility and `pubspec_overrides.yaml` are not evaluated.
 
+### Ruby
+
+- Reads literal `gem` calls in `Gemfile` and dependency calls in `*.gemspec`, including multiple constraints.
+- Uses RubyGems version ordering and requirement operators, including pessimistic `~>` constraints.
+  For example, `~> 2.1` stays below `3.0`, while `~> 2.1.4` stays below `2.2`.
+- Git, GitHub, path, custom-source, unconstrained, and interpolated dependencies are skipped.
+  If a Gemfile declares a source other than `https://rubygems.org`, the whole file is skipped so private gem names are not sent to RubyGems.org.
+- Ruby requirements and gemspec code are not executed. Declarations assembled through variables or method calls are not checked.
+
+### Terraform / OpenTofu
+
+- Reads literal `version` constraints inside `terraform.required_providers` blocks in `*.tf` files.
+- Supports full public provider addresses, implied `hashicorp/<local-name>` addresses, comparison constraints,
+  exclusions, and Terraform's `~>` operator. Local aliases are shown in hover details.
+- Only providers on `registry.terraform.io` are checked. Custom registry hosts, computed constraints,
+  provider blocks, modules, and `.terraform.lock.hcl` are skipped.
+- Lock-file selections and cross-module constraint resolution are not evaluated.
+
+### Elixir
+
+- Reads literal dependency tuples returned by `deps` in `mix.exs`, including `hex:` package aliases.
+- Supports exact versions, comparisons, `and`, `or`, and Hex's `~>` constraints. Stable releases come from Hex.pm;
+  retired releases remain comparable because Hex can still resolve them.
+- Git, GitHub, path, umbrella, private organization, and custom repository dependencies are skipped.
+- `mix.exs` is not executed. Dynamically assembled dependency lists and requirements are not checked.
+
 ## Security audits
 
 Enable `freshDeps.audit.enabled` to show security warnings alongside update hints, including
@@ -196,7 +227,7 @@ checked and how many have warnings. Failed checks are logged in the Fresh Deps o
 - npm uses the configured registry's bulk advisory endpoint, respecting scoped registries and
   authentication. Registries without that endpoint are marked unsupported.
 - Python uses public PyPI's release vulnerability data. Custom Python indexes are not supported.
-- Go, Rust, Java, .NET, PHP, and Dart audits are not implemented yet. Their version checks still work.
+- Go, Rust, Java, .NET, PHP, Dart, Ruby, Terraform, and Elixir audits are not implemented yet. Their version checks still work.
 
 Audit checks are off by default. Enabling them sends package names and checked versions to the
 configured npm registry or public PyPI, with no fallback to another service. Exact pins check the
@@ -246,6 +277,9 @@ query the audit provider. Both refresh and Clear Version Cache discard audit res
 | `freshDeps.dart.enabled` | `true` | Check `pubspec.yaml` using pub.dev |
 | `freshDeps.gradle.enabled` | `true` | Check Gradle `*.versions.toml` catalogs |
 | `freshDeps.gradle.repositories` | Maven Central, Google Maven, Gradle Plugin Portal | Ordered Maven repository URLs for Gradle catalogs |
+| `freshDeps.ruby.enabled` | `true` | Check `Gemfile` and `*.gemspec` using RubyGems.org |
+| `freshDeps.terraform.enabled` | `true` | Check public provider requirements in `*.tf` files |
+| `freshDeps.elixir.enabled` | `true` | Check literal dependencies in `mix.exs` using Hex.pm |
 
 Version results are cached for an hour by default and persisted across window reloads. Change
 `freshDeps.cacheDurationMinutes` to adjust the duration.
@@ -264,7 +298,7 @@ installs it with `code --install-extension --force`; reload the window afterward
 `FRESH_DEPS_VSCODE_CLI` to target another CLI (`code-insiders`, `cursor`, an absolute path).
 
 Registry lookups are network-dependent, so the test suite covers the pure parts: manifest parsing,
-position anchoring, version comparison, Cargo, Maven, Composer, Dart, and PEP 440 requirement matching, `.npmrc` and
+position anchoring, version comparison, Cargo, Maven, Composer, Dart, RubyGems, Terraform, Hex, and PEP 440 requirement matching, `.npmrc` and
 `pip.conf` resolution, Go path handling, and registry response handling.
 
 ## License

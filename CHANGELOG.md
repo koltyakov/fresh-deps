@@ -6,7 +6,9 @@
 - Dart and Flutter update hints in `pubspec.yaml` using pub.dev, including Dart caret bounds, build suffix ordering, and retracted-release filtering.
 - Gradle library and plugin hints in `*.versions.toml`, with shared version references and configurable Maven repository order.
 - pnpm default and named catalog hints in `pnpm-workspace.yaml`, using existing npm registry configuration and audits.
-- Added `freshDeps.php.enabled`, `freshDeps.dart.enabled`, `freshDeps.gradle.enabled`, and `freshDeps.gradle.repositories` settings.
+- Ruby update hints in `Gemfile` and `*.gemspec` using RubyGems.org, with RubyGems version and pessimistic constraint handling.
+- Terraform and OpenTofu provider hints in `*.tf` files using the public Terraform Registry.
+- Elixir dependency hints in `mix.exs` using Hex.pm, including package aliases and Hex constraints.
 
 ## 0.2.0
 

@@ -142,6 +142,12 @@ function links(
   } else if (ecosystem === 'java') {
     const [groupId, artifactId] = update.dep.name.split(':');
     parts.push(`[Maven Central](https://central.sonatype.com/artifact/${groupId}/${artifactId}/${update.latest})`);
+  } else if (ecosystem === 'ruby') {
+    parts.push(`[RubyGems](https://rubygems.org/gems/${encodeURIComponent(update.dep.name)}/versions/${encodeURIComponent(update.latest)})`);
+  } else if (ecosystem === 'terraform') {
+    parts.push(`[Terraform Registry](https://registry.terraform.io/providers/${update.dep.name}/${encodeURIComponent(update.latest)}/docs)`);
+  } else if (ecosystem === 'elixir') {
+    parts.push(`[Hex](https://hex.pm/packages/${encodeURIComponent(update.dep.name)}/${encodeURIComponent(update.latest)})`);
   } else {
     parts.push(`[npm](https://www.npmjs.com/package/${update.dep.name}/v/${update.latest})`);
   }

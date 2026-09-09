@@ -1,6 +1,7 @@
 import type { VersionScheme } from './schemes';
 
-export type Ecosystem = 'npm' | 'go' | 'python' | 'rust' | 'dotnet' | 'java' | 'php' | 'dart' | 'gradle';
+export type Ecosystem = 'npm' | 'go' | 'python' | 'rust' | 'dotnet' | 'java' | 'php' | 'dart' | 'gradle'
+  | 'ruby' | 'terraform' | 'elixir';
 
 /** A dependency declaration found in a manifest, with its position in the document. */
 export interface DependencyRef {

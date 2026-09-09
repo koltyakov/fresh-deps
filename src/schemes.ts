@@ -4,6 +4,8 @@ import { nugetScheme } from './nuget';
 import * as mavenVersion from './mavenVersion';
 import { composerRange } from './composer';
 import { dartScheme } from './dart';
+import { rubyScheme } from './ruby';
+import { pessimisticRange } from './pessimistic';
 import type { Ecosystem, UpdateKind } from './types';
 
 export { dartScheme } from './dart';
@@ -150,6 +152,27 @@ export const composerScheme: VersionScheme = {
   },
 };
 
+function pessimisticScheme(dialect: 'terraform' | 'hex'): VersionScheme {
+  const rangeOf = (spec: string) => pessimisticRange(spec, dialect);
+  return {
+    ...semverScheme,
+    baseline: (spec) => { const range = rangeOf(spec); return range ? baselineOf(range) : undefined; },
+    isPinned: (spec) => /^(?:==?|=)?\s*v?\d+(?:\.\d+){0,2}(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(spec.trim()),
+    isRange: (spec) => rangeOf(spec) !== undefined,
+    satisfies: (version, spec, opts) => {
+      const range = rangeOf(spec);
+      return !!range && semver.satisfies(version, range, { ...LOOSE, includePrerelease: opts.includePrerelease });
+    },
+    maxSatisfying: (versions, spec, opts) => {
+      const range = rangeOf(spec);
+      return range ? semver.maxSatisfying(versions, range, { ...LOOSE, includePrerelease: opts.includePrerelease }) ?? undefined : undefined;
+    },
+  };
+}
+
+export const terraformScheme = pessimisticScheme('terraform');
+export const hexScheme = pessimisticScheme('hex');
+
 /**
  * Python has no `major.minor.patch` contract, so the step is read off the
  * release tuple: a change in the first component is a major move, the second a
@@ -205,5 +228,8 @@ export function schemeFor(ecosystem: Ecosystem): VersionScheme {
   if (ecosystem === 'java' || ecosystem === 'gradle') return mavenScheme;
   if (ecosystem === 'php') return composerScheme;
   if (ecosystem === 'dart') return dartScheme;
+  if (ecosystem === 'ruby') return rubyScheme;
+  if (ecosystem === 'terraform') return terraformScheme;
+  if (ecosystem === 'elixir') return hexScheme;
   return ecosystem === 'dotnet' ? nugetScheme : semverScheme;
 }

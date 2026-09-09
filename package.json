@@ -29,7 +29,10 @@
     "composer",
     "flutter",
     "gradle",
-    "pnpm"
+    "pnpm",
+    "ruby",
+    "terraform",
+    "elixir"
   ],
   "main": "./dist/extension.js",
   "icon": "assets/logo.png",
@@ -45,6 +48,9 @@
     "onLanguage:toml",
     "onLanguage:yaml",
     "onLanguage:xml",
+    "onLanguage:ruby",
+    "onLanguage:elixir",
+    "onLanguage:terraform",
     "onLanguage:pip-requirements",
     "workspaceContains:**/package.json",
     "workspaceContains:**/composer.json",
@@ -62,7 +68,11 @@
     "workspaceContains:**/*.vbproj",
     "workspaceContains:**/Directory.Packages.props",
     "workspaceContains:**/Directory.Build.props",
-    "workspaceContains:**/packages.config"
+    "workspaceContains:**/packages.config",
+    "workspaceContains:**/Gemfile",
+    "workspaceContains:**/*.gemspec",
+    "workspaceContains:**/mix.exs",
+    "workspaceContains:**/*.tf"
   ],
   "contributes": {
     "commands": [
@@ -239,6 +249,21 @@
           "type": "string",
           "default": "",
           "description": "Maven repository URL. Leave empty to use https://repo.maven.apache.org/maven2."
+        },
+        "freshDeps.ruby.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Check Bundler dependencies in Gemfile using public RubyGems."
+        },
+        "freshDeps.terraform.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Check Terraform and OpenTofu providers in *.tf files using the public Terraform Registry."
+        },
+        "freshDeps.elixir.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Check Mix dependencies in mix.exs using public Hex."
         }
       }
     },

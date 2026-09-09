@@ -14,6 +14,9 @@ import { parsePomXml } from './parsers/pomXml';
 import { parsePubspec } from './parsers/pubspec';
 import { parsePyProject } from './parsers/pyproject';
 import { parseRequirementsTxt } from './parsers/requirementsTxt';
+import { parseGemfile, parseGemspec } from './parsers/gemfile';
+import { parseMixExs } from './parsers/mixExs';
+import { parseTerraform } from './parsers/terraform';
 import { CratesClient } from './registries/crates';
 import { GoClient } from './registries/go';
 import { NpmClient } from './registries/npm';
@@ -22,6 +25,9 @@ import { NugetClient } from './registries/nuget';
 import { PackagistClient } from './registries/packagist';
 import { PubClient } from './registries/pub';
 import { normalizeName, PyPiClient } from './registries/pypi';
+import { RubyGemsClient } from './registries/rubygems';
+import { HexClient } from './registries/hex';
+import { TerraformClient } from './registries/terraform';
 import { schemeFor } from './schemes';
 import type {
   DependencyRef,
@@ -69,7 +75,11 @@ export type ManifestKind =
   | 'Pipfile'
   | 'requirements.txt'
   | 'pom.xml'
-  | 'nuget';
+  | 'nuget'
+  | 'Gemfile'
+  | 'gemspec'
+  | 'mix.exs'
+  | 'terraform';
 
 interface Manifest {
   ecosystem: Ecosystem;
@@ -98,6 +108,10 @@ export function manifestOf(fsPath: string): Manifest | undefined {
   if (name === 'composer.json') return { ecosystem: 'php', kind: 'composer.json' };
   if (name === 'pubspec.yaml') return { ecosystem: 'dart', kind: 'pubspec.yaml' };
   if (name === 'pnpm-workspace.yaml') return { ecosystem: 'npm', kind: 'pnpm-workspace.yaml' };
+  if (name === 'Gemfile') return { ecosystem: 'ruby', kind: 'Gemfile' };
+  if (name.endsWith('.gemspec')) return { ecosystem: 'ruby', kind: 'gemspec' };
+  if (name === 'mix.exs') return { ecosystem: 'elixir', kind: 'mix.exs' };
+  if (name.endsWith('.tf')) return { ecosystem: 'terraform', kind: 'terraform' };
   if (name.endsWith('.versions.toml')) return { ecosystem: 'gradle', kind: 'gradle-catalog' };
   if (name === 'package.json') {
     return { ecosystem: 'npm', kind: 'package.json' };
@@ -244,6 +258,10 @@ function parseManifest(kind: ManifestKind, request: AnalyzeRequest): DependencyR
       return parsePomXml(text);
     case 'nuget':
       return parseNugetManifest(text);
+    case 'Gemfile': return parseGemfile(text);
+    case 'gemspec': return parseGemspec(text);
+    case 'mix.exs': return parseMixExs(text);
+    case 'terraform': return parseTerraform(text);
   }
 }
 
@@ -299,6 +317,12 @@ export function lookupFor(ecosystem: Ecosystem, fsPath: string, settings: Settin
       return dotnetLookup(settings);
     case 'java':
       return mavenLookup(settings);
+    case 'ruby':
+      return rubyLookup(settings);
+    case 'terraform':
+      return terraformLookup(settings);
+    case 'elixir':
+      return hexLookup(settings);
   }
 }
 
@@ -416,6 +440,21 @@ function gradleLookup(settings: Settings): Lookup {
       return { error: 'not found' };
     },
   };
+}
+
+function rubyLookup(settings: Settings): Lookup {
+  const client = new RubyGemsClient(settings.requestTimeoutMs);
+  return { key: (dep) => `ruby|rubygems.org|${dep.name}`, fetch: (dep) => client.fetchVersions(dep.name) };
+}
+
+function terraformLookup(settings: Settings): Lookup {
+  const client = new TerraformClient(settings.requestTimeoutMs);
+  return { key: (dep) => `terraform|registry.terraform.io|${dep.name.toLowerCase()}`, fetch: (dep) => client.fetchVersions(dep.name) };
+}
+
+function hexLookup(settings: Settings): Lookup {
+  const client = new HexClient(settings.requestTimeoutMs);
+  return { key: (dep) => `elixir|hex.pm|${dep.name.toLowerCase()}`, fetch: (dep) => client.fetchVersions(dep.name) };
 }
 
 /** Runs `worker` over every item with a bounded number of requests in flight. */

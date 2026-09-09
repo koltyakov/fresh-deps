@@ -44,6 +44,7 @@ function setup(t: TestContext, spec = '1.0.0') {
       php: { enabled: true },
       dart: { enabled: true },
       gradle: { enabled: true, repositories: [] },
+      ruby: { enabled: true }, terraform: { enabled: true }, elixir: { enabled: true },
     },
     cache: new VersionCache(60 * 60_000),
     auditCache: new AuditCache(),

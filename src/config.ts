@@ -38,6 +38,9 @@ export interface Settings {
   php: { enabled: boolean };
   dart: { enabled: boolean };
   gradle: { enabled: boolean; repositories: string[] };
+  ruby: { enabled: boolean };
+  terraform: { enabled: boolean };
+  elixir: { enabled: boolean };
 }
 
 export function readSettings(scope?: vscode.Uri): Settings {
@@ -85,5 +88,8 @@ export function readSettings(scope?: vscode.Uri): Settings {
         'https://repo.maven.apache.org/maven2', 'https://dl.google.com/dl/android/maven2', 'https://plugins.gradle.org/m2',
       ]),
     },
+    ruby: { enabled: cfg.get('ruby.enabled', true) },
+    terraform: { enabled: cfg.get('terraform.enabled', true) },
+    elixir: { enabled: cfg.get('elixir.enabled', true) },
   };
 }

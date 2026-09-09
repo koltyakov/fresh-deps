@@ -19,6 +19,9 @@ const COMMENT_TOKEN: Record<Ecosystem, string> = {
   php: '//',
   dart: '#',
   gradle: '#',
+  ruby: '#',
+  terraform: '#',
+  elixir: '#',
 };
 
 /**

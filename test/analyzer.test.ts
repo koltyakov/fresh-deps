@@ -36,6 +36,27 @@ test('Actions analyzes and caches setup inputs independently from action tags', 
   assert.equal(await analyze({ ...request, settings: { ...settings, githubActions: { enabled: false } } }), undefined);
 });
 
+test('Actions matrices produce one update and reuse cached full runtime releases', async (t) => {
+  let calls = 0;
+  t.mock.method(globalThis, 'fetch', async () => {
+    calls++;
+    return Response.json(['20.19.5', '22.18.0', '24.2.0', '26.0.0'].map((version) => ({ version })));
+  });
+  const request: AnalyzeRequest = {
+    fsPath: '/project/.github/workflows/ci.yml',
+    text: 'jobs:\n  build:\n    strategy:\n      matrix:\n        node: [20, 22, 24]\n    steps:\n      - uses: actions/setup-node@main\n        with:\n          node-version: ${{ matrix.node }}\n      - uses: actions/setup-node@main\n        with:\n          node-version: ${{ matrix.node }}',
+    settings, cache: new VersionCache(60_000), auditCache: new AuditCache(), allowNetwork: true,
+  };
+  const result = await analyze(request);
+  assert.equal(result?.updates.length, 1);
+  assert.deepEqual(result?.updates[0].matrixUpdate, { versions: ['20', '22', '24'], newer: '26' });
+  assert.equal(result?.updates[0].dep.line, 4);
+  const pinned = await analyze({ ...request, allowNetwork: false, text: request.text.replace('[20, 22, 24]', '[20.19.0, 22.18.0, 24.2.0]') });
+  assert.deepEqual(pinned?.updates[0].matrixUpdate, { versions: ['20.19.5', '22.18.0', '24.2.0'], newer: '26.0.0' });
+  assert.equal(pinned?.incomplete, false);
+  assert.equal(calls, 1);
+});
+
 for (const fixture of [
   {
     file: 'composer.json', ecosystem: 'php',

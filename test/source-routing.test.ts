@@ -180,7 +180,8 @@ test('GitHub SHA release comments must match the actual tag commit', async (t) =
 test('GitHub setup inputs resolve literal matrix values and version files', () => {
   const text = 'jobs:\n  test:\n    strategy:\n      matrix:\n        node: [18, 20]\n    steps:\n      - uses: actions/setup-node@main\n        with:\n          node-version: ${{ matrix.node }}\n      - uses: actions/setup-go@main\n        with:\n          go-version-file: go.mod';
   const deps = parseGithubActions(text, () => 'module test\ngo 1.22.0');
-  assert.deepEqual(deps.map(({ name, spec, line }) => [name, spec, line]), [['node', '18', 4], ['node', '20', 4], ['go', '1.22.0', 11]]);
+  assert.deepEqual(deps.map(({ name, spec, line }) => [name, spec, line]), [['node', '20', 4], ['go', '1.22.0', 11]]);
+  assert.deepEqual(deps[0].matrixVersions, ['18', '20']);
 });
 
 test('Ruby custom source blocks do not suppress unrelated public gems', () => {

@@ -42,6 +42,8 @@ export interface DependencyRef {
   alias?: string;
   /** Runtime selected by a supported GitHub Actions setup input. */
   actionRuntime?: 'node' | 'python' | 'go';
+  /** Runtime matrix selectors, kept together as one declaration. */
+  matrixVersions?: string[];
 }
 
 /**
@@ -122,6 +124,7 @@ export interface DependencyUpdate {
   alternatePath?: string;
   meta?: PackageMeta;
   compatible?: string;
+  matrixUpdate?: { versions: string[]; newer?: string };
 }
 
 export interface ResolveOptions {

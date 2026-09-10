@@ -75,6 +75,35 @@ test('audit hints merge with updates and remain visible without updates', () => 
   renderer.dispose();
 });
 
+test('matrix hints draw unchanged entries in gray without shifting the colored updates', () => {
+  const renderer = new DecorationRenderer();
+  const decorations = new Map<MockDecorationType, MockHint[]>();
+  const editor = {
+    options: { tabSize: 2 },
+    document: { uri: { fsPath: '/project/.github/workflows/ci.yml' }, lineCount: 1,
+      lineAt: () => ({ text: 'node: [20.0.0, 22, 24]', range: { end: { line: 0, character: 23 } } }) },
+    setDecorations: (type: MockDecorationType, values: MockHint[]) => decorations.set(type, values),
+  } as unknown as TextEditor;
+  renderer.render(editor, [{
+    dep: { name: 'node', spec: '24', matrixVersions: ['20.0.0', '22', '24'], line: 0, section: 'matrix' },
+    current: '24', latest: '26', kind: 'major', inRange: false,
+    matrixUpdate: { versions: ['20.19.5', '22', '24'], newer: '26' },
+  }], 'githubActions', []);
+  const colored = [...decorations.values()].flat().filter((hint) => hint.renderOptions.after?.contentText);
+  assert.equal(colored.length, 1);
+  assert.equal(colored[0].renderOptions.after.contentText, '↑ [20.19.5, \u00a0\u00a0, \u00a0\u00a0] → 26');
+  const [grayType, gray] = [...decorations].find(([type]) => !type.options.after)!;
+  assert.equal((grayType.options.before!.color as { id: string }).id, 'freshDeps.commentForeground');
+  assert.equal(grayType.options.before!.width, '0');
+  assert.deepEqual(gray.map((hint) => hint.renderOptions.before), [
+    { contentText: '22', margin: '0 -15ch 0 15ch' },
+    { contentText: '24', margin: '0 -19ch 0 19ch' },
+  ]);
+  renderer.clear(editor);
+  assert.equal([...decorations.values()].flat().length, 0);
+  renderer.dispose();
+});
+
 test('gray markers have zero layout width and versions reserve aligned space for them', () => {
   const renderer = new DecorationRenderer();
   const decorations = new Map<MockDecorationType, MockHint[]>();

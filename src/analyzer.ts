@@ -463,9 +463,9 @@ export function lookupFor(ecosystem: Ecosystem, fsPath: string, settings: Settin
       const client = new GithubActionsClient(settings.requestTimeoutMs);
       return {
         key: (dep) => dep.actionRuntime
-          ? `githubActions|runtime|${dep.actionRuntime}|${actionTagStyle(dep.spec)}`
+          ? `githubActions|runtime|${dep.actionRuntime}|${dep.matrixVersions ? '3' : actionTagStyle(dep.spec)}`
           : `githubActions|github.com|${dep.name.toLowerCase()}|${actionTagStyle(dep.spec)}${dep.revision ? `|${dep.revision}` : ''}`,
-        fetch: (dep) => dep.actionRuntime ? client.fetchRuntimeVersions(dep.actionRuntime, dep.spec)
+        fetch: (dep) => dep.actionRuntime ? client.fetchRuntimeVersions(dep.actionRuntime, dep.matrixVersions ? '0.0.0' : dep.spec)
           : client.fetchVersions(dep.name, dep.spec, dep.revision),
       };
     }

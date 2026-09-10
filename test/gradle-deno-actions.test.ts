@@ -11,6 +11,29 @@ import { computeUpdate } from '../src/versions';
 import { schemeFor } from '../src/schemes';
 import manifest from '../package.json';
 
+test('runtime matrix updates select the latest within each major and preserve precision', () => {
+  const resolve = (matrix: string, releases: string[], runtime = 'node') => {
+    const text = `jobs:\n  test:\n    strategy:\n      matrix:\n        version: ${matrix}\n    steps:\n      - uses: actions/setup-${runtime}@main\n        with:\n          ${runtime}-version: \${{ matrix.version }}`;
+    const [dep] = parseGithubActions(text);
+    return dep && computeUpdate(dep, { all: releases }, { scheme: githubActionsScheme, includePrerelease: false, showSatisfyingUpdates: true });
+  };
+  assert.equal(resolve('[20, 22, 24]', ['20.19.5', '22.18.0', '24.2.0']), undefined);
+  assert.deepEqual(resolve('[20.18, "22.1.0", 24]', ['20.19.5', '22.1.4', '22.2.0', '24.2.0'])?.matrixUpdate,
+    { versions: ['20.19', '22.2.0', '24'], newer: undefined });
+  assert.deepEqual(resolve('[20.0.0, 22, 24]', ['20.19.5', '22.18.0', '24.2.0', '26.0.0'])?.matrixUpdate,
+    { versions: ['20.19.5', '22', '24'], newer: '26' });
+  assert.deepEqual(resolve('["3.10.1", "3.12.0"]', ['3.10.9', '3.12.8', '3.13.2'], 'python')?.matrixUpdate,
+    { versions: ['3.13.2', '3.13.2'], newer: undefined });
+  assert.equal(resolve('[24, 26]', ['24.1.0', '26.0.0', '27.0.0-rc.1']), undefined);
+  assert.deepEqual(resolve('["3.10", "3.12"]', ['3.10.9', '3.12.8'], 'python')?.matrixUpdate,
+    { versions: ['3.12', '3.12'], newer: undefined });
+  assert.deepEqual(resolve('["1.22", "1.23"]', ['1.22.9', '1.23.8', '1.24.1'], 'go')?.matrixUpdate,
+    { versions: ['1.24', '1.24'], newer: undefined });
+  assert.equal(resolve('[20, "lts/*"]', ['26.0.0']), undefined);
+  assert.deepEqual(resolve('\n          - 20\n          - 24', ['26.0.0'])?.matrixUpdate,
+    { versions: ['20', '24'], newer: '26' });
+});
+
 test('recognizes Gradle, Deno, import maps and scoped GitHub workflow filenames', () => {
   for (const file of ['build.gradle', 'build.gradle.kts']) {
     assert.equal(manifestOf(`/project/${file}`)?.kind, 'gradle-build');
@@ -173,6 +196,27 @@ test('Runtime suggestions preserve precision and exclude unreleased moving selec
   assert.equal(computeUpdate(dep, actionRuntimeVersions(versions, dep.spec), opts)?.kind, 'major');
   const exact = { ...dep, spec: '20.0.0' };
   assert.equal(computeUpdate(exact, actionRuntimeVersions(versions, exact.spec), { ...opts, includePrerelease: true })?.latest, '24.0.0-beta.1');
+});
+
+test('scalar runtime hints show the latest within major before the latest upgrade', () => {
+  const opts = { scheme: githubActionsScheme, includePrerelease: false, showSatisfyingUpdates: true };
+  const releases = ['22.0.0', '22.18.0', '22.19.1', '22.20.0-rc.1', '26.8.1'];
+  for (const [spec, satisfying, latest] of [
+    ['22.0.0', '22.19.1', '26.8.1'], ['22.0', '22.19', '26.8'], ['22', undefined, '26'],
+    ['v22.0.0', 'v22.19.1', 'v26.8.1'], ['22.19.1', undefined, '26.8.1'],
+  ]) {
+    const dep = { name: 'node', spec: spec!, actionRuntime: 'node' as const, line: 0, section: 'with' };
+    const versions = actionRuntimeVersions(releases, dep.spec);
+    const update = computeUpdate(dep, versions, opts);
+    assert.equal(update?.satisfying, satisfying);
+    assert.equal(update?.latest, latest);
+    assert.equal(computeUpdate(dep, versions, { ...opts, showSatisfyingUpdates: false })?.satisfying, undefined);
+    assert.equal(computeUpdate({ ...dep, actionRuntime: undefined }, versions, opts)?.satisfying, undefined);
+  }
+  const dep = { name: 'node', spec: '22.0.0', actionRuntime: 'node' as const, line: 0, section: 'with' };
+  const update = computeUpdate(dep, actionRuntimeVersions(['22.19.1'], dep.spec), opts);
+  assert.equal(update?.latest, '22.19.1');
+  assert.equal(update?.satisfying, undefined);
 });
 
 test('Runtime manifests share requests across precisions and report malformed responses', async (t) => {

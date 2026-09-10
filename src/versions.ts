@@ -1,5 +1,7 @@
 import * as semver from 'semver';
 import * as pep440 from './pep440';
+import { actionVersion, githubActionsScheme } from './githubActions';
+import { actionRuntimeVersions } from './registries/githubActions';
 import type { DependencyRef, DependencyUpdate, RegistryVersions, ResolveOptions } from './types';
 
 const LOOSE = { loose: true } as const;
@@ -91,6 +93,7 @@ export function computeUpdate(
   versions: RegistryVersions,
   opts: ResolveOptions,
 ): DependencyUpdate | undefined {
+  if (dep.matrixVersions) return computeMatrixUpdate(dep, versions, opts);
   const { scheme } = opts;
 
   const current = versions.baseline && scheme.isVersion(versions.baseline) ? versions.baseline : dep.resolvedVersion && scheme.isVersion(dep.resolvedVersion)
@@ -134,7 +137,13 @@ export function computeUpdate(
     update.alternatePath = versions.path;
   }
 
-  if (!inRange && opts.showSatisfyingUpdates && versions.all?.length && !scheme.isPinned(dep.spec)) {
+  if (dep.actionRuntime && opts.showSatisfyingUpdates && versions.all?.length) {
+    const prefix = actionVersion(current)!.split('.')[0] + '.';
+    const best = scheme.max(versions.all.filter((version) => actionVersion(version)?.startsWith(prefix)), opts);
+    if (best && scheme.compare(best, current) > 0 && scheme.compare(best, latest) < 0) {
+      update.satisfying = best;
+    }
+  } else if (!inRange && opts.showSatisfyingUpdates && versions.all?.length && !scheme.isPinned(dep.spec)) {
     const best = scheme.maxSatisfying(versions.all, dep.spec, { includePrerelease: opts.includePrerelease });
     if (best && scheme.compare(best, current) > 0) {
       update.satisfying = best;
@@ -142,6 +151,30 @@ export function computeUpdate(
   }
 
   return update;
+}
+
+function computeMatrixUpdate(dep: DependencyRef, versions: RegistryVersions, opts: ResolveOptions): DependencyUpdate | undefined {
+  const selectors = dep.matrixVersions!;
+  const scheme = githubActionsScheme;
+  const releases = (versions.all ?? []).filter((version) => actionVersion(version)
+    && (opts.includePrerelease || !scheme.isPrerelease(version)));
+  const updated = selectors.map((spec) => {
+    // Advance within the declared major while retaining the selector's precision.
+    const prefix = actionVersion(spec)!.split('.')[0] + '.';
+    const candidates = releases.filter((version) => actionVersion(version)!.startsWith(prefix));
+    const best = scheme.max(actionRuntimeVersions(candidates, spec).all ?? [], opts);
+    return best && scheme.compare(best, spec) > 0 ? best : spec;
+  });
+  const latest = scheme.max(actionRuntimeVersions(releases, dep.spec).all ?? [], opts);
+  const current = dep.spec;
+  const releaseLine = (version: string) => actionVersion(version)!.split('.')[0];
+  const newer = latest && scheme.compare(latest, current) > 0 && releaseLine(latest) !== releaseLine(current) ? latest : undefined;
+  const changes = updated.flatMap((version, i) => version !== selectors[i] ? [{ current: selectors[i], latest: version }] : []);
+  if (!newer && !changes.length) return undefined;
+  const comparison = newer ? { current, latest: newer } : changes.reduce((a, b) =>
+    scheme.classify(b.current, b.latest) === 'minor' ? b : a);
+  return { dep, ...comparison, kind: scheme.classify(comparison.current, comparison.latest), inRange: false,
+    ...(versions.meta ? { meta: versions.meta } : {}), matrixUpdate: { versions: updated, newer } };
 }
 
 function pickLatest(versions: RegistryVersions, opts: ResolveOptions): string | undefined {

@@ -1,5 +1,5 @@
 import { isMap, isScalar, isSeq } from 'yaml';
-import { actionRuntimes, actionVersion } from '../githubActions';
+import { actionRuntimes, actionVersion, githubActionsScheme } from '../githubActions';
 import type { DependencyRef } from '../types';
 import { yamlDocument, yamlString } from './yaml';
 
@@ -51,7 +51,20 @@ export function parseGithubActions(text: string, readVersionFile?: (filename: st
       const spec = yamlString(input) ?? (isScalar(input) && typeof input.value === 'number' ? input.source : undefined);
       const selector = spec && /^\$\{\{\s*matrix\.([\w-]+)\s*\}\}$/.exec(spec);
       const entries = selector && isMap(matrix) ? matrix.get(selector[1], true) : undefined;
-      const candidates = isSeq(entries) ? entries.items : [input];
+      if (isSeq(entries)) {
+        const versions = entries.items.map((candidate) => yamlString(candidate)
+          ?? (isScalar(candidate) && typeof candidate.value === 'number' ? candidate.source : undefined));
+        if (versions.length && versions.every((version): version is string => !!version && !!actionVersion(version))) {
+          const sectionName = `${section}.strategy.matrix.${selector![1]}`;
+          if (!deps.some((dep) => dep.section === sectionName && dep.actionRuntime === runtime)) {
+            deps.push({ name: runtime, spec: githubActionsScheme.max(versions, { includePrerelease: true })!,
+              specRaw: `[${versions.join(', ')}]`, matrixVersions: versions, line: line(entries),
+              section: sectionName, actionRuntime: runtime });
+          }
+        }
+        continue;
+      }
+      const candidates = [input];
       for (const candidate of candidates) {
         const version = yamlString(candidate) ?? (isScalar(candidate) && typeof candidate.value === 'number' ? candidate.source : undefined);
         if (!version || !actionVersion(version)) continue;

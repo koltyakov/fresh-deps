@@ -70,14 +70,17 @@ export function buildHover(
   const declared = update.dep.spec === '@baseline' ? 'registry baseline' : update.dep.specRaw ?? update.dep.spec;
   const declaredIsCurrent = declared.trim() === currentDisplay;
   md.appendMarkdown(`| Declared | ${row(declared, declaredIsCurrent ? currentDate : undefined)} |\n`);
-  if (!declaredIsCurrent) {
+  if (!declaredIsCurrent && !update.matrixUpdate) {
     md.appendMarkdown(`| Current | ${row(currentDisplay, currentDate)} |\n`);
   }
-  md.appendMarkdown(
+  if (update.matrixUpdate) {
+    md.appendMarkdown(`| Updated matrix | ${row(`[${update.matrixUpdate.versions.join(', ')}]`, undefined)} |\n`);
+    if (update.matrixUpdate.newer) md.appendMarkdown(`| Newer release line | ${row(update.matrixUpdate.newer, undefined)} |\n`);
+  } else md.appendMarkdown(
     `| Latest | ${row(displayVersion(update.latestRaw ?? update.latest), latestDate)} |\n`,
   );
   if (update.satisfying) {
-    md.appendMarkdown(`| Newest in range | \`${displayVersion(update.satisfying)}\` |\n`);
+    md.appendMarkdown(`| ${update.dep.actionRuntime ? 'Newest within major' : 'Newest in range'} | \`${displayVersion(update.satisfying)}\` |\n`);
   } else if (ecosystem === 'bazel') {
     md.appendMarkdown('| Module | a newer registry version is available; compatibility levels and module resolution are not evaluated |\n');
   } else if (ecosystem === 'githubActions' || ecosystem === 'docker') {

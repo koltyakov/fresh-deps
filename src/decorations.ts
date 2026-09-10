@@ -64,13 +64,19 @@ function decorationFor(kind: HintKind): vscode.TextEditorDecorationType {
 }
 
 export class DecorationRenderer implements vscode.Disposable {
+  private readonly unchangedType = vscode.window.createTextEditorDecorationType({
+    before: { ...ANNOTATION, width: '0', color: new vscode.ThemeColor('freshDeps.commentForeground') },
+    rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed,
+  });
   private readonly types = new Map<HintKind, vscode.TextEditorDecorationType>(
     KINDS.map((kind) => [kind, decorationFor(kind)]),
   );
 
   render(editor: vscode.TextEditor, updates: DependencyUpdate[], ecosystem: Ecosystem, audits: DependencyAudit[]): void {
     const byKind = new Map<HintKind, vscode.DecorationOptions[]>(KINDS.map((kind) => [kind, []]));
-    const hints = updates.map((update) => ({ dep: update.dep, kind: update.kind as HintKind, text: version(update, ecosystem) }));
+    const unchanged: vscode.DecorationOptions[] = [];
+    const hints = updates.map((update) => ({ dep: update.dep, kind: update.kind as HintKind,
+      text: version(update, ecosystem), unchanged: unchangedMatrixEntries(update) }));
     for (const audit of audits) {
       if (audit.result.status !== 'checked' || audit.result.advisories.length === 0) continue;
       const count = audit.result.advisories.length;
@@ -80,7 +86,7 @@ export class DecorationRenderer implements vscode.Disposable {
         hint.kind = 'audit';
         hint.text += ` | ${warning}`;
       } else {
-        hints.push({ dep: audit.dep, kind: 'audit', text: warning });
+        hints.push({ dep: audit.dep, kind: 'audit', text: warning, unchanged: [] });
       }
     }
     const tabSize = typeof editor.options.tabSize === 'number' ? editor.options.tabSize : 4;
@@ -106,6 +112,15 @@ export class DecorationRenderer implements vscode.Disposable {
       const token = file.endsWith('pnpm-workspace.yaml') || file.endsWith('.yarnrc.yml') ? '#'
         : ecosystem === 'dotnet' && /(?:^|[/\\])(?:dotnet-tools|global)\.json$/.test(file) ? '//'
         : ecosystem === 'gradle' && /\.gradle(?:\.kts)?$/.test(file) ? '//' : COMMENT_TOKEN[ecosystem];
+      let text = update.text;
+      for (const entry of update.unchanged) {
+        // Reserve the text's width in the main hint; draw the gray entry over that space.
+        text = text.slice(0, entry.offset) + '\u00a0'.repeat(entry.text.length) + text.slice(entry.offset + entry.text.length);
+        const offset = padding + token.length + 2 + entry.offset;
+        unchanged.push({ range: new vscode.Range(line.range.end, line.range.end), renderOptions: {
+          before: { contentText: entry.text, margin: `0 -${offset}ch 0 ${offset}ch` },
+        } });
+      }
       byKind.get(update.kind)?.push({
         range: new vscode.Range(line.range.end, line.range.end),
         renderOptions: {
@@ -114,7 +129,7 @@ export class DecorationRenderer implements vscode.Disposable {
             margin: `0 -${padding + 1}ch 0 ${padding + 1}ch`,
           },
           after: {
-            contentText: update.text + (token === '<!--' ? ' -->' : ''),
+            contentText: text + (token === '<!--' ? ' -->' : ''),
             margin: `0 0 0 ${padding + token.length + 2}ch`,
           },
         },
@@ -124,15 +139,18 @@ export class DecorationRenderer implements vscode.Disposable {
     for (const [kind, type] of this.types) {
       editor.setDecorations(type, byKind.get(kind) ?? []);
     }
+    editor.setDecorations(this.unchangedType, unchanged);
   }
 
   clear(editor: vscode.TextEditor): void {
+    editor.setDecorations(this.unchangedType, []);
     for (const type of this.types.values()) {
       editor.setDecorations(type, []);
     }
   }
 
   dispose(): void {
+    this.unchangedType.dispose();
     for (const type of this.types.values()) {
       type.dispose();
     }
@@ -153,7 +171,22 @@ function visualWidth(text: string, tabSize: number): number {
   return width;
 }
 
+function unchangedMatrixEntries(update: DependencyUpdate): { text: string; offset: number }[] {
+  if (!update.matrixUpdate || !update.dep.matrixVersions!.some((spec) => spec.includes('.'))) return [];
+  let offset = 3; // "↑ ["
+  return update.matrixUpdate.versions.flatMap((text, i) => {
+    const entry = { text, offset };
+    offset += text.length + 2;
+    return text === update.dep.matrixVersions![i] ? [entry] : [];
+  });
+}
+
 function version(update: DependencyUpdate, ecosystem: Ecosystem): string {
+  if (update.matrixUpdate) {
+    const { versions, newer } = update.matrixUpdate;
+    const pinned = update.dep.matrixVersions!.some((spec) => spec.includes('.'));
+    return pinned ? `\u2191 [${versions.join(', ')}]${newer ? ` \u2192 ${newer}` : ''}` : `\u2191 ${newer}`;
+  }
   const show = (value: string) => update.dep.runtime ? value : display(value, update.dep.ecosystem ?? ecosystem);
   const latest = show(update.latestRaw ?? update.latest);
   if (update.satisfying) {

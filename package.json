@@ -2,7 +2,7 @@
   "name": "fresh-deps",
   "displayName": "Fresh Deps",
   "description": "Highlights dependencies that have newer versions available, inline in your manifest files.",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "license": "MIT",
   "publisher": "koltyakov",
   "repository": {
@@ -199,7 +199,7 @@
         "freshDeps.showSatisfyingUpdates": {
           "type": "boolean",
           "default": true,
-          "description": "When the latest version is outside the declared range, also report the newest version that still satisfies it."
+          "description": "Show the newest update within the current major before a newer major, including exact pins. Also report the newest in-range version when the latest is outside the declared range."
         },
         "freshDeps.includePrerelease": {
           "type": "boolean",

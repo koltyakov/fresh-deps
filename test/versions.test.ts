@@ -88,8 +88,34 @@ test('computeUpdate carries a moved Go import path', () => {
 test('needsFullVersionList only asks for the full list when it can add something', () => {
   assert.ok(needsFullVersionList('^4.17.0', '5.0.0', OPTS));
   assert.ok(!needsFullVersionList('^4.17.0', '4.18.0', OPTS));
-  assert.ok(!needsFullVersionList('v1.2.3', '2.0.0', OPTS));
+  assert.ok(needsFullVersionList('v1.2.3', '2.0.0', OPTS));
+  assert.ok(needsFullVersionList('>=1.2.3', '2.0.0', OPTS));
+  assert.ok(!needsFullVersionList('1.2.3', '1.9.0', OPTS));
   assert.ok(!needsFullVersionList('^4.17.0', '5.0.0', { ...OPTS, showSatisfyingUpdates: false }));
+});
+
+test('same-major steps work across version schemes, including exact pins', () => {
+  for (const ecosystem of ['npm', 'go', 'rust', 'python', 'dotnet', 'java', 'php', 'dart', 'ruby',
+    'terraform', 'elixir', 'deno', 'githubActions', 'docker', 'helm', 'swift', 'conan', 'conda', 'bazel', 'vcpkg'] as const) {
+    const scheme = schemeFor(ecosystem);
+    const spec = ecosystem === 'python' ? '==1.2.3' : ecosystem === 'rust' ? '=1.2.3' : '1.2.3';
+    const versions = { latest: '3.0.0', all: ['1.2.3', '1.2.4', '1.9.0', '2.8.0', '3.0.0'] };
+    const opts = { ...OPTS, scheme };
+    assert.equal(computeUpdate(dep(spec), versions, opts)?.sameMajor, '1.9.0', ecosystem);
+    assert.equal(computeUpdate(dep(spec), versions, { ...opts, showSatisfyingUpdates: false })?.sameMajor, undefined);
+  }
+});
+
+test('same-major steps preserve range information and avoid duplicate or stale suggestions', () => {
+  const versions = { latest: '3.0.0', all: ['invalid', '1.2.3', '1.2.4', '1.9.0', '1.10.0-beta.1', '3.0.0'] };
+  const update = computeUpdate(dep('~1.2.3'), versions, OPTS)!;
+  assert.equal(update.sameMajor, '1.9.0');
+  assert.equal(update.satisfying, '1.2.4');
+  assert.equal(computeUpdate(dep('>=1.2.3'), versions, OPTS)?.sameMajor, '1.9.0');
+  assert.equal(computeUpdate(dep('1.9.0'), versions, OPTS)?.sameMajor, undefined);
+  assert.equal(computeUpdate(dep('1.2.3'), { latest: '1.9.0', all: versions.all }, OPTS)?.sameMajor, undefined);
+  assert.equal(computeUpdate({ ...dep('^1.2.3'), resolvedVersion: '1.9.0' }, versions, OPTS)?.sameMajor, undefined);
+  assert.equal(computeUpdate(dep('1.2.3'), versions, { ...OPTS, includePrerelease: true })?.sameMajor, '1.10.0-beta.1');
 });
 
 test('prerelease discovery needs the full list even for pins and in-range stable versions', () => {

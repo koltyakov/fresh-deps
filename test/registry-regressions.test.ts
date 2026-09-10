@@ -7,6 +7,7 @@ import { PyPiClient } from '../src/registries/pypi';
 import { MavenClient } from '../src/registries/maven';
 import { NugetClient } from '../src/registries/nuget';
 import { schemeFor } from '../src/schemes';
+import { computeUpdate } from '../src/versions';
 
 let network: Mock<typeof fetch>;
 
@@ -31,6 +32,21 @@ function goEnvironment(t: TestContext, privatePatterns: string | undefined, noPr
 
 const goClient = () => new GoClient({
   proxyOverride: 'https://proxy.example', checkMajorVersions: true, timeoutMs: 1000,
+});
+
+test('Go retains the current module release when a newer major path exists', async (t) => {
+  goEnvironment(t, undefined, 'none');
+  t.mock.method(globalThis, 'fetch', async (url: string) => {
+    if (url.endsWith('/module/@latest')) return Response.json({ Version: 'v1.9.0' });
+    if (url.endsWith('/module/v2/@latest')) return Response.json({ Version: 'v2.3.0' });
+    return new Response('', { status: 404 });
+  });
+  const versions = await goClient().fetchLatest('example.com/module');
+  const update = computeUpdate({ name: 'example.com/module', spec: 'v1.2.0', section: 'require', line: 0 }, versions,
+    { scheme: schemeFor('go'), includePrerelease: false, showSatisfyingUpdates: true });
+  assert.equal(update?.sameMajor, 'v1.9.0');
+  assert.equal(update?.latestRaw, 'v2.3.0');
+  assert.equal(update?.alternatePath, 'example.com/module/v2');
 });
 
 test('Go privacy patterns use path-prefix glob semantics', () => {

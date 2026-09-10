@@ -495,7 +495,7 @@ query the audit provider. Both refresh and Clear Version Cache discard audit res
 | `freshDeps.cacheDurationMinutes` | `60` | How long resolved versions are reused |
 | `freshDeps.concurrency` | `8` | Parallel registry requests |
 | `freshDeps.requestTimeoutMs` | `10000` | Per-request timeout |
-| `freshDeps.showSatisfyingUpdates` | `true` | Also report the newest in-range version |
+| `freshDeps.showSatisfyingUpdates` | `true` | Show the newest same-major update before the latest major, including exact pins, and report in-range updates |
 | `freshDeps.includePrerelease` | `false` | Treat prereleases as updates |
 | `freshDeps.npm.enabled` | `true` | Check `package.json`, pnpm catalogs, and Yarn catalogs |
 | `freshDeps.npm.registry` | `""` | Registry override; empty reads `.npmrc` |

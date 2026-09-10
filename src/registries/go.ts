@@ -46,6 +46,7 @@ export class GoClient {
 
     let best: RegistryVersions = {
       latest: base.version,
+      all: [base.raw],
       latestRaw: base.raw,
       path: modulePath,
       meta: base.meta,
@@ -69,6 +70,7 @@ export class GoClient {
       misses = 0;
       best = {
         latest: candidate.version,
+        all: [...best.all!, candidate.raw],
         latestRaw: candidate.raw,
         path: candidatePath,
         meta: candidate.meta,

@@ -219,11 +219,11 @@ export async function analyze(request: AnalyzeRequest): Promise<AnalyzeResult | 
     let versions = request.cache.get(key);
     const wantsAll = !!settings.runtimeVersions[dep.ecosystem ?? ecosystem] || (versions?.latest ? needsFullVersionList(dep.spec, versions.latest, opts) : false);
 
-    if (!versions || (wantsAll && !versions.all)) {
-      if (!request.allowNetwork) {
-        result.incomplete = true;
-        return;
-      }
+    if (!request.allowNetwork && (!versions || (wantsAll && !versions.all))) {
+      result.incomplete = true;
+      if (!versions) return;
+    }
+    if (request.allowNetwork && (!versions || (wantsAll && !versions.all))) {
       // The abbreviated version list carries no descriptive fields, so anything
       // already known about the package is kept rather than fetched again.
       const known = versions?.meta;
@@ -231,8 +231,7 @@ export async function analyze(request: AnalyzeRequest): Promise<AnalyzeResult | 
         versions = wantsAll && lookup.fetchAll
           ? await request.cache.resolve(`${key}|all`, () => lookup.fetchAll!(dep))
           : await request.cache.resolve(`${key}|latest`, () => lookup.fetch(dep));
-        // The latest version fell outside the declared range: ask for the full
-        // list so the newest in-range version can be reported too.
+        // Fetch release history when a same-major or in-range step may exist.
         if (lookup.fetchAll && versions.latest && !versions.all && (wantsAll || needsFullVersionList(dep.spec, versions.latest, opts))) {
           const full = await request.cache.resolve(`${key}|all`, () => lookup.fetchAll!(dep));
           versions = { ...versions, ...full, ...(versions.meta ? { meta: versions.meta } : {}) };
@@ -246,6 +245,7 @@ export async function analyze(request: AnalyzeRequest): Promise<AnalyzeResult | 
       if (request.cache.generation === cacheGeneration) request.cache.set(key, versions);
     }
 
+    if (!versions) return;
     if (versions.error) {
       result.failures.set(dep.name, versions.error);
       return;
@@ -376,10 +376,11 @@ export interface Lookup {
   fetchDetails?(dep: DependencyRef, versions: VersionPair): Promise<PackageDetails>;
 }
 
-/** The two versions a hint compares, spelled the way their registry spells them. */
+/** Versions shown in a hint, spelled the way their registry spells them. */
 export interface VersionPair {
   current: string;
   latest: string;
+  sameMajor?: string;
 }
 
 /** What a detail lookup managed to find; every part of it is optional. */
@@ -387,6 +388,7 @@ export interface PackageDetails {
   /** ISO 8601 publish dates. */
   currentPublishedAt?: string;
   latestPublishedAt?: string;
+  sameMajorPublishedAt?: string;
   meta?: PackageMeta;
 }
 
@@ -520,10 +522,11 @@ function npmLookup(fsPath: string, settings: Settings): Lookup {
     // The descriptive fields already came back with the version; only the dates
     // are missing, and they live in a document big enough to be worth deferring.
     async fetchDetails(dep, versions) {
-      const dates = await clientFor(dep).fetchPublishDates(dep.name, [versions.current, versions.latest]);
+      const dates = await clientFor(dep).fetchPublishDates(dep.name, [versions.current, versions.latest, ...(versions.sameMajor ? [versions.sameMajor] : [])]);
       return {
         currentPublishedAt: dates.get(versions.current),
         latestPublishedAt: dates.get(versions.latest),
+        sameMajorPublishedAt: versions.sameMajor ? dates.get(versions.sameMajor) : undefined,
       };
     },
   };
@@ -544,9 +547,13 @@ function goLookup(settings: Settings): Lookup | undefined {
     // The proxy dated the latest version on the response that resolved it, so only
     // the declared one is still unknown - one small request under its own path,
     // which is where it lives even when the module has since moved to a new major.
-    fetchDetails: async (dep, versions) => ({
-      currentPublishedAt: await client.fetchPublishDate(dep.name, versions.current),
-    }),
+    async fetchDetails(dep, versions) {
+      const [currentPublishedAt, sameMajorPublishedAt] = await Promise.all([
+        client.fetchPublishDate(dep.name, versions.current),
+        versions.sameMajor ? client.fetchPublishDate(dep.name, versions.sameMajor) : undefined,
+      ]);
+      return { currentPublishedAt, sameMajorPublishedAt };
+    },
   };
 }
 
@@ -572,12 +579,13 @@ function pythonLookup(settings: Settings): Lookup {
     // The index already dated every file it listed, so only the prose costs a request.
     async fetchDetails(dep, versions) {
       const [dates, meta] = await Promise.all([
-        clientFor(dep).fetchPublishDates(dep.name, [versions.current, versions.latest]),
+        clientFor(dep).fetchPublishDates(dep.name, [versions.current, versions.latest, ...(versions.sameMajor ? [versions.sameMajor] : [])]),
         clientFor(dep).fetchInfo(dep.name, versions.latest),
       ]);
       return {
         currentPublishedAt: dates.get(versions.current),
         latestPublishedAt: dates.get(versions.latest),
+        sameMajorPublishedAt: versions.sameMajor ? dates.get(versions.sameMajor) : undefined,
         ...(meta ? { meta } : {}),
       };
     },

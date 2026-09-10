@@ -32,6 +32,27 @@ Module._load = function (id, ...args) {
 const { DecorationRenderer } = require('../src/decorations') as typeof import('../src/decorations');
 Module._load = load;
 
+test('same-major hints take precedence over range steps and retain Go path upgrades', () => {
+  const renderer = new DecorationRenderer();
+  const decorations = new Map<MockDecorationType, MockHint[]>();
+  const editor = {
+    options: { tabSize: 2 },
+    document: { uri: { fsPath: '/project/package.json' }, lineCount: 1,
+      lineAt: () => ({ text: 'node', range: { end: { line: 0, character: 4 } } }) },
+    setDecorations: (type: MockDecorationType, values: MockHint[]) => decorations.set(type, values),
+  } as unknown as TextEditor;
+  const update: DependencyUpdate = {
+    dep: { name: 'node', spec: '22.1.0', line: 0, section: 'volta' },
+    current: '22.1.0', latest: '26.0.0', kind: 'major', inRange: false,
+    sameMajor: '22.9.0', satisfying: '22.1.1',
+  };
+  renderer.render(editor, [update], 'npm', []);
+  assert.equal([...decorations.values()].flat()[0].renderOptions.after.contentText, '↑ 22.9.0 → 26.0.0');
+  renderer.render(editor, [{ ...update, alternatePath: 'example.com/pkg/v26' }], 'go', []);
+  assert.equal([...decorations.values()].flat()[0].renderOptions.after.contentText, '↑ v22.9.0 → v26.0.0 (/v26)');
+  renderer.dispose();
+});
+
 test('audit hints merge with updates and remain visible without updates', () => {
   const renderer = new DecorationRenderer();
   const decorations = new Map<MockDecorationType, MockHint[]>();

@@ -188,12 +188,11 @@ function version(update: DependencyUpdate, ecosystem: Ecosystem): string {
     return pinned ? `\u2191 [${versions.join(', ')}]${newer ? ` \u2192 ${newer}` : ''}` : `\u2191 ${newer}`;
   }
   const show = (value: string) => update.dep.runtime ? value : display(value, update.dep.ecosystem ?? ecosystem);
-  const latest = show(update.latestRaw ?? update.latest);
-  if (update.satisfying) {
-    return `\u2191 ${show(update.satisfying)} \u2192 ${latest}`;
-  }
-  if (update.alternatePath) {
-    return `\u2191 ${latest} (${majorSuffix(update.alternatePath)})`;
+  const latest = show(update.latestRaw ?? update.latest)
+    + (update.alternatePath ? ` (${majorSuffix(update.alternatePath)})` : '');
+  const intermediate = update.sameMajor ?? update.satisfying;
+  if (intermediate) {
+    return `\u2191 ${show(intermediate)} \u2192 ${latest}`;
   }
   return `\u2191 ${latest}`;
 }

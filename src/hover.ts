@@ -70,6 +70,9 @@ export function buildHover(
   const declared = update.dep.spec === '@baseline' ? 'registry baseline' : update.dep.specRaw ?? update.dep.spec;
   const declaredIsCurrent = declared.trim() === currentDisplay;
   md.appendMarkdown(`| Declared | ${row(declared, declaredIsCurrent ? currentDate : undefined)} |\n`);
+  if (update.sameMajor) {
+    md.appendMarkdown(`| Newest within major | ${row(displayVersion(update.sameMajor), publishedOn(details.sameMajorPublishedAt))} |\n`);
+  }
   if (!declaredIsCurrent && !update.matrixUpdate) {
     md.appendMarkdown(`| Current | ${row(currentDisplay, currentDate)} |\n`);
   }
@@ -79,7 +82,7 @@ export function buildHover(
   } else md.appendMarkdown(
     `| Latest | ${row(displayVersion(update.latestRaw ?? update.latest), latestDate)} |\n`,
   );
-  if (update.satisfying) {
+  if (update.satisfying && update.satisfying !== update.sameMajor) {
     md.appendMarkdown(`| ${update.dep.actionRuntime ? 'Newest within major' : 'Newest in range'} | \`${displayVersion(update.satisfying)}\` |\n`);
   } else if (ecosystem === 'bazel') {
     md.appendMarkdown('| Module | a newer registry version is available; compatibility levels and module resolution are not evaluated |\n');

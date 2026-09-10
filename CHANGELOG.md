@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Show the newest available update within the current major before the latest major upgrade, including exact pins. Keep separate in-range details in hovers and preserve Go module path hints.
+
 ## 0.4.0
 
 - Preserve Python dependency sources from uv, Poetry, Pipfile, and requirements files; report unresolved sources instead of querying a guessed index.

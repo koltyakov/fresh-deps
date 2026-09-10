@@ -28,7 +28,7 @@ export class DetailsResolver {
       return {};
     }
 
-    const key = `${lookup.key(update.dep)}|${versions.current}|${versions.latest}`;
+    const key = `${lookup.key(update.dep)}|${versions.current}|${versions.latest}|${versions.sameMajor ?? ''}`;
     const cached = this.resolved.get(key);
     if (cached) {
       return cached;
@@ -57,13 +57,14 @@ export class DetailsResolver {
   }
 }
 
-/** How each registry spells the two versions a hint compares. */
+/** How each registry spells the versions a hint compares. */
 function versionsOf(update: DependencyUpdate, ecosystem: Ecosystem): VersionPair {
   return {
     // A go.mod names the exact version, `+incompatible` and all, and the proxy
     // knows it under no other spelling.
     current: ecosystem === 'go' ? update.dep.spec.trim() : update.current,
     latest: update.latestRaw ?? update.latest,
+    ...(update.sameMajor ? { sameMajor: update.sameMajor } : {}),
   };
 }
 

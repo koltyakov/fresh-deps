@@ -100,7 +100,7 @@ test('disabling audits makes zero audit requests while version checks still run'
   assert.deepEqual(result.audits, []);
   assert.equal(audit.mock.callCount(), 0);
   assert.equal(latest.mock.callCount(), 1);
-  assert.equal(all.mock.callCount(), 0);
+  assert.equal(all.mock.callCount(), 1);
   assert.equal(result.updates.length, 1);
   assert.equal(request.auditCache.get(`${versionKey}|audit|1.0.0`, 60_000), undefined);
 });
@@ -147,7 +147,7 @@ test('cache-only analysis leaves missing audits pending and reuses fetched resul
   assert.equal(cached.incomplete, false);
   assert.equal(audit.mock.callCount(), 1);
   assert.equal(latest.mock.callCount(), 0);
-  assert.equal(all.mock.callCount(), 0);
+  assert.equal(all.mock.callCount(), 1);
 
   request.text = JSON.stringify({ dependencies: { pkg: '2.0.0' } });
   const differentVersion = await analyze(request);

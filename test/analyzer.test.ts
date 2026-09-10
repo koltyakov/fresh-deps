@@ -141,6 +141,7 @@ test('Deno routes mixed imports to JSR and configured npm registries and reuses 
   t.mock.method(globalThis, 'fetch', async (url: string) => {
     calls.push(url);
     if (url === 'https://jsr.io/@std/assert/meta.json') return Response.json({ latest: '2.0.0', versions: { '2.0.0': {} } });
+    if (url === 'https://registry.example/react') return Response.json({ 'dist-tags': { latest: '2.0.0' }, versions: { '1.5.0': {}, '2.0.0': {} } });
     assert.equal(url, 'https://registry.example/react/latest');
     return Response.json({ version: '2.0.0' });
   });
@@ -154,7 +155,8 @@ test('Deno routes mixed imports to JSR and configured npm registries and reuses 
   const npm = await analyze({ ...request, fsPath: '/project/package.json', text: '{"dependencies":{"react":"1.0.0"}}', allowNetwork: false });
   assert.equal(npm?.updates[0].latest, '2.0.0');
   assert.equal(npm?.incomplete, false);
-  assert.equal(calls.length, 2);
+  assert.equal(npm?.updates[0].sameMajor, '1.5.0');
+  assert.equal(calls.length, 3);
 });
 
 test('Actions caches tag styles separately, avoids network while typing and respects disablement', async (t) => {
@@ -183,6 +185,7 @@ test('pnpm catalogs reuse npm registry resolution and cache keys', async (t) => 
   let calls = 0;
   t.mock.method(globalThis, 'fetch', async (url: string) => {
     calls++;
+    if (url === 'https://registry.example/react') return Response.json({ 'dist-tags': { latest: '19.0.0' }, versions: { '18.3.0': {}, '19.0.0': {} } });
     assert.equal(url, 'https://registry.example/react/latest');
     return Response.json({ version: '19.0.0' });
   });
@@ -192,7 +195,7 @@ test('pnpm catalogs reuse npm registry resolution and cache keys', async (t) => 
   };
   assert.equal((await analyze(request))?.updates[0].latest, '19.0.0');
   assert.equal((await analyze({ ...request, fsPath: '/project/package.json', text: '{"dependencies":{"react":"18.0.0"}}', allowNetwork: false }))?.updates[0].latest, '19.0.0');
-  assert.equal(calls, 1);
+  assert.equal(calls, 2);
 });
 
 test('npm checks Volta pins through the configured registry and reuses cached updates', async (t) => {
@@ -200,6 +203,7 @@ test('npm checks Volta pins through the configured registry and reuses cached up
   const calls: string[] = [];
   t.mock.method(globalThis, 'fetch', async (url: string) => {
     calls.push(url);
+    if (url === 'https://registry.example/node') return Response.json({ 'dist-tags': { latest: '22.0.0' }, versions: { '20.5.0': {}, '20.19.0': {}, '22.0.0': {} } });
     assert.equal(url, 'https://registry.example/node/latest');
     return Response.json({ version: '22.0.0' });
   });
@@ -228,10 +232,11 @@ test('npm checks Volta pins through the configured registry and reuses cached up
   assert.equal(update.kind, 'major');
   assert.equal(update.inRange, false);
   assert.equal(update.satisfying, undefined);
+  assert.equal(update.sameMajor, '20.19.0');
   const cachedResult = await analyze({ ...request, allowNetwork: false });
   assert.ok(cachedResult);
   assert.deepEqual(cachedResult.updates, result.updates);
-  assert.equal(calls.length, 1);
+  assert.equal(calls.length, 2);
 });
 
 for (const cached of [false, true]) {

@@ -118,6 +118,8 @@ export interface DependencyUpdate {
   kind: UpdateKind;
   /** True when `latest` still satisfies the declared range. */
   inRange: boolean;
+  /** Newest newer release within the current major, before a major upgrade. */
+  sameMajor?: string;
   /** Newest version satisfying the range, when `latest` does not. */
   satisfying?: string;
   /** Import path the update lives under, when the package moved (Go major versions). */

@@ -74,16 +74,19 @@ export function normalizePythonSpec(name: string, rawSpec: string): NormalizedSp
 }
 
 /**
- * Full metadata is needed to discover prereleases or the newest in-range version.
+ * Full metadata is needed for prereleases, same-major, and in-range updates.
  */
 export function needsFullVersionList(spec: string, latest: string, opts: ResolveOptions): boolean {
   const { scheme } = opts;
   if (opts.includePrerelease) {
     return true;
   }
-  if (!opts.showSatisfyingUpdates || scheme.isPinned(spec) || !scheme.isRange(spec)) {
+  if (!opts.showSatisfyingUpdates) {
     return false;
   }
+  const current = scheme.baseline(spec);
+  if (current && scheme.isVersion(latest) && scheme.classify(current, latest) === 'major') return true;
+  if (scheme.isPinned(spec) || !scheme.isRange(spec)) return false;
   return !scheme.satisfies(latest, spec, { includePrerelease: true });
 }
 
@@ -135,6 +138,14 @@ export function computeUpdate(
 
   if (versions.path && versions.path !== dep.name) {
     update.alternatePath = versions.path;
+  }
+
+  if (opts.showSatisfyingUpdates && versions.all?.length && update.kind === 'major') {
+    const best = scheme.max(versions.all.filter((version) => scheme.isVersion(version)
+      && scheme.classify(current, version) !== 'major'), opts);
+    if (best && scheme.compare(best, current) > 0 && scheme.compare(best, latest) < 0) {
+      update.sameMajor = best;
+    }
   }
 
   if (dep.actionRuntime && opts.showSatisfyingUpdates && versions.all?.length) {

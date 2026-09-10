@@ -5,6 +5,8 @@ import type { AnalyzeResult } from '../src/analyzer';
 import type { Settings } from '../src/config';
 import type { DetailsResolver } from '../src/details';
 import type { DependencyAudit, DependencyUpdate } from '../src/types';
+import { NpmClient } from '../src/registries/npm';
+import { createSettings } from './settings';
 
 const Module = require('node:module') as {
   _load: (id: string, parent: NodeModule | null | undefined, isMain?: boolean) => unknown;
@@ -27,7 +29,7 @@ const load = Module._load;
 Module._load = function (id, ...args) {
   return id === 'vscode' ? { MarkdownString, Range, Hover } : load.call(this, id, ...args);
 };
-const { DependencyHoverProvider } = require('../src/details') as typeof import('../src/details');
+const { DependencyHoverProvider, DetailsResolver: Resolver } = require('../src/details') as typeof import('../src/details');
 const { buildAuditHover, buildHover } = require('../src/hover') as typeof import('../src/hover');
 Module._load = load;
 
@@ -39,6 +41,35 @@ const dates = {
   currentPublishedAt: '2026-05-13T12:00:00Z',
   latestPublishedAt: '2026-09-02T12:00:00Z',
 };
+
+test('hover distinguishes same-major updates from allowed range updates', () => {
+  const value = buildHover({ ...update, latest: '2.0.0', kind: 'major', sameMajor: '1.150.0', satisfying: '1.120.1' }, 'npm',
+    { ...dates, sameMajorPublishedAt: '2026-08-01T12:00:00Z' }).value;
+  assert.match(value, /\| Declared \|[^\n]+\n\| Newest within major \| `1\.150\.0` · published [^\n]+2026[^\n]*\n\| Latest \|/);
+  assert.match(value, /Newest in range \| `1\.120\.1`/);
+  const pinned = buildHover({ ...update, latest: '2.0.0', kind: 'major', sameMajor: '1.150.0' }, 'npm').value;
+  assert.match(pinned, /range needs to be widened/);
+  assert.match(pinned, /Newest within major \| `1\.150\.0` \|/);
+});
+
+test('hover details request the same-major date and cache by all displayed versions', async (t) => {
+  const calls: string[][] = [];
+  t.mock.method(NpmClient.prototype, 'fetchPublishDates', async (_name: string, versions: string[]) => {
+    calls.push(versions);
+    return new Map(versions.map((version) => [version, '2026-08-01T12:00:00Z']));
+  });
+  const resolver = new Resolver();
+  const settings = createSettings({ npm: { registry: 'https://registry.example' } });
+  const candidate: DependencyUpdate = { ...update, latest: '2.0.0', kind: 'major', sameMajor: '1.150.0' };
+  const resolve = (value: DependencyUpdate) => resolver.resolve('/project/package.json', 'npm', value, settings);
+  const [first, concurrent] = await Promise.all([resolve(candidate), resolve(candidate)]);
+  assert.equal(first.sameMajorPublishedAt, '2026-08-01T12:00:00Z');
+  assert.deepEqual(first, concurrent);
+  await resolve(candidate);
+  assert.deepEqual(calls, [['1.120.0', '2.0.0', '1.150.0']]);
+  await resolve({ ...candidate, sameMajor: '1.151.0' });
+  assert.deepEqual(calls[1], ['1.120.0', '2.0.0', '1.151.0']);
+});
 
 test('new ecosystems link to their package listings', () => {
   for (const [ecosystem, name, section, url] of [

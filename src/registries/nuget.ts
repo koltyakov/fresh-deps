@@ -26,10 +26,11 @@ export class NugetClient {
     const body = await fetchJson<VersionIndex>(`${base}/${encodeURIComponent(id)}/index.json`, {
       timeoutMs: this.timeoutMs,
     });
-    if (!body?.versions?.length) return { error: 'not found' };
+    if (!body) return { error: 'not found' };
+    if (!Array.isArray(body.versions)) return { error: 'Invalid NuGet version index' };
     const all = body.versions.filter(nugetScheme.isVersion);
     const latest = nugetScheme.max(all, { includePrerelease: false });
-    return all.length ? { ...(latest ? { latest } : {}), all } : { error: 'no comparable versions found' };
+    return { ...(latest ? { latest } : {}), all, allComplete: body.versions.every((version) => typeof version === 'string') };
   }
 
   private baseAddress(): Promise<string> {

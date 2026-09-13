@@ -50,7 +50,7 @@ export class NpmClient {
     const url = `${this.registryFor(name)}/${encodeName(name)}/latest`;
     const body = await fetchJson<VersionDocument>(url, this.requestOptions(name));
     if (!body?.version) {
-      return { error: 'not found' };
+      return this.fetchAll(name);
     }
     // The document describing the newest release is already on the wire, so the
     // descriptive fields on it are free - only the publish date is missing.
@@ -66,11 +66,16 @@ export class NpmClient {
       headers: { ...request.headers, accept: ABBREVIATED },
     });
     if (!body) {
-      return { error: 'not found' };
+      const source = this.registryFor(name);
+      return source === DEFAULT_REGISTRY && !name.startsWith('@')
+        ? { packageMissing: true, source }
+        : { error: 'Package not found or not accessible in the configured registry.', source };
     }
     return {
       ...(body['dist-tags']?.latest ? { latest: body['dist-tags'].latest } : {}),
       all: Object.keys(body.versions ?? {}),
+      allComplete: !!body.versions && typeof body.versions === 'object' && !Array.isArray(body.versions),
+      source: this.registryFor(name),
       requirements: Object.fromEntries(Object.entries(body.versions ?? {}).map(([version, doc]) => [version, [doc.engines?.node ?? '']])),
     };
   }

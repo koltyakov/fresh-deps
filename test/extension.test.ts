@@ -2,6 +2,7 @@ import test, { type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import type { ExtensionContext } from 'vscode';
 import { matchesGlob } from 'node:path';
+import type { AnalyzeResult } from '../src/analyzer';
 
 const Module = require('node:module') as {
   _load: (id: string, parent: NodeModule | null | undefined, isMain?: boolean) => unknown;
@@ -31,11 +32,12 @@ function setup(t: TestContext) {
   } });
   const editors = [editor('a'), editor('b')];
   const noop = () => {};
+  const status = { text: '', hide: noop, show: () => calls.push('status') };
   const vscode = {
     window: {
       activeTextEditor: editors[0], visibleTextEditors: editors,
       createOutputChannel: () => ({ appendLine: noop }),
-      createStatusBarItem: () => ({ hide: noop, show: () => calls.push('status') }),
+      createStatusBarItem: () => status,
       onDidChangeActiveTextEditor: (cb: Events['active']) => { events.active = cb; },
     },
     workspace: {
@@ -71,11 +73,24 @@ function setup(t: TestContext) {
   const { activate } = require(filename) as typeof import('../src/extension');
   activate({ subscriptions: [], globalState: { get: noop, update: noop } } as unknown as ExtensionContext);
   const configure = () => events.config({ affectsConfiguration: () => true });
-  return { calls, pending, settings, editors, events, configure, hoverPatterns };
+  return { calls, pending, settings, editors, events, configure, hoverPatterns, status };
 }
 
-const result = () => ({ ecosystem: 'npm', updates: [{}], failures: new Map(), incomplete: false });
+const result = (): AnalyzeResult => ({ ecosystem: 'npm', updates: [], audits: [], failures: new Map(), incomplete: false });
 const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
+
+for (const stateName of ['version-missing', 'unknown', 'ahead', 'available'] as const) {
+  test(`status bar summarizes ${stateName} without hiding incomplete checks`, async (t) => {
+    const state = setup(t);
+    const checked = result();
+    checked.statuses = [{ dep: { name: 'pkg', spec: '3.0.0', section: 'dependencies', line: 0 }, status: stateName, message: 'Test' }];
+    checked.incomplete = stateName === 'unknown';
+    state.pending[0].resolve(checked);
+    await flush();
+    assert.equal(state.status.text, stateName === 'version-missing' ? '$(warning) 1 version issue'
+      : stateName === 'unknown' ? '$(info) Dependency check incomplete' : '$(check) Deps up to date');
+  });
+}
 
 test('hover registration covers Compose suffixes and Containerfiles', (t) => {
   const state = setup(t);

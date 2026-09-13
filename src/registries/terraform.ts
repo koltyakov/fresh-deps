@@ -50,6 +50,7 @@ export class TerraformClient {
   private async fetchPluginVersions(repository: string): Promise<RegistryVersions> {
     if (!/^[\w-]+\/[\w.-]+$/.test(repository)) return { error: 'invalid TFLint plugin source' };
     const all: string[] = [];
+    const published: string[] = [];
     for (let page = 1; page <= 10; page++) {
       const releases = await fetchJson<{ tag_name: string; draft?: boolean; prerelease?: boolean }[]>(
         `https://api.github.com/repos/${repository}/releases?per_page=100&page=${page}`,
@@ -60,11 +61,10 @@ export class TerraformClient {
       }
       for (const release of releases) {
         const version = release.tag_name.replace(/^v/, '');
+        if (!release.draft && semverScheme.isVersion(version)) published.push(version);
         if (!release.draft && !release.prerelease && semverScheme.isVersion(version)) all.push(version);
       }
-      if (releases.length < 100) return all.length
-        ? { all, latest: semverScheme.max(all, { includePrerelease: false }) }
-        : { error: 'no comparable plugin releases found' };
+      if (releases.length < 100) return { all, published, allComplete: true, latest: semverScheme.max(all, { includePrerelease: false }) };
     }
     throw new Error('GitHub release pagination limit reached');
   }
@@ -73,5 +73,5 @@ export class TerraformClient {
 export function terraformVersions(doc: TerraformVersions): RegistryVersions {
   const all = (doc.versions ?? []).flatMap((release) => release.version && terraformScheme.isVersion(release.version) ? [release.version] : []);
   const latest = terraformScheme.max(all, { includePrerelease: false });
-  return all.length ? { latest, all } : { error: 'no comparable versions found' };
+  return { latest, all, allComplete: Array.isArray(doc.versions) };
 }

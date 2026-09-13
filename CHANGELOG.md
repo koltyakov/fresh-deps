@@ -1,7 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.5.0
 
+- Extend version-availability checks to all supported ecosystems, Deno imports, and runtime declarations. Preserve withdrawn releases as existence evidence, validate Go pseudo-versions directly, and handle tag styles, runtime matrices, vcpkg baselines, and multiple package sources.
+- Check npm declarations for missing versions, unmatched ranges, and published versions ahead of `latest`. Show per-declaration lookup failures, availability hovers, and version-issue counts in the status bar.
 - Show the newest available update within the current major before the latest major upgrade, including exact pins. Keep separate in-range details in hovers and preserve Go module path hints.
 
 ## 0.4.0

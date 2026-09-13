@@ -74,8 +74,18 @@ export interface RegistryVersions {
   latest?: string;
   /** Version exactly as the registry spells it, for display (Go `+incompatible`). */
   latestRaw?: string;
-  /** Every published version, when the registry was asked for the full list. */
+  /** Releases eligible for update suggestions, before user preference filtering. */
   all?: string[];
+  /** The published list (or all when omitted) completely covers the selected source. */
+  allComplete?: boolean;
+  /** Unfiltered existence evidence, including yanked/retracted releases. */
+  published?: string[];
+  /** Comparison target in the declared source, before cross-path update discovery. */
+  availabilityLatest?: string;
+  /** Registry-specific requirement, such as a vcpkg minimum entry. */
+  availabilitySpec?: string;
+  source?: string;
+  packageMissing?: boolean;
   /** Package path the versions came from, when it differs from the declared one
    *  (a Go module that moved to a /vN suffix). */
   path?: string;
@@ -87,6 +97,14 @@ export interface RegistryVersions {
 }
 
 export type UpdateKind = 'major' | 'minor' | 'patch' | 'prerelease';
+
+export interface DependencyStatus {
+  dep: DependencyRef;
+  status: 'available' | 'ahead' | 'version-missing' | 'range-missing' | 'package-missing' | 'unknown' | 'failed';
+  source?: string;
+  latest?: string;
+  message: string;
+}
 
 export interface SecurityAdvisory {
   id: string;

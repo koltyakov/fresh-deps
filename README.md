@@ -61,6 +61,40 @@ editor title bar or run `Fresh Deps: Check for Updates` from the Command Palette
 
 ## Inline hints
 
+### Version availability
+
+Fresh Deps checks version availability in all supported ecosystems, including Deno's npm and
+JSR imports and supported runtime declarations. Checks use each ecosystem's version rules and
+the configured registry, repository, channel, or release manifest.
+
+| Hint | Meaning |
+|---|---|
+| `Ahead of latest` | The selected version exists but is newer than the source's selected latest release. No downgrade is suggested. |
+| `Version not found` | A complete listing or a direct version lookup confirms the pin is absent from the selected source. |
+| `No matching version` | No listed release satisfies the declared range. |
+| `Package not found` | The public npm registry did not return an unscoped package. |
+| `Unable to check` | A lookup failed. Hover for the reason. A missing package response may also mean the package is inaccessible. |
+
+Missing-version warnings appear alongside any update suggestion. Prereleases and listed yanked
+or retracted releases count as existence evidence, even when excluded from update suggestions.
+A range's lower bound need not exist if another listed release satisfies the range.
+
+Some declarations need additional handling:
+
+- Go checks the declared module path directly, including pseudo-versions. Discovering a new major
+  module path does not change the source used to validate the current version.
+- Docker keeps tag suffixes and precision separate. Actions checks moving tags and each runtime
+  matrix selector at its declared precision.
+- vcpkg checks the selected baseline or minimum entry and preserves its versioning scheme.
+- Maven-based multi-repository lookups and Bazel check other configured sources before reporting
+  a pin missing from the update source. Scala cross-build checks require matching artifact variants.
+- Conda checks the selected channel and platform metadata. Conan Center checks its recipe index;
+  configured Conan remotes use their recipe listings. Runtime checks use their release manifests.
+
+Incomplete metadata produces an explanation on hover rather than a missing-version warning.
+The status bar reports version issues and incomplete checks. These checks describe what the
+selected source lists or serves, rather than whether a version was ever published elsewhere.
+
 These examples illustrate the annotations you see in the editor. The comments are visual hints,
 not text added to your manifest, and the versions are examples rather than a live registry listing.
 

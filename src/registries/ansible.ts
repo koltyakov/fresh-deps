@@ -29,6 +29,7 @@ export class AnsibleClient {
     const requirements: Record<string, string[]> = {};
     const visited = new Set<string>();
     let received = 0;
+    let allComplete = true;
     for (let page = 0; page < 100; page++) {
       if (visited.has(url)) return { error: 'repeated Galaxy pagination link' };
       visited.add(url);
@@ -39,6 +40,7 @@ export class AnsibleClient {
       received += entries.length;
       for (const entry of entries) {
         const version = entry?.version ?? (entry as { name?: string } | null)?.name;
+        if (typeof version !== 'string') allComplete = false;
         if (typeof version === 'string' && semverScheme.isVersion(version)) all.push(version);
         const constraint = (entry as { requires_ansible?: string })?.requires_ansible;
         if (version && typeof constraint === 'string') requirements[version] = [constraint];
@@ -47,8 +49,7 @@ export class AnsibleClient {
       if (!next) {
         const count = roles ? data.count : data.meta?.count;
         if (typeof count === 'number' && received < count) return { error: 'incomplete Galaxy version listing' };
-        return all.length ? { all: [...new Set(all)], latest: semverScheme.max(all, { includePrerelease: false }), ...(Object.keys(requirements).length ? { requirements } : {}) }
-          : { error: 'no comparable Galaxy versions found' };
+        return { all: [...new Set(all)], allComplete, source: base, latest: semverScheme.max(all, { includePrerelease: false }), ...(Object.keys(requirements).length ? { requirements } : {}) };
       }
       if (typeof next !== 'string') return { error: 'invalid Galaxy pagination link' };
       const target = new URL(next, url);

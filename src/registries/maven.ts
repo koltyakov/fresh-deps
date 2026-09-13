@@ -17,7 +17,7 @@ export class MavenClient {
     const groupPath = groupId.split('.').map(encodeURIComponent).join('/');
     const url = `${this.repository}/${groupPath}/${encodeURIComponent(artifactId)}/maven-metadata.xml`;
     const xml = await fetchText(url, { timeoutMs: this.timeoutMs });
-    return xml ? versionsFromMetadata(xml) : { error: 'not found' };
+    return xml ? { ...versionsFromMetadata(xml), source: this.repository } : { error: 'not found' };
   }
 }
 
@@ -35,5 +35,6 @@ export function versionsFromMetadata(xml: string): RegistryVersions {
   const latest = release && mavenVersion.isValid(release) && !mavenVersion.isPrerelease(release)
     ? release
     : mavenVersion.max(all, { includePrerelease: false });
-  return latest || all.length ? { ...(latest ? { latest } : {}), all } : { error: 'no comparable versions found' };
+  const allComplete = /<versions\s*>[\s\S]*<\/versions>/.test(xml) || /<versions\s*\/>/.test(xml);
+  return latest || all.length || allComplete ? { ...(latest ? { latest } : {}), all, allComplete } : { error: 'no comparable versions found' };
 }

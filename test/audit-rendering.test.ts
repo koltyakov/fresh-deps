@@ -53,6 +53,27 @@ test('same-major hints take precedence over range steps and retain Go path upgra
   renderer.dispose();
 });
 
+test('availability warnings retain updates and ahead hints use informational color', () => {
+  const renderer = new DecorationRenderer();
+  const decorations = new Map<MockDecorationType, MockHint[]>();
+  const editor = {
+    options: { tabSize: 2 },
+    document: { uri: { fsPath: '/project/package.json' }, lineCount: 2,
+      lineAt: (line: number) => ({ text: 'pkg', range: { end: { line, character: 3 } } }) },
+    setDecorations: (type: MockDecorationType, values: MockHint[]) => decorations.set(type, values),
+  } as unknown as TextEditor;
+  const dep = { name: 'pkg', spec: '1.0.0', line: 0, section: 'dependencies' };
+  renderer.render(editor, [{ dep, current: '1.0.0', latest: '2.0.0', kind: 'major', inRange: false }], 'npm', [], [
+    { dep, status: 'version-missing', message: 'Missing' },
+    { dep: { ...dep, line: 1, spec: '3.0.0' }, status: 'ahead', message: 'Published' },
+  ]);
+  const visible = [...decorations].filter(([, hints]) => hints.length);
+  assert.deepEqual(visible.map(([type, hints]) => [(type.options.after!.color as { id: string }).id, hints[0].renderOptions.after.contentText]), [
+    ['editorWarning.foreground', '↑ 2.0.0 | Version not found'], ['editorInfo.foreground', 'Ahead of latest'],
+  ]);
+  renderer.dispose();
+});
+
 test('audit hints merge with updates and remain visible without updates', () => {
   const renderer = new DecorationRenderer();
   const decorations = new Map<MockDecorationType, MockHint[]>();

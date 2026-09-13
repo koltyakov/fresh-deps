@@ -33,10 +33,10 @@ export function hexVersions(doc: HexPackage): RegistryVersions {
   const release = releases.find((item) => item.version === latest);
   const links = doc.meta?.links ?? {};
   const repository = Object.values(links).find((value) => /^https?:\/\/(?:github|gitlab|bitbucket)\./i.test(value));
-  return all.length ? { latest, all, meta: {
+  return all.length ? { latest, all, allComplete: Array.isArray(doc.releases), meta: {
     description: doc.meta?.description,
     license: doc.meta?.licenses?.join(' OR '),
     repository,
     latestPublishedAt: release?.inserted_at,
-  } } : { error: 'no comparable versions found' };
+  } } : { all, allComplete: Array.isArray(doc.releases) };
 }

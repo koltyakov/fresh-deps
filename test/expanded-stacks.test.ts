@@ -304,7 +304,10 @@ for (const fixture of fixtures) test(`${fixture.file} integrates lookups, offlin
       calls++;
       return Response.json({ 'dist-tags': { latest: '2.0.0' }, versions: { '1.5.0': {}, '2.0.0': {} } });
     }
-    calls++; assert.equal(url, fixture.url);
+    calls++;
+    if (fixture.file === 'deps.edn' && url.startsWith('https://repo.clojars.org/')) {
+      assert.equal(url, fixture.url.replace('https://repo.maven.apache.org/maven2', 'https://repo.clojars.org'));
+    } else assert.equal(url, fixture.url);
     return typeof fixture.body === 'string' ? new Response(fixture.body) : Response.json(fixture.body);
   });
   const request: AnalyzeRequest = { fsPath: `/project/${fixture.file}`, text: fixture.text, settings: { ...settings, auditEnabled: true },
@@ -317,7 +320,7 @@ for (const fixture of fixtures) test(`${fixture.file} integrates lookups, offlin
   assert.equal(result?.failures.size, 0);
   assert.equal(result?.updates[0]?.latest, fixture.latest);
   assert.deepEqual((await analyze(request))?.updates, result?.updates);
-  assert.equal(calls, fixture.file === '.yarnrc.yml' ? 2 : 1);
+  assert.equal(calls, fixture.file === '.yarnrc.yml' || fixture.file === 'deps.edn' ? 2 : 1);
   const ecosystem = manifestOf(request.fsPath)!.ecosystem;
   assert.equal(await analyze({ ...request, settings: { ...settings, [ecosystem]: { ...settings[ecosystem], enabled: false } } }), undefined);
   t.mock.method(globalThis, 'fetch', async () => new Response('', { status: 503 }));

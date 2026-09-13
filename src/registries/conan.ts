@@ -14,7 +14,7 @@ export function conanVersions(text: string): RegistryVersions {
     const version = yamlString(pair.key);
     return version && conanScheme.isVersion(version) ? [version] : [];
   });
-  return all.length ? { all, latest: conanScheme.max(all, { includePrerelease: false }) } : { error: 'no comparable recipe versions found' };
+  return { all, allComplete: true, source: 'Conan Center recipe index', latest: conanScheme.max(all, { includePrerelease: false }) };
 }
 
 export class ConanClient {
@@ -43,13 +43,13 @@ export class ConanClient {
           return match && match[1] === recipe && (match[3] === scope || !scope && (!match[3] || match[3] === '_/_')) && conanScheme.isVersion(match[2]) ? [match[2]] : [];
         });
         const latest = conanScheme.max(all, { includePrerelease: false });
-        if (!latest) continue;
-        if (revision) {
+        if (!all.length) continue;
+        if (revision && latest) {
           const [user, channel] = scope?.split('/') ?? ['_', '_'];
           const latestRef = await fetchJson<{ revision?: string }>(`${base}/v2/conans/${encodeURIComponent(recipe)}/${encodeURIComponent(latest)}/${encodeURIComponent(user)}/${encodeURIComponent(channel)}/latest`, options);
-          if (latestRef?.revision && /^[a-f\d]{32}$/.test(latestRef.revision)) return { all, latest, revision: latestRef.revision, latestRaw: `${latest}#${latestRef.revision}` };
+          if (latestRef?.revision && /^[a-f\d]{32}$/.test(latestRef.revision)) return { all, allComplete: true, source: base, latest, revision: latestRef.revision, latestRaw: `${latest}#${latestRef.revision}` };
         }
-        return { all, latest };
+        return { all, allComplete: true, source: base, latest };
       }
       return { error: 'not found' };
     }

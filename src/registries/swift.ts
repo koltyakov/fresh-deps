@@ -9,8 +9,9 @@ export class SwiftClient {
     if (source?.startsWith('https://')) {
       const doc = await fetchJson<{ releases?: Record<string, { problem?: unknown }> }>(`${source}/${name.replace('.', '/')}`, { timeoutMs: this.timeoutMs, headers: { accept: 'application/vnd.swift.registry.v1+json' } });
       if (!doc?.releases) return { error: 'not found' };
+      if (typeof doc.releases !== 'object' || Array.isArray(doc.releases)) return { error: 'Invalid Swift release response' };
       const all = Object.keys(doc.releases).filter((version) => !doc.releases![version].problem && semverScheme.isVersion(version));
-      return { all, latest: semverScheme.max(all, { includePrerelease: false }) };
+      return { all, published: Object.keys(doc.releases).filter(semverScheme.isVersion), allComplete: true, latest: semverScheme.max(all, { includePrerelease: false }) };
     }
     if (source === 'gitlab.com' || source === 'bitbucket.org') {
       const all: string[] = [];
@@ -22,7 +23,7 @@ export class SwiftClient {
         const values = Array.isArray(doc) ? doc : doc.values;
         if (!Array.isArray(values)) return { error: 'Invalid Git tag response' };
         all.push(...values.map((tag) => tag.name).filter((tag) => semverScheme.isVersion(tag)));
-        if (values.length < 100 || !Array.isArray(doc) && !doc.next) return { all, latest: semverScheme.max(all, { includePrerelease: false }) };
+        if (Array.isArray(doc) ? values.length < 100 : !doc.next) return { all, allComplete: true, latest: semverScheme.max(all, { includePrerelease: false }) };
       }
       return { error: 'Git tag pagination limit reached' };
     }
@@ -30,7 +31,6 @@ export class SwiftClient {
     const tags = await githubTags(name, this.timeoutMs);
     if (!tags) return { error: 'not found' };
     const all = tags.filter((tag) => semverScheme.isVersion(tag));
-    return all.length ? { all, latest: semverScheme.max(all, { includePrerelease: false }) }
-      : { error: 'no comparable package tags found' };
+    return { all, allComplete: true, latest: semverScheme.max(all, { includePrerelease: false }) };
   }
 }

@@ -4,7 +4,7 @@ import type { CancellationToken, Position, TextDocument } from 'vscode';
 import type { AnalyzeResult } from '../src/analyzer';
 import type { Settings } from '../src/config';
 import type { DetailsResolver } from '../src/details';
-import type { DependencyAudit, DependencyUpdate } from '../src/types';
+import type { DependencyAudit, DependencyUpdate, Ecosystem } from '../src/types';
 import { NpmClient } from '../src/registries/npm';
 import { createSettings } from './settings';
 
@@ -30,7 +30,7 @@ Module._load = function (id, ...args) {
   return id === 'vscode' ? { MarkdownString, Range, Hover } : load.call(this, id, ...args);
 };
 const { DependencyHoverProvider, DetailsResolver: Resolver } = require('../src/details') as typeof import('../src/details');
-const { buildAuditHover, buildHover } = require('../src/hover') as typeof import('../src/hover');
+const { buildAuditHover, buildHover, buildStatusHover } = require('../src/hover') as typeof import('../src/hover');
 Module._load = load;
 
 const update: DependencyUpdate = {
@@ -41,6 +41,16 @@ const dates = {
   currentPublishedAt: '2026-05-13T12:00:00Z',
   latestPublishedAt: '2026-09-02T12:00:00Z',
 };
+
+test('availability hovers identify the declaration, registry, and comparison target as plain text', () => {
+  const md = buildStatusHover({ dep: update.dep, status: 'ahead', source: 'https://registry.example', latest: '1.0.0',
+    message: 'Published <release> [link](command:unsafe)' });
+  assert.match(md.value, /Ahead of latest/);
+  assert.match(md.value, /Declared: 1.120.0/);
+  assert.match(md.value, /Registry: https:\/\/registry.example/);
+  assert.match(md.value, /Latest: 1.0.0/);
+  assert.ok(!md.value.includes('[link](command:unsafe)'));
+});
 
 test('hover distinguishes same-major updates from allowed range updates', () => {
   const value = buildHover({ ...update, latest: '2.0.0', kind: 'major', sameMajor: '1.150.0', satisfying: '1.120.1' }, 'npm',
@@ -175,6 +185,24 @@ test('Deno multiline import aliases retain hovers on the specifier line', async 
   text = '    "jsr:@std/path@1.0.0",';
   assert.equal(await provider.provideHover(document, position, token), undefined);
 });
+
+for (const [ecosystem, name, text] of [
+  ['docker', 'library/node', 'FROM node:9.0.0'],
+  ['vcpkg', 'fmt', '  "version-semver": "9.0.0",'],
+  ['helm', 'redis', '  version: 9.0.0'],
+  ['npm', 'pkg', '  "9.0.0",'],
+] as [Ecosystem, string, string][]) {
+  test(`${ecosystem} availability-only hovers work on normalized names and multiline version fields`, async () => {
+    const document = { uri: { fsPath: '/project/manifest' },
+      lineAt: () => ({ text, firstNonWhitespaceCharacterIndex: 0, range: { end: { character: text.length } } }) } as unknown as TextDocument;
+    const result: AnalyzeResult = { ecosystem, updates: [], audits: [], failures: new Map(), incomplete: false,
+      statuses: [{ dep: { name, spec: '9.0.0', line: 0, section: 'dependencies' }, status: 'version-missing', message: 'The source does not list this version.' }] };
+    const provider = new DependencyHoverProvider(() => result, () => ({} as Settings),
+      { resolve: async () => { throw new Error('Availability-only hovers must not fetch update details'); } } as unknown as DetailsResolver);
+    const hover = await provider.provideHover(document, { line: 0, character: text.length } as Position, {} as CancellationToken) as unknown as Hover;
+    assert.match(hover.contents[0].value, /Version not found/);
+  });
+}
 
 test('unavailable or invalid publication dates leave version rows usable', () => {
   for (const details of [{}, { currentPublishedAt: 'invalid', latestPublishedAt: 'invalid' }]) {

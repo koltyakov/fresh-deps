@@ -6,7 +6,7 @@ import { OciClient, basicAuth } from './oci';
 export function dockerVersions(tags: string[], spec: string): RegistryVersions {
   const style = dockerTag(spec)?.style;
   const all = tags.filter((tag) => style && dockerTag(tag)?.style === style);
-  return all.length ? { all, latest: dockerScheme.max(all, { includePrerelease: false }) } : { error: 'no comparable image tags found' };
+  return { all, allComplete: true, latest: dockerScheme.max(all, { includePrerelease: false }) };
 }
 
 export class DockerClient {

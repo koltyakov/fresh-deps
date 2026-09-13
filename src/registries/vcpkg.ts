@@ -30,9 +30,12 @@ export function vcpkgVersions(data: { versions?: unknown }, spec: string, field?
   // ports or compare a package across a change of scheme.
   const current = baseline && entries.find((entry) => (!field || entry.field === field) && (entry.value === baseline
     || (baseline.endsWith('#0') && entry.value === baseline.slice(0, -2))));
-  if (!current) return { error: 'declared version has no comparable vcpkg registry entry' };
+  if (!current && !field && entries.length !== data.versions.length) return { error: 'declared version has no comparable vcpkg registry entry' };
+  if (!current) return { all: [], published: [], availabilitySpec: baseline,
+    allComplete: !!baseline && data.versions.every((entry) => entry && typeof entry === 'object'
+      && (field && !Object.hasOwn(entry, field) || !!entryVersion(entry))) };
   const all = entries.filter((entry) => entry.field === current.field).map((entry) => entry.value);
-  return { all, latest: vcpkgScheme.max(all, { includePrerelease: false }) };
+  return { all, allComplete: true, availabilitySpec: baseline, latest: vcpkgScheme.max(all, { includePrerelease: false }) };
 }
 
 export class VcpkgClient {

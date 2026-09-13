@@ -72,13 +72,16 @@ export class PyPiClient {
 
     const files = body.files ?? [];
     const withdrawn = yankedVersions(files);
+    const evidence = { published: [...new Set([...(body.versions ?? []), ...derivedVersions(files)])].filter((version) => pep440.parseVersion(version) !== undefined),
+      allComplete: Array.isArray(body.versions) ? body.versions.every((version) => typeof version === 'string')
+        : Array.isArray(body.files) && body.files.every((file) => typeof file.filename === 'string') };
     const published = (body.versions ?? derivedVersions(files)).filter((version) => {
       const parsed = pep440.parseVersion(version);
       return parsed !== undefined && !withdrawn.has(parsed.text);
     });
 
     if (published.length === 0) {
-      return { error: 'no releases' };
+      return { all: [], ...evidence };
     }
 
     // Prereleases stay out of `latest` the way pip resolves; they are still in
@@ -94,6 +97,7 @@ export class PyPiClient {
     return {
       ...(latest ? { latest } : {}),
       all: published,
+      ...evidence,
       requirements,
       ...(latestPublishedAt ? { meta: { latestPublishedAt } } : {}),
     };

@@ -14,14 +14,12 @@ export function actionRuntimeVersions(versions: string[], spec: string): Registr
     if (precision < 3 && githubActionsScheme.isPrerelease(normalized)) return [];
     return [prefix + (precision === 3 ? normalized : normalized.split('.').slice(0, precision).join('.'))];
   }))];
-  return all.length ? { all, latest: githubActionsScheme.max(all, { includePrerelease: false }) }
-    : { error: 'no comparable runtime versions found' };
+  return { all, allComplete: true, latest: githubActionsScheme.max(all, { includePrerelease: false }) };
 }
 
 export function githubActionVersions(tags: string[], spec: string): RegistryVersions {
   const all = tags.filter((tag) => actionVersion(tag) && actionTagStyle(tag) === actionTagStyle(spec));
-  return all.length ? { all, latest: githubActionsScheme.max(all, { includePrerelease: false }) }
-    : { error: 'no comparable tags found' };
+  return { all, allComplete: true, latest: githubActionsScheme.max(all, { includePrerelease: false }) };
 }
 
 export class GithubActionsClient {

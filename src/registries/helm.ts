@@ -9,13 +9,17 @@ export function helmVersions(text: string, name: string): RegistryVersions {
   const entries = yamlDocument(text)?.root.get('entries', true);
   const releases = isMap(entries) ? entries.get(name, true) : undefined;
   if (!isSeq(releases)) return { error: 'not found' };
+  const published = releases.items.flatMap((entry) => {
+    const version = isMap(entry) ? yamlString(entry.get('version', true)) : undefined;
+    return version && semverScheme.isVersion(version) ? [version] : [];
+  });
   const all = releases.items.flatMap((entry) => {
     if (!isMap(entry)) return [];
     const version = yamlString(entry.get('version', true));
     const removed = entry.get('removed', true);
     return version && semverScheme.isVersion(version) && !(isScalar(removed) && removed.value === true) ? [version] : [];
   });
-  return all.length ? { all, latest: semverScheme.max(all, { includePrerelease: false }) } : { error: 'no comparable chart versions found' };
+  return { all, published, allComplete: releases.items.every((entry) => isMap(entry) && !!yamlString(entry.get('version', true))), latest: semverScheme.max(all, { includePrerelease: false }) };
 }
 
 export class HelmClient {
@@ -27,7 +31,7 @@ export class HelmClient {
       const tags = await new OciClient(this.timeoutMs).tags(url.host, `${url.pathname.replace(/^\//, '')}/${name}`.replace(/^\//, ''));
       if (!tags) return { error: 'not found' };
       const all = tags.map((tag) => tag.replace(/_/g, '+')).filter((tag) => semverScheme.isVersion(tag));
-      return { all, latest: semverScheme.max(all, { includePrerelease: false }) };
+      return { all, allComplete: true, latest: semverScheme.max(all, { includePrerelease: false }) };
     }
     let index = this.indexes.get(source);
     if (!index) {

@@ -50,6 +50,8 @@ export class GoClient {
       latestRaw: base.raw,
       path: modulePath,
       meta: base.meta,
+      availabilityLatest: base.version,
+      published: [base.raw],
     };
     if (!this.options.checkMajorVersions) {
       return best;
@@ -74,6 +76,8 @@ export class GoClient {
         latestRaw: candidate.raw,
         path: candidatePath,
         meta: candidate.meta,
+        availabilityLatest: base.version,
+        published: [base.raw],
       };
     }
     return best;
@@ -93,6 +97,17 @@ export class GoClient {
     const url = `${this.proxy}/${escapeModulePath(modulePath)}/@v/${encodeURIComponent(tag)}.info`;
     const info = await fetchJson<LatestInfo>(url, { timeoutMs: this.options.timeoutMs });
     return info?.Time;
+  }
+
+  /** Pseudo-versions are intentionally omitted from proxy version listings. */
+  async fetchAvailability(modulePath: string, version: string): Promise<RegistryVersions> {
+    const exclusion = proxyExclusion(modulePath);
+    if (exclusion || !this.proxy) return { error: exclusion ?? 'GOPROXY is off' };
+    const tag = version.startsWith('v') ? version : `v${version}`;
+    const info = await fetchJson<LatestInfo>(`${this.proxy}/${escapeModulePath(modulePath)}/@v/${encodeURIComponent(tag)}.info`, { timeoutMs: this.options.timeoutMs });
+    if (!info) return { published: [], allComplete: true };
+    if (!info.Version || !semver.valid(info.Version, { loose: true }) || !semver.eq(info.Version, tag, { loose: true })) return { error: 'Invalid Go version info response' };
+    return { published: [info.Version], allComplete: true };
   }
 
   private async latestOf(modulePath: string): Promise<Resolved | undefined> {

@@ -2,7 +2,26 @@ import * as vscode from 'vscode';
 import { actionRuntimes } from './githubActions';
 import type { PackageDetails } from './analyzer';
 import { display, escapeMarkdown, formatSize, publishedOn } from './format';
-import type { DependencyAudit, DependencyUpdate, Ecosystem } from './types';
+import type { DependencyAudit, DependencyStatus, DependencyUpdate, Ecosystem } from './types';
+import { statusLabel } from './availability';
+
+export function buildStatusHover(status: DependencyStatus): vscode.MarkdownString {
+  const md = new vscode.MarkdownString();
+  md.appendText(`${status.dep.name}: ${statusLabel(status) || 'Version availability'}`);
+  md.appendMarkdown('\n\n');
+  md.appendText(`Declared: ${status.dep.specRaw ?? status.dep.spec}`);
+  if (status.source) {
+    md.appendMarkdown('\n\n');
+    md.appendText(`Registry: ${status.source}`);
+  }
+  if (status.latest) {
+    md.appendMarkdown('\n\n');
+    md.appendText(`Latest: ${status.latest}`);
+  }
+  md.appendMarkdown('\n\n');
+  md.appendText(status.message);
+  return md;
+}
 
 export function buildAuditHover(audit: DependencyAudit): vscode.MarkdownString {
   const md = new vscode.MarkdownString();

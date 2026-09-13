@@ -7,8 +7,9 @@ import { DecorationRenderer } from './decorations';
 import { DependencyHoverProvider, DetailsResolver } from './details';
 import { manifestSelectors } from './manifests';
 import { clearManifestCache } from './projectFiles';
+import { isVersionIssue } from './availability';
 
-const CACHE_STATE_KEY = 'freshDeps.cache.v2';
+const CACHE_STATE_KEY = 'freshDeps.cache.v3';
 const TYPING_DEBOUNCE_MS = 400;
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -84,23 +85,30 @@ export function activate(context: vscode.ExtensionContext): void {
       // The editor may have been closed or replaced while requests were in flight.
       const target = vscode.window.visibleTextEditors.find((e) => e.document.uri.toString() === key);
       if (target) {
-        renderer.render(target, result.updates, result.ecosystem, result.audits);
+        renderer.render(target, result.updates, result.ecosystem, result.audits, result.statuses);
       }
 
       const count = result.updates.length;
+      const issues = result.statuses?.filter(isVersionIssue).length ?? 0;
+      const failed = result.statuses?.filter((entry) => entry.status === 'failed').length ?? result.failures.size;
       const affected = result.audits.filter((audit) => audit.result.status === 'checked' && audit.result.advisories.length > 0).length;
       const checked = result.audits.filter((audit) => audit.result.status === 'checked').length;
       const auditFailed = result.audits.filter((audit) => audit.result.status === 'failed').length;
       status.text = count === 0 ? '$(check) Deps up to date' : `$(arrow-up) ${count} update${count === 1 ? '' : 's'}`;
       if (count === 0 && (result.incomplete || result.failures.size || result.skipped?.length)) status.text = '$(info) Dependency check incomplete';
       else if (count === 0 && result.declarations === 0) status.text = '$(info) No supported declarations';
+      if (issues) status.text = `${count ? `$(arrow-up) ${count} update${count === 1 ? '' : 's'} | ` : ''}$(warning) ${issues} version issue${issues === 1 ? '' : 's'}`;
+      if (count > 0 || issues) {
+        if (result.incomplete || failed || result.skipped?.length) status.text += ' | $(info) Check incomplete';
+      }
       if (affected) status.text += ` | $(warning) ${affected} audited deps with warnings`;
       else if (auditFailed) status.text += ' | $(warning) Audit incomplete';
       status.tooltip = new vscode.MarkdownString(
         [
           count === 0 ? 'No updates found among checked declarations.' : `${count} dependencies have newer versions.`,
+          issues ? `\n\n${issues} declarations have version issues. Hover over their hints for details.` : '',
           result.skipped?.length ? `\n\n${result.skipped.length} declarations skipped. See the Fresh Deps output channel for reasons.` : '',
-          result.failures.size ? `\n\n${result.failures.size} lookups failed - see the Fresh Deps output channel.` : '',
+          failed ? `\n\n${failed} lookups failed - see the Fresh Deps output channel.` : '',
           settings.auditEnabled ? `\n\nAudit: ${checked}/${result.audits.length} declarations checked; ${affected} with warnings; ${auditFailed} failed. Checks declared versions, range baselines, or optional lockfile selections, not installed dependencies. Unsupported or uncached declarations are not checked.` : '',
           '\n\nClick to re-check.',
         ].join(''),

@@ -27,7 +27,7 @@ export class DotnetSdkClient {
         all.push(...sdkVersions(doc));
       }
     }));
-    return all.length ? { all: [...new Set(all)], latest: semverScheme.max(all, { includePrerelease: false }) }
-      : { error: 'no comparable SDK versions found' };
+    return { all: [...new Set(all)], allComplete: channels.length === index['releases-index'].length,
+      source: BASE, latest: semverScheme.max(all, { includePrerelease: false }) };
   }
 }

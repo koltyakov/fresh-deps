@@ -1,9 +1,10 @@
 import * as vscode from 'vscode';
 import { display } from './format';
-import type { DependencyAudit, DependencyUpdate, Ecosystem, UpdateKind } from './types';
+import type { DependencyAudit, DependencyStatus, DependencyUpdate, Ecosystem, UpdateKind } from './types';
+import { isVersionIssue, statusLabel } from './availability';
 
-type HintKind = UpdateKind | 'audit';
-const KINDS: HintKind[] = ['major', 'minor', 'patch', 'prerelease', 'audit'];
+type HintKind = UpdateKind | 'audit' | 'info';
+const KINDS: HintKind[] = ['major', 'minor', 'patch', 'prerelease', 'audit', 'info'];
 
 /**
  * Comment syntax of each manifest, so a hint is indistinguishable from a comment
@@ -58,7 +59,7 @@ const ANNOTATION = {
 function decorationFor(kind: HintKind): vscode.TextEditorDecorationType {
   return vscode.window.createTextEditorDecorationType({
     before: { ...ANNOTATION, width: '0', color: new vscode.ThemeColor('freshDeps.commentForeground') },
-    after: { ...ANNOTATION, color: new vscode.ThemeColor(kind === 'audit' ? 'editorWarning.foreground' : `freshDeps.${kind}Foreground`) },
+    after: { ...ANNOTATION, color: new vscode.ThemeColor(kind === 'audit' ? 'editorWarning.foreground' : kind === 'info' ? 'editorInfo.foreground' : `freshDeps.${kind}Foreground`) },
     rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed,
   });
 }
@@ -72,7 +73,7 @@ export class DecorationRenderer implements vscode.Disposable {
     KINDS.map((kind) => [kind, decorationFor(kind)]),
   );
 
-  render(editor: vscode.TextEditor, updates: DependencyUpdate[], ecosystem: Ecosystem, audits: DependencyAudit[]): void {
+  render(editor: vscode.TextEditor, updates: DependencyUpdate[], ecosystem: Ecosystem, audits: DependencyAudit[], statuses: DependencyStatus[] = []): void {
     const byKind = new Map<HintKind, vscode.DecorationOptions[]>(KINDS.map((kind) => [kind, []]));
     const unchanged: vscode.DecorationOptions[] = [];
     const hints = updates.map((update) => ({ dep: update.dep, kind: update.kind as HintKind,
@@ -88,6 +89,16 @@ export class DecorationRenderer implements vscode.Disposable {
       } else {
         hints.push({ dep: audit.dep, kind: 'audit', text: warning, unchanged: [] });
       }
+    }
+    for (const status of statuses) {
+      const text = statusLabel(status);
+      if (!text) continue;
+      const kind = isVersionIssue(status) ? 'audit' : 'info';
+      const hint = hints.find((candidate) => candidate.dep === status.dep);
+      if (hint) {
+        if (kind === 'audit') hint.kind = kind;
+        hint.text += ` | ${text}`;
+      } else hints.push({ dep: status.dep, kind, text, unchanged: [] });
     }
     const tabSize = typeof editor.options.tabSize === 'number' ? editor.options.tabSize : 4;
 

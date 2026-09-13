@@ -239,7 +239,8 @@ test('vcpkg registry comparison stays within the current versioning scheme', () 
   assert.equal(vcpkgVersions(data, '>=1.0').latest, '1.1');
   assert.ok(vcpkgVersions(data, '0.1').error);
   assert.ok(vcpkgVersions(data, '9999').error);
-  assert.ok(vcpkgVersions(data, '1.0', 'version-semver').error);
+  assert.equal(vcpkgVersions(data, '1.0', 'version-semver').allComplete, true);
+  assert.deepEqual(vcpkgVersions(data, '1.0', 'version-semver').published, []);
   assert.ok(vcpkgVersions({ versions: null }, '1.0').error);
 });
 

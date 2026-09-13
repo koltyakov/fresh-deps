@@ -8,8 +8,9 @@ export function bazelVersions(data: { versions?: unknown; yanked_versions?: unkn
   const yanked = data.yanked_versions ?? {};
   const all = data.versions.filter((version): version is string => typeof version === 'string'
     && bazelScheme.isVersion(version) && !Object.hasOwn(yanked, version));
-  return all.length ? { all, latest: bazelScheme.max(all, { includePrerelease: false }),
-    ...(typeof data.homepage === 'string' ? { meta: { homepage: data.homepage } } : {}) } : { error: 'no comparable BCR versions found' };
+  return { all, latest: bazelScheme.max(all, { includePrerelease: false }),
+    published: [...new Set([...data.versions, ...Object.keys(yanked)])].filter((version): version is string => typeof version === 'string' && bazelScheme.isVersion(version)), allComplete: data.versions.every((version) => typeof version === 'string'),
+    ...(typeof data.homepage === 'string' ? { meta: { homepage: data.homepage } } : {}) };
 }
 
 export class BazelClient {
@@ -25,7 +26,7 @@ export class BazelClient {
     if (!/^[a-z][a-z0-9._-]*$/.test(name)) return { error: 'invalid Bazel module name' };
     for (const source of sources.split('|')) {
       const data = await fetchJson<Parameters<typeof bazelVersions>[0]>(`${source}/modules/${encodeURIComponent(name)}/metadata.json`, { timeoutMs: this.timeoutMs });
-      if (data) return bazelVersions(data);
+      if (data) return { ...bazelVersions(data), source };
     }
     return { error: 'not found' };
   }

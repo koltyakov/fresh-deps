@@ -210,7 +210,9 @@ for (const ecosystem of ['java', 'dotnet'] as const) {
       ? new MavenClient('https://maven.example', 1000)
       : new NugetClient('https://nuget.example/v3/index.json', 1000);
     const result = await client.fetchVersions(ecosystem === 'java' ? 'org.example:pkg' : 'Pkg');
-    assert.deepEqual(result, { all: versions });
+    assert.deepEqual(result.all, versions);
+    assert.equal(result.latest, undefined);
+    assert.equal(result.allComplete, true);
     const scheme = schemeFor(ecosystem);
     assert.equal(scheme.max(result.all!, { includePrerelease: false }), undefined);
     assert.equal(scheme.max(result.all!, { includePrerelease: true }), '2.0.0-rc.1');

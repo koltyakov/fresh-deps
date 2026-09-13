@@ -44,7 +44,7 @@ export class VersionCache {
   }
 
   set(key: string, value: RegistryVersions): void {
-    const ttl = value.error ? Math.min(ERROR_TTL_MS, this.ttlMs) : this.ttlMs;
+    const ttl = value.error || value.packageMissing ? Math.min(ERROR_TTL_MS, this.ttlMs) : this.ttlMs;
     this.entries.set(key, { value, expires: Date.now() + ttl });
   }
 
@@ -57,7 +57,7 @@ export class VersionCache {
   /** Serialisable snapshot, used to keep resolved versions across window reloads. */
   serialize(): [string, Entry][] {
     const now = Date.now();
-    return [...this.entries].filter(([, entry]) => entry.expires > now && !entry.value.error);
+    return [...this.entries].filter(([, entry]) => entry.expires > now && !entry.value.error && !entry.value.packageMissing);
   }
 
   restore(data: [string, Entry][] | undefined): void {

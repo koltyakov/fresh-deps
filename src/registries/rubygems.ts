@@ -20,13 +20,14 @@ export class RubyGemsClient {
 }
 
 export function rubyGemsVersions(doc: RubyGemsVersion[]): RegistryVersions {
+  if (!Array.isArray(doc)) return { error: 'Invalid RubyGems version response' };
   const releases = doc.filter((release) => !!release.number && rubyScheme.isVersion(release.number));
   const all = releases.map((release) => release.number!);
   const latest = rubyScheme.max(all, { includePrerelease: false });
   const release = releases.find((item) => item.number === latest);
-  return all.length ? { latest, all, meta: release ? {
+  return all.length ? { latest, all, allComplete: true, meta: release ? {
     description: release.summary,
     license: release.licenses?.join(' OR '),
     latestPublishedAt: release.created_at,
-  } : undefined } : { error: 'no comparable versions found' };
+  } : undefined } : { all, allComplete: true };
 }

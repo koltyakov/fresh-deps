@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { lookupFor, type AnalyzeResult, type PackageDetails, type VersionPair } from './analyzer';
 import type { Settings } from './config';
-import { buildAuditHover, buildHover } from './hover';
+import { buildAuditHover, buildHover, buildStatusHover } from './hover';
 import type { DependencyUpdate, Ecosystem } from './types';
 
 /**
@@ -84,7 +84,8 @@ export class DependencyHoverProvider implements vscode.HoverProvider {
     const result = this.resultFor(document.uri);
     const update = result?.updates.find((candidate) => candidate.dep.line === position.line);
     const audit = result?.audits.find((candidate) => candidate.dep.line === position.line);
-    const dep = update?.dep ?? audit?.dep;
+    const statuses = result?.statuses?.filter((candidate) => candidate.dep.line === position.line && candidate.status !== 'available') ?? [];
+    const dep = update?.dep ?? audit?.dep ?? statuses[0]?.dep;
     if (!result || !dep) {
       return undefined;
     }
@@ -97,8 +98,13 @@ export class DependencyHoverProvider implements vscode.HoverProvider {
     // Typing moves declarations around while the last analysis still describes
     // where they were, so the line has to still be the one that was measured
     // before its card is shown.
+    const declared = dep.specRaw ?? dep.spec;
+    const versionOnly = /^\s*(?:["']?(?:version(?:-semver|-date|>=)?|Version|exact|from)["']?\s*[:=]\s*)?["']([^"']+)["']\s*\)?[,]?\s*$/.exec(line.text)?.[1]
+      ?? /^\s*version\s*:\s*([^"'#]+?)\s*(?:#.*)?$/.exec(line.text)?.[1];
     const declarationPresent = line.text.includes(dep.alias ?? dep.name)
-      || (result.ecosystem === 'deno' && line.text.includes(dep.name));
+      || (result.ecosystem === 'deno' && line.text.includes(dep.name))
+      || (result.ecosystem === 'docker' && dep.name.startsWith('library/') && line.text.includes(dep.name.slice(8)))
+      || versionOnly === declared;
     if (!['java', 'ruby', 'terraform', 'elixir'].includes(result.ecosystem) && !declarationPresent) {
       return undefined;
     }
@@ -114,6 +120,7 @@ export class DependencyHoverProvider implements vscode.HoverProvider {
       return undefined;
     }
     const contents = update ? [buildHover(update, result.ecosystem, details)] : [];
+    contents.unshift(...statuses.map(buildStatusHover));
     if (audit) contents.push(buildAuditHover(audit));
     return new vscode.Hover(contents, range);
   }

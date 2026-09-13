@@ -44,13 +44,15 @@ export class CratesClient {
 
 /** Converts one crates.io response into the common version and metadata shape. */
 export function versionsOf(doc: CratesResponse): RegistryVersions {
+  const evidence = { published: (doc.versions ?? []).flatMap((release) => release.num && semver.valid(release.num, LOOSE) ? [release.num] : []),
+    allComplete: Array.isArray(doc.versions) && doc.versions.every((release) => typeof release.num === 'string') };
   const releases = (doc.versions ?? []).filter(
     (version): version is CrateVersion & { num: string } => !version.yanked && !!version.num && semver.valid(version.num, LOOSE) !== null,
   );
   const all = releases.map((version) => version.num);
   const latest = semver.maxSatisfying(all, '*', LOOSE) ?? undefined;
   if (!latest) {
-    return { all };
+    return { all, ...evidence };
   }
 
   const release = releases.find((version) => version.num === latest);
@@ -61,5 +63,5 @@ export function versionsOf(doc: CratesResponse): RegistryVersions {
   if (release?.license) meta.license = release.license;
   if (release?.created_at) meta.latestPublishedAt = release.created_at;
   if (release?.rust_version) meta.runtimeRequirement = `Rust >=${release.rust_version}`;
-  return { latest, all, meta, requirements: Object.fromEntries(releases.map((item) => [item.num, [item.rust_version ?? '']])) };
+  return { latest, all, ...evidence, meta, requirements: Object.fromEntries(releases.map((item) => [item.num, [item.rust_version ?? '']])) };
 }

@@ -100,7 +100,7 @@ test('yanked, retracted, and removed metadata remains existence evidence, not an
   ];
   for (const [ecosystem, versions, spec] of examples) {
     const options = { ...opts, scheme: schemeFor(ecosystem) };
-    assert.equal(checkAvailability({ ...dep, spec }, versions, options).status, 'ahead', ecosystem);
+    assert.equal(checkAvailability({ ...dep, spec }, versions, options).status, 'available', ecosystem);
     assert.equal(versions.latest, '1.0.0');
     assert.ok(!versions.all?.includes('3.0.0'));
     assert.equal(computeUpdate({ ...dep, spec }, versions, options), undefined);
@@ -112,9 +112,9 @@ test('Python and Swift retain withdrawn releases for existence checks', async (t
     ? { versions: ['1.0.0', '3.0.0'], files: [{ filename: 'pkg-1.0.0.tar.gz' }, { filename: 'pkg-3.0.0.tar.gz', yanked: true }] }
     : { releases: { '1.0.0': {}, '3.0.0': { problem: { status: 410 } } } }));
   const python = await new PyPiClient({ indexOverride: 'https://index.example/simple', timeoutMs: 1000 }).fetchVersions('pkg');
-  assert.equal(checkAvailability({ ...dep, spec: '==3.0.0' }, python, { ...opts, scheme: schemeFor('python') }).status, 'ahead');
+  assert.equal(checkAvailability({ ...dep, spec: '==3.0.0' }, python, { ...opts, scheme: schemeFor('python') }).status, 'available');
   const swift = await new SwiftClient(1000).fetchVersions('owner.pkg', 'https://swift.example');
-  assert.equal(checkAvailability(dep, swift, opts).status, 'ahead');
+  assert.equal(checkAvailability(dep, swift, opts).status, 'available');
 });
 
 test('tag precision, suffixes, and matrix selectors are checked independently', () => {
@@ -145,7 +145,7 @@ test('runtime manifests validate pins while retaining broken or prerelease exist
     : [{ version: 'go1.23.0', stable: true }, { version: 'go1.24rc1', stable: false }]));
   const client = new RuntimeClient(1000);
   const gradle = await client.fetch('gradle');
-  assert.equal(checkAvailability({ ...dep, spec: '9.0.0' }, gradle, opts).status, 'ahead');
+  assert.equal(checkAvailability({ ...dep, spec: '9.0.0' }, gradle, opts).status, 'available');
   const go = await client.fetch('go');
   assert.equal(checkAvailability({ ...dep, spec: '1.24.0-rc.1' }, go, opts).status, 'ahead');
 });
@@ -262,7 +262,7 @@ for (const ecosystem of ['gradle', 'bazel'] as const) {
     const known = await lookup.fetch(declaration);
     assert.equal(checkAvailability(declaration, known, { ...opts, scheme: schemeFor(ecosystem) }).status, 'version-missing');
     const evidence = await lookup.fetchAvailability!(declaration, known);
-    assert.equal(checkAvailability(declaration, { ...known, ...evidence }, { ...opts, scheme: schemeFor(ecosystem) }).status, 'ahead');
+    assert.equal(checkAvailability(declaration, { ...known, ...evidence }, { ...opts, scheme: schemeFor(ecosystem) }).status, 'available');
     unavailable = true;
     const partial = await lookup.fetchAvailability!(declaration, known);
     assert.equal(checkAvailability(declaration, { ...known, ...partial }, { ...opts, scheme: schemeFor(ecosystem) }).status, 'unknown');

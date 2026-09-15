@@ -45,16 +45,22 @@ export class NpmClient {
     this.config = readNpmConfig(options.cwd);
   }
 
-  /** Cheap lookup: just the version behind the `latest` dist-tag. */
+  /** Compare the latest tag with published stable versions. */
   async fetchLatest(name: string): Promise<RegistryVersions> {
     const url = `${this.registryFor(name)}/${encodeName(name)}/latest`;
     const body = await fetchJson<VersionDocument>(url, this.requestOptions(name));
     if (!body?.version) {
       return this.fetchAll(name);
     }
-    // The document describing the newest release is already on the wire, so the
-    // descriptive fields on it are free - only the publish date is missing.
-    return { latest: body.version, meta: metaOf(body), ...(body.engines?.node ? { requirements: { [body.version]: [body.engines.node] } } : {}) };
+    // The tag may lag behind published stable releases. Read the version list
+    // before selecting the target and its descriptive metadata.
+    const versions = await this.fetchAll(name);
+    if (versions.error || versions.packageMissing) return versions;
+    const latest = semver.maxSatisfying([body.version, ...(versions.latest ? [versions.latest] : [])].filter((version) => semver.valid(version)), '*') ?? versions.latest ?? body.version;
+    const selected = latest === body.version ? body
+      : await fetchJson<VersionDocument>(`${this.registryFor(name)}/${encodeName(name)}/${encodeURIComponent(latest)}`, this.requestOptions(name));
+    return { ...versions, latest, ...(selected ? { meta: metaOf(selected) } : {}),
+      ...(selected?.engines?.node ? { requirements: { ...versions.requirements, [latest]: [selected.engines.node] } } : {}) };
   }
 
   /** Full lookup: every published version, for finding the newest in-range one. */
@@ -71,9 +77,12 @@ export class NpmClient {
         ? { packageMissing: true, source }
         : { error: 'Package not found or not accessible in the configured registry.', source };
     }
+    const all = Object.keys(body.versions ?? {});
+    const tagged = body['dist-tags']?.latest;
+    const latest = semver.maxSatisfying([...all, ...(tagged ? [tagged] : [])].filter((version) => semver.valid(version)), '*') ?? tagged;
     return {
-      ...(body['dist-tags']?.latest ? { latest: body['dist-tags'].latest } : {}),
-      all: Object.keys(body.versions ?? {}),
+      ...(latest ? { latest } : {}),
+      all,
       allComplete: !!body.versions && typeof body.versions === 'object' && !Array.isArray(body.versions),
       source: this.registryFor(name),
       requirements: Object.fromEntries(Object.entries(body.versions ?? {}).map(([version, doc]) => [version, [doc.engines?.node ?? '']])),

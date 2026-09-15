@@ -9,7 +9,7 @@ import { manifestSelectors } from './manifests';
 import { clearManifestCache } from './projectFiles';
 import { isVersionIssue } from './availability';
 
-const CACHE_STATE_KEY = 'freshDeps.cache.v3';
+const CACHE_STATE_KEY = 'freshDeps.cache.v4';
 const TYPING_DEBOUNCE_MS = 400;
 
 export function activate(context: vscode.ExtensionContext): void {

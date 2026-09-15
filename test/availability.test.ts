@@ -15,7 +15,7 @@ const versions = { latest: '2.0.0', all: ['1.0.1', '2.0.0', '3.0.0-beta.1', '3.0
 test('existence distinguishes pins, ranges, ahead releases, and incomplete metadata', () => {
   for (const [spec, expected] of [
     ['1.0.0', 'version-missing'], ['9.0.0', 'version-missing'], ['^1.0.0', 'available'],
-    ['^9.0.0', 'range-missing'], ['3.0.0', 'ahead'], ['3.0.0-beta.1', 'ahead'],
+    ['^9.0.0', 'range-missing'], ['3.0.0', 'available'], ['3.0.0-beta.1', 'ahead'],
   ]) assert.equal(checkAvailability({ ...dep, spec }, versions, opts).status, expected, spec);
   assert.equal(checkAvailability(dep, { ...versions, allComplete: false }, opts).status, 'unknown');
   assert.equal(checkAvailability(dep, { error: '401 Unauthorized' }, opts).status, 'failed');
@@ -39,7 +39,7 @@ test('npm validates duplicate declarations independently and reuses metadata whi
   assert.equal(calls.length, 0);
   const result = await analyze({ ...request, allowNetwork: true });
   assert.deepEqual(result?.statuses?.map((s) => [s.dep.section, s.status]).sort(), [
-    ['dependencies', 'version-missing'], ['devDependencies', 'ahead'],
+    ['dependencies', 'version-missing'], ['devDependencies', 'available'],
   ]);
   assert.equal(result?.updates.length, 1);
   assert.equal(result?.updates[0].dep.spec, '1.0.0');
@@ -65,6 +65,41 @@ test('npm falls back when latest is absent and keeps failed access distinct from
   assert.equal((await client.fetchLatest('@private/pkg')).packageMissing, undefined);
   mode = 'denied';
   await assert.rejects(client.fetchLatest('pkg'), /401/);
+});
+
+for (const spec of ['^22.20.3', '^26.5.1', '26.5.1']) {
+  test(`npm suggests the highest stable release for ${spec} when latest points backward`, async (t) => {
+    const calls: string[] = [];
+    t.mock.method(globalThis, 'fetch', async (url: string) => {
+      calls.push(url);
+      if (url.endsWith('/latest')) return Response.json({ version: '22.20.3', deprecated: 'Old release' });
+      if (url.endsWith('/26.6.0')) return Response.json({ version: '26.6.0', description: 'Selected release' });
+      return Response.json({ 'dist-tags': { latest: '22.20.3' }, versions: {
+        '22.20.3': {}, '26.5.1': {}, '26.6.0': {}, '27.0.0-beta.1': {},
+      } });
+    });
+    const request: AnalyzeRequest = {
+      fsPath: '/project/package.json', text: JSON.stringify({ dependencies: { '@types/node': spec } }),
+      settings: createSettings(), cache: new VersionCache(60_000), auditCache: new AuditCache(), allowNetwork: true,
+    };
+    const result = await analyze(request);
+    assert.equal(result?.updates[0]?.latest, '26.6.0');
+    assert.equal(result?.updates[0]?.meta?.description, 'Selected release');
+    assert.equal(result?.updates[0]?.meta?.deprecated, undefined);
+    assert.equal(result?.statuses?.[0]?.status, 'available');
+    const count = calls.length;
+    assert.deepEqual((await analyze({ ...request, allowNetwork: false }))?.updates, result?.updates);
+    assert.equal(calls.length, count);
+  });
+}
+
+test('npm keeps a newer latest tag even when the version list lags', async (t) => {
+  t.mock.method(globalThis, 'fetch', async (url: string) => Response.json(url.endsWith('/latest')
+    ? { version: '26.6.0' }
+    : { 'dist-tags': { latest: '26.6.0' }, versions: { '26.5.1': {} } }));
+  const client = new NpmClient({ cwd: '/project', timeoutMs: 1000 });
+  assert.equal((await client.fetchAll('@types/node')).latest, '26.6.0');
+  assert.equal((await client.fetchLatest('@types/node')).latest, '26.6.0');
 });
 
 test('npm preserves uncertainty for malformed metadata and reports request failures per declaration', async (t) => {

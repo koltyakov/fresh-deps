@@ -28,7 +28,9 @@ export function checkAvailability(dep: DependencyRef, versions: RegistryVersions
   }
   const current = dep.resolvedVersion ?? scheme.baseline(spec);
   const currentPublished = current && (published?.some((v) => scheme.isVersion(v) && scheme.compare(v, current) === 0) || latest === current);
-  if (currentPublished && latest && scheme.isVersion(latest) && scheme.compare(current!, latest) > 0) {
+  // A latest tag can point to an older stable release; that does not make a
+  // newer published stable version noteworthy.
+  if (currentPublished && scheme.isPrerelease(current!) && latest && scheme.isVersion(latest) && scheme.compare(current!, latest) > 0) {
     return { ...base, status: 'ahead', message: 'This published version is ahead of the selected latest release. It may be a prerelease or belong to another release channel.' };
   }
   return { ...base, status: 'available', message: 'A published version satisfies this declaration.' };

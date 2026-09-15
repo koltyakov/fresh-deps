@@ -48,11 +48,15 @@ test('npm parses package-manager hashes and nested overrides', () => {
 });
 
 test('duplicate dependency declarations share a lookup, while keeping separate hints', async (t) => {
-  let calls = 0;
-  t.mock.method(globalThis, 'fetch', async () => { calls++; return Response.json({ version: '1.1.0' }); });
+  const calls: string[] = [];
+  t.mock.method(globalThis, 'fetch', async (url: string) => {
+    calls.push(url);
+    return Response.json(url.endsWith('/latest') ? { version: '1.1.0' }
+      : { 'dist-tags': { latest: '1.1.0' }, versions: { '1.0.0': {}, '1.1.0': {} } });
+  });
   const result = await analyze({ fsPath: '/virtual/package.json', text: '{"dependencies":{"example":"^1.0.0"},"devDependencies":{"example":"^1.0.0"}}',
     settings: createSettings({ npm: { registry: 'https://registry.example' } }), cache: new VersionCache(60000), auditCache: new AuditCache(), allowNetwork: true });
-  assert.equal(calls, 1);
+  assert.deepEqual(calls, ['https://registry.example/example/latest', 'https://registry.example/example']);
   assert.equal(result?.updates.length, 2);
 });
 

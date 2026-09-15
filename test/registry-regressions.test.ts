@@ -168,7 +168,7 @@ for (const [key, value, header] of [
     await client.fetchLatest('package');
     await client.fetchAll('package');
     await client.fetchPublishDates('package', ['1.0.0']);
-    assert.equal(fetch.mock.callCount(), 3);
+    assert.equal(fetch.mock.callCount(), 4);
   });
 }
 

@@ -151,6 +151,10 @@ Customize the colors through `workbench.colorCustomizations` using `freshDeps.co
 
 ### npm and Volta
 
+- Checks `github:owner/repo#<SHA>` pins against the repository's default branch. An update is shown only
+  when the pinned commit is an ancestor of the current branch tip. Pins at the tip or outside that
+  branch's history produce no update. Full SHAs and abbreviations of at least seven characters are
+  supported; the hover shows the full target SHA and a commit comparison link.
 - Checks `dependencies`, `devDependencies`, `peerDependencies`, and `optionalDependencies` in `package.json`.
 - Also checks `packageManager` pins, nested npm/pnpm overrides, and Yarn resolutions. These can be disabled through `freshDeps.npm.sections`.
 - Reads `.npmrc`, including scoped registries and authentication tokens.
@@ -511,9 +515,31 @@ query the audit provider. Both refresh and Clear Version Cache discard audit res
 
 ## Commands
 
+Run `Fresh Deps: Generate Outdated Dependencies Report` to check supported manifests
+recursively across every workspace folder. It opens a named, read-only Markdown
+report directly in preview, without an untitled editor or a save prompt on close.
+Each manifest path has a table with dependency type, name,
+declared version, available minor/patch and major versions, and audit warnings.
+Only dependencies with updates or warnings are included. Empty and clean manifests
+have no table. File paths and dependency names link to the source and declaration lines;
+failed or skipped checks appear below the tables. Use Save As on the report source
+to keep or share a copy. The notification offers cancellation.
+
+The report starts with fresh registry lookups and uses your existing ecosystem,
+registry, prerelease, lockfile, and audit settings. It checks for updates within the
+current major even when those inline hints are disabled. The audit column appears
+only when the listed dependencies have supported audit results. Unsupported entries
+stay blank in mixed tables; failed audits show their error. The report also works
+with inline hints disabled.
+Common dependency, build, cache, and version-control directories such as
+`node_modules`, `vendor`, `.git`, `dist`, `build`, `target`, and `.venv` are excluded.
+Hidden project manifests such as GitHub workflows are included.
+The report uses these exclusions rather than the editor's search or file exclusions.
+
 | Command | Action |
 |---|---|
 | `Fresh Deps: Check for Updates` | Drops the cache and re-queries for the current file |
+| `Fresh Deps: Generate Outdated Dependencies Report` | Checks workspace manifests and opens a Markdown report |
 | `Fresh Deps: Toggle Inline Hints` | Turns the annotations off and on |
 | `Fresh Deps: Clear Version Cache` | Forgets every resolved version |
 

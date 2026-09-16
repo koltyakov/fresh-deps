@@ -8,6 +8,7 @@ import { DependencyHoverProvider, DetailsResolver } from './details';
 import { manifestSelectors } from './manifests';
 import { clearManifestCache } from './projectFiles';
 import { isVersionIssue } from './availability';
+import { registerReportCommand } from './reportCommand';
 
 const CACHE_STATE_KEY = 'freshDeps.cache.v4';
 const TYPING_DEBOUNCE_MS = 400;
@@ -167,6 +168,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const MANIFEST_SELECTOR: vscode.DocumentSelector = manifestSelectors;
 
   context.subscriptions.push(
+    registerReportCommand(),
     vscode.languages.registerHoverProvider(
       MANIFEST_SELECTOR,
       new DependencyHoverProvider(

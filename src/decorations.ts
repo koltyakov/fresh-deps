@@ -193,6 +193,7 @@ function unchangedMatrixEntries(update: DependencyUpdate): { text: string; offse
 }
 
 function version(update: DependencyUpdate, ecosystem: Ecosystem): string {
+  if (update.githubDefaultBranch) return `\u2191 ${update.latest.slice(0, 7)}`;
   if (update.matrixUpdate) {
     const { versions, newer } = update.matrixUpdate;
     const pinned = update.dep.matrixVersions!.some((spec) => spec.includes('.'));

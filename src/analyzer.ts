@@ -50,6 +50,7 @@ import { parseTerraform, parseTflint } from './parsers/terraform';
 import { CratesClient } from './registries/crates';
 import { GoClient, proxyExclusion } from './registries/go';
 import { NpmClient } from './registries/npm';
+import { githubCommitVersions } from './registries/githubCommit';
 import { MavenClient } from './registries/maven';
 import { NugetClient } from './registries/nuget';
 import { PackagistClient } from './registries/packagist';
@@ -92,6 +93,8 @@ export interface AnalyzeRequest {
 
 export interface AnalyzeResult {
   ecosystem: Ecosystem;
+  /** Parsed declarations, including those with no update or a skipped lookup. */
+  dependencies?: DependencyRef[];
   updates: DependencyUpdate[];
   statuses?: DependencyStatus[];
   audits: DependencyAudit[];
@@ -168,7 +171,7 @@ export async function analyze(request: AnalyzeRequest): Promise<AnalyzeResult | 
 
   const { settings } = request;
   const result: AnalyzeResult = { ecosystem, updates: [], audits: [], failures: new Map(), incomplete: false,
-    declarations: deps.length, skipped: [], statuses: [] };
+    declarations: deps.length, dependencies: deps, skipped: [], statuses: [] };
   const baseOptions: ResolveOptions = {
     includePrerelease: settings.includePrerelease,
     showSatisfyingUpdates: settings.showSatisfyingUpdates,
@@ -198,7 +201,7 @@ export async function analyze(request: AnalyzeRequest): Promise<AnalyzeResult | 
     }) : /^(?:rust\|crates\.io|php\|packagist\.org|ruby\|rubygems\.org|dart\|pub\.dev|elixir\|hex\.pm)\|/.test(key);
     const publicSource = !dep.runtime && !dep.skipReason && (!dep.source || dep.source === 'https://pub.dev') && hasPublicSource
       && (ecosystem !== 'go' || !proxyExclusion(dep.name));
-    const auditFetcher = settings.auditProvider === 'osv'
+    const auditFetcher = dep.githubRepository ? undefined : settings.auditProvider === 'osv'
       ? publicSource ? (dependency: DependencyRef, version: string) => osvAudit(dependency.ecosystem ?? ecosystem, dependency.name, version, settings.requestTimeoutMs) : undefined
       : lookup.fetchAudit;
     if (settings.auditEnabled) {
@@ -222,12 +225,13 @@ export async function analyze(request: AnalyzeRequest): Promise<AnalyzeResult | 
     let versions = request.cache.get(key);
     const source = lookup.availabilitySource?.(dep) ?? dep.source ?? key.split('|')[1];
     const needsAvailability = (value: RegistryVersions | undefined) => {
+      if (dep.githubRepository) return false;
       if (!lookup.fetchAll || !value || value.error || value.packageMissing || value.allComplete) return false;
       const current = dep.resolvedVersion ?? opts.scheme.baseline(dep.spec);
       return checkAvailability(dep, value, opts).status === 'unknown'
         || !!current && !!value.latest && opts.scheme.isVersion(value.latest) && opts.scheme.compare(current, value.latest) > 0;
     };
-    const wantsAll = needsAvailability(versions) || !!settings.runtimeVersions[dep.ecosystem ?? ecosystem] || (versions?.latest ? needsFullVersionList(dep.spec, versions.latest, opts) : false);
+    const wantsAll = !dep.githubRepository && (needsAvailability(versions) || !!settings.runtimeVersions[dep.ecosystem ?? ecosystem] || (versions?.latest ? needsFullVersionList(dep.spec, versions.latest, opts) : false));
 
     if (!request.allowNetwork && (!versions || (wantsAll && !versions.all) || needsAvailability(versions))) {
       result.incomplete = true;
@@ -245,7 +249,7 @@ export async function analyze(request: AnalyzeRequest): Promise<AnalyzeResult | 
           ? await request.cache.resolve(`${key}|all`, () => lookup.fetchAll!(dep))
           : await request.cache.resolve(`${key}|latest`, () => lookup.fetch(dep));
         // Fetch release history when a same-major or in-range step may exist.
-        if (lookup.fetchAll && !versions.all && !versions.error && !versions.packageMissing && (needsAvailability(versions) || versions.latest && (wantsAll || needsFullVersionList(dep.spec, versions.latest, opts)))) {
+        if (!dep.githubRepository && lookup.fetchAll && !versions.all && !versions.error && !versions.packageMissing && (needsAvailability(versions) || versions.latest && (wantsAll || needsFullVersionList(dep.spec, versions.latest, opts)))) {
           const full = await request.cache.resolve(`${key}|all`, () => lookup.fetchAll!(dep));
           versions = { ...versions, ...full, ...(versions.meta ? { meta: versions.meta } : {}) };
         }
@@ -564,14 +568,15 @@ function npmLookup(fsPath: string, settings: Settings): Lookup {
     return scoped;
   };
   return {
-    key: (dep) => `npm|${clientFor(dep).registryFor(dep.name)}|${dep.name}`,
-    availabilitySource: (dep) => clientFor(dep).registryFor(dep.name),
-    fetch: (dep) => clientFor(dep).fetchLatest(dep.name),
-    fetchAll: (dep) => clientFor(dep).fetchAll(dep.name),
-    fetchAudit: (dep, version) => clientFor(dep).fetchAudit(dep.name, version),
+    key: (dep) => dep.githubRepository ? `npm|github.com|${dep.githubRepository.toLowerCase()}|${dep.spec}` : `npm|${clientFor(dep).registryFor(dep.name)}|${dep.name}`,
+    availabilitySource: (dep) => dep.githubRepository ? `https://github.com/${dep.githubRepository}` : clientFor(dep).registryFor(dep.name),
+    fetch: (dep) => dep.githubRepository ? githubCommitVersions(dep.githubRepository, dep.spec, settings.requestTimeoutMs) : clientFor(dep).fetchLatest(dep.name),
+    fetchAll: (dep) => dep.githubRepository ? githubCommitVersions(dep.githubRepository, dep.spec, settings.requestTimeoutMs) : clientFor(dep).fetchAll(dep.name),
+    fetchAudit: (dep, version) => dep.githubRepository ? Promise.resolve({ status: 'unsupported' }) : clientFor(dep).fetchAudit(dep.name, version),
     // The descriptive fields already came back with the version; only the dates
     // are missing, and they live in a document big enough to be worth deferring.
     async fetchDetails(dep, versions) {
+      if (dep.githubRepository) return {};
       const dates = await clientFor(dep).fetchPublishDates(dep.name, [versions.current, versions.latest, ...(versions.sameMajor ? [versions.sameMajor] : [])]);
       return {
         currentPublishedAt: dates.get(versions.current),

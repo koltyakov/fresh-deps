@@ -6,6 +6,9 @@ export function checkAvailability(dep: DependencyRef, versions: RegistryVersions
   const base = { dep, source: versions.source, latest };
   if (versions.packageMissing) return { ...base, status: 'package-missing', message: 'The configured registry did not return this package. Private registries may also hide packages you cannot access.' };
   if (versions.error) return { ...base, status: 'failed', message: versions.error };
+  if (dep.githubRepository) return versions.published?.includes(dep.spec)
+    ? { ...base, status: 'available', message: 'The pinned commit exists in the repository. Updates require it to be in the default branch history.' }
+    : { ...base, status: 'unknown', message: 'Save or refresh to check this GitHub commit pin.' };
   const { scheme } = opts;
   if (dep.matrixVersions) {
     const entries = dep.matrixVersions.map((spec) => checkAvailability({ ...dep, spec, matrixVersions: undefined },

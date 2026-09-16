@@ -12,6 +12,8 @@ export interface DependencyRef {
   spec: string;
   /** Original declaration when its comparison requirement was rewritten. */
   specRaw?: string;
+  /** GitHub repository for an npm commit pin, checked against its default branch. */
+  githubRepository?: string;
   /** Explicit registry or channel selected by the manifest. */
   source?: string;
   /** A declaration routed through another ecosystem, such as Conda's pip entries. */
@@ -68,6 +70,7 @@ export interface PackageMeta {
 }
 
 export interface RegistryVersions {
+  githubDefaultBranch?: string;
   baseline?: string;
   revision?: string;
   /** Version tagged as latest by the registry, normalised for comparison. */
@@ -127,6 +130,7 @@ export interface DependencyAudit {
 }
 
 export interface DependencyUpdate {
+  githubDefaultBranch?: string;
   dep: DependencyRef;
   /** Baseline the update is measured against (the floor of the declared range). */
   current: string;

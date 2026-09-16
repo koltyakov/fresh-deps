@@ -61,6 +61,6 @@ export function applyLockfile(fsPath: string, ecosystem: Ecosystem, deps: Depend
   } catch { return deps; }
   return deps.map((dep) => {
     const selected = versions.get(dep.name);
-    return selected?.size === 1 && !dep.skipReason ? { ...dep, resolvedVersion: [...selected][0] } : dep;
+    return selected?.size === 1 && !dep.skipReason && !dep.githubRepository ? { ...dep, resolvedVersion: [...selected][0] } : dep;
   });
 }

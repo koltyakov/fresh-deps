@@ -2,7 +2,7 @@
   "name": "fresh-deps",
   "displayName": "Fresh Deps",
   "description": "Highlights dependencies that have newer versions available, inline in your manifest files.",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "license": "MIT",
   "publisher": "koltyakov",
   "repository": {
@@ -129,6 +129,10 @@
   "contributes": {
     "commands": [
       {
+        "command": "freshDeps.report",
+        "title": "Fresh Deps: Generate Outdated Dependencies Report"
+      },
+      {
         "command": "freshDeps.refresh",
         "title": "Fresh Deps: Check for Updates",
         "icon": "$(refresh)"
@@ -151,277 +155,328 @@
         }
       ]
     },
-    "configuration": [{
-      "title": "Fresh Deps",
-      "order": 0,
-      "properties": {
-        "freshDeps.useLockfiles": {
-          "type": "boolean", "default": false,
-          "description": "Use unambiguous versions from adjacent lockfiles as update and audit baselines. Does not inspect installed packages."
-        },
-        "freshDeps.audit.provider": {
-          "type": "string", "enum": ["registry", "osv"], "default": "registry",
-          "description": "Audit provider. OSV sends public package names and checked versions to api.osv.dev when auditing is enabled."
-        },
-        "freshDeps.runtimeVersions": {
-          "type": "object", "default": {}, "additionalProperties": { "type": "string" },
-          "description": "Runtime versions for compatible-release hints, keyed by ecosystem: python, npm, dart, rust. For example {\"python\": \"3.11.0\", \"npm\": \"20.0.0\"}."
-        },
-        "freshDeps.enabled": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show inline hints for dependencies that have newer versions."
-        },
-        "freshDeps.cacheDurationMinutes": {
-          "type": "number",
-          "default": 60,
-          "minimum": 0,
-          "description": "How long resolved versions are cached before the registry is queried again."
-        },
-        "freshDeps.audit.enabled": {
-          "type": "boolean",
-          "default": false,
-          "description": "Show warnings using the selected audit provider. Sends package names and checked versions to the provider. Checks declaration baselines or optional lockfile selections, not installed or transitive dependencies."
-        },
-        "freshDeps.concurrency": {
-          "type": "number",
-          "default": 8,
-          "minimum": 1,
-          "maximum": 32,
-          "description": "Maximum number of parallel registry requests."
-        },
-        "freshDeps.requestTimeoutMs": {
-          "type": "number",
-          "default": 10000,
-          "minimum": 1000,
-          "description": "Timeout for a single registry request, in milliseconds."
-        },
-        "freshDeps.showSatisfyingUpdates": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show the newest update within the current major before a newer major, including exact pins. Also report the newest in-range version when the latest is outside the declared range."
-        },
-        "freshDeps.includePrerelease": {
-          "type": "boolean",
-          "default": false,
-          "description": "Consider prerelease versions (for example 2.0.0-beta.1) as updates."
-        }
-      }
-    }, {
-      "title": "Fresh Deps: Ecosystems",
-      "order": 1,
-      "properties": {
-        "freshDeps.ansible.enabled": {
-          "type": "boolean", "default": true,
-          "description": "Check Galaxy collections and role pins, including explicit compatible HTTPS collection sources. Ansible configuration files are not read."
-        },
-        "freshDeps.bazel.enabled": {
-          "type": "boolean", "default": true,
-          "description": "Check Bzlmod dependencies, including literal local includes and HTTPS registry flags in .bazelrc."
-        },
-        "freshDeps.vcpkg.enabled": {
-          "type": "boolean", "default": true,
-          "description": "Check vcpkg minimums, overrides, and baseline selections in builtin, filesystem, or GitHub-hosted Git registries, including port revisions."
-        },
-        "freshDeps.docker.enabled": {
-          "type": "boolean", "default": true,
-          "description": "Check versioned Docker Hub and HTTPS OCI images, preserving tag precision and variants. Also checks tag-plus-digest references."
-        },
-        "freshDeps.helm.enabled": {
-          "type": "boolean", "default": true,
-          "description": "Check Chart.yaml dependencies using explicit HTTPS chart indexes or OCI repositories."
-        },
-        "freshDeps.swift.enabled": {
-          "type": "boolean", "default": true,
-          "description": "Check literal Swift packages from GitHub, GitLab, Bitbucket, or configured Swift registries."
-        },
-        "freshDeps.conan.enabled": {
-          "type": "boolean", "default": true,
-          "description": "Check Conan versions and recipe revisions using configured Conan 2 remotes or the Conan Center recipe index."
-        },
-        "freshDeps.scala.enabled": {
-          "type": "boolean", "default": true,
-          "description": "Check literal sbt Maven coordinates, Scala cross-version dependencies, and configured platform suffixes."
-        },
-        "freshDeps.scala.repositories": {
-          "type": "array", "items": { "type": "string", "format": "uri" },
-          "default": ["https://repo.maven.apache.org/maven2"],
-          "description": "Ordered Maven repositories for sbt. Build-script resolvers are not evaluated."
-        },
-        "freshDeps.scala.scalaBinaryVersion": {
-          "type": "string", "default": "", "pattern": "^(?:[0-9]+(?:\\.[0-9]+)?)?$",
-          "description": "Scala binary version for cross-built libraries and sbt plugins. Empty infers literal library versions but skips plugin declarations."
-        },
-        "freshDeps.scala.sbtBinaryVersion": {
-          "type": "string", "default": "", "pattern": "^(?:[0-9]+\\.[0-9]+)?$",
-          "description": "sbt binary version used for plugin artifacts, for example 1.0. Both binary-version settings must be set to check addSbtPlugin declarations."
-        },
-        "freshDeps.scala.platformSuffix": {
-          "type": "string", "default": "", "pattern": "^(?:sjs[0-9]+|native[0-9]+(?:\\.[0-9]+)?)?$",
-          "description": "Platform binary suffix for sbt %%% dependencies, such as sjs1 or native0.5. Empty skips platform-dependent declarations."
-        },
-        "freshDeps.conda.enabled": {
-          "type": "boolean", "default": true,
-          "description": "Check Conda requirements from named, labelled, HTTPS, or defaults channels, and nested pip requirements."
-        },
-        "freshDeps.conda.subdir": {
-          "type": "string", "default": "", "pattern": "^(?:[a-z0-9]+-[a-z0-9_]+)?$",
-          "description": "Conda target subdirectory, for example linux-64 or osx-arm64. Empty uses the extension host platform. noarch packages are included."
-        },
-        "freshDeps.clojure.enabled": {
-          "type": "boolean", "default": true,
-          "description": "Check literal Maven dependencies in deps.edn and project.clj."
-        },
-        "freshDeps.clojure.repositories": {
-          "type": "array", "items": { "type": "string", "format": "uri" },
-          "default": ["https://repo.maven.apache.org/maven2", "https://repo.clojars.org"],
-          "description": "Default Maven repositories for Clojure. Literal :mvn/repos entries select project sources."
-        },
-        "freshDeps.npm.enabled": {
-          "type": "boolean",
-          "default": true,
-          "description": "Check npm dependencies, tool pins, overrides, resolutions, and pnpm/Yarn catalogs."
-        },
-        "freshDeps.deno.enabled": {
-          "type": "boolean",
-          "default": true,
-          "description": "Check npm and JSR imports in Deno configs, conventional import maps, and referenced local import maps."
-        },
-        "freshDeps.githubActions.enabled": {
-          "type": "boolean",
-          "default": true,
-          "description": "Check action tags, verified SHA release comments, runtime setup inputs, literal matrices, and local version files."
-        },
-        "freshDeps.npm.registry": {
-          "type": "string",
-          "default": "",
-          "description": "npm registry URL. Leave empty to read it from .npmrc, falling back to https://registry.npmjs.org."
-        },
-        "freshDeps.npm.sections": {
-          "type": "array",
-          "items": {
-            "type": "string"
+    "configuration": [
+      {
+        "title": "Fresh Deps",
+        "order": 0,
+        "properties": {
+          "freshDeps.useLockfiles": {
+            "type": "boolean",
+            "default": false,
+            "description": "Use unambiguous versions from adjacent lockfiles as update and audit baselines. Does not inspect installed packages."
           },
-          "default": [
-            "dependencies",
-            "devDependencies",
-            "peerDependencies",
-            "optionalDependencies",
-            "volta",
-            "packageManager",
-            "overrides",
-            "resolutions"
-          ],
-          "description": "package.json sections to inspect, including volta, packageManager, overrides, and resolutions."
-        },
-        "freshDeps.go.enabled": {
-          "type": "boolean",
-          "default": true,
-          "description": "Check Go modules and runtime directives in go.mod and go.work."
-        },
-        "freshDeps.go.proxy": {
-          "type": "string",
-          "default": "",
-          "description": "Go module proxy URL. Leave empty to read GOPROXY, falling back to https://proxy.golang.org."
-        },
-        "freshDeps.go.includeIndirect": {
-          "type": "boolean",
-          "default": false,
-          "description": "Also check modules marked as // indirect."
-        },
-        "freshDeps.go.checkMajorVersions": {
-          "type": "boolean",
-          "default": true,
-          "description": "Probe for newer major versions (/v2, /v3, ...) of Go modules."
-        },
-        "freshDeps.python.enabled": {
-          "type": "boolean",
-          "default": true,
-          "description": "Check Python dependencies in project manifests, requirements files, and PEP 723 script metadata."
-        },
-        "freshDeps.python.indexUrl": {
-          "type": "string",
-          "default": "",
-          "description": "Python package index URL. Leave empty to read PIP_INDEX_URL, UV_INDEX_URL or pip's configuration, falling back to https://pypi.org/simple."
-        },
-        "freshDeps.python.includeBuildRequires": {
-          "type": "boolean",
-          "default": false,
-          "description": "Also check [build-system] requires in pyproject.toml."
-        },
-        "freshDeps.rust.enabled": {
-          "type": "boolean",
-          "default": true,
-          "description": "Check Rust crates, inherited workspace requirements, and configured HTTPS sparse registries."
-        },
-        "freshDeps.dotnet.enabled": {
-          "type": "boolean",
-          "default": true,
-          "description": "Check NuGet dependencies and dotnet-tools.json tool pins, plus global.json SDK pins using .NET release metadata."
-        },
-        "freshDeps.dotnet.indexUrl": {
-          "type": "string",
-          "default": "",
-          "description": "NuGet V3 service index URL. Leave empty to use https://api.nuget.org/v3/index.json."
-        },
-        "freshDeps.java.enabled": {
-          "type": "boolean",
-          "default": true,
-          "description": "Check Maven dependencies, parents, plugins, and extensions in pom.xml."
-        },
-        "freshDeps.php.enabled": {
-          "type": "boolean",
-          "default": true,
-          "description": "Check Composer dependencies using Packagist or explicit Composer repositories."
-        },
-        "freshDeps.dart.enabled": {
-          "type": "boolean",
-          "default": true,
-          "description": "Check Dart and Flutter dependencies and overrides using public or explicit HTTPS hosted registries."
-        },
-        "freshDeps.gradle.enabled": {
-          "type": "boolean",
-          "default": true,
-          "description": "Check Gradle catalogs, literal build/settings declarations, and wrapper versions."
-        },
-        "freshDeps.gradle.repositories": {
-          "type": "array",
-          "items": { "type": "string", "format": "uri" },
-          "default": [
-            "https://repo.maven.apache.org/maven2",
-            "https://dl.google.com/dl/android/maven2",
-            "https://plugins.gradle.org/m2"
-          ],
-          "description": "Maven repositories for Gradle catalogs and build scripts, checked in order until a package is found. Build-script repository declarations are not read."
-        },
-        "freshDeps.java.repository": {
-          "type": "string",
-          "default": "",
-          "description": "Maven repository URL. Leave empty to use https://repo.maven.apache.org/maven2."
-        },
-        "freshDeps.ruby.enabled": {
-          "type": "boolean",
-          "default": true,
-          "description": "Check Gemfile and source-resolvable gemspec dependencies using RubyGems-compatible sources."
-        },
-        "freshDeps.terraform.enabled": {
-          "type": "boolean",
-          "default": true,
-          "description": "Check Terraform and OpenTofu providers and registry modules in *.tf and *.tofu files, and GitHub-hosted TFLint plugins in .tflint.hcl."
-        },
-        "freshDeps.terraform.defaultRegistry": {
-          "type": "string",
-          "enum": ["", "registry.terraform.io", "registry.opentofu.org"],
-          "default": "",
-          "description": "Registry for provider and module sources without a host. Empty uses OpenTofu for *.tofu files and Terraform for *.tf files."
-        },
-        "freshDeps.elixir.enabled": {
-          "type": "boolean",
-          "default": true,
-          "description": "Check Mix dependencies in mix.exs using public Hex."
+          "freshDeps.audit.provider": {
+            "type": "string",
+            "enum": [
+              "registry",
+              "osv"
+            ],
+            "default": "registry",
+            "description": "Audit provider. OSV sends public package names and checked versions to api.osv.dev when auditing is enabled."
+          },
+          "freshDeps.runtimeVersions": {
+            "type": "object",
+            "default": {},
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Runtime versions for compatible-release hints, keyed by ecosystem: python, npm, dart, rust. For example {\"python\": \"3.11.0\", \"npm\": \"20.0.0\"}."
+          },
+          "freshDeps.enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Show inline hints for dependencies that have newer versions."
+          },
+          "freshDeps.cacheDurationMinutes": {
+            "type": "number",
+            "default": 60,
+            "minimum": 0,
+            "description": "How long resolved versions are cached before the registry is queried again."
+          },
+          "freshDeps.audit.enabled": {
+            "type": "boolean",
+            "default": false,
+            "description": "Show warnings using the selected audit provider. Sends package names and checked versions to the provider. Checks declaration baselines or optional lockfile selections, not installed or transitive dependencies."
+          },
+          "freshDeps.concurrency": {
+            "type": "number",
+            "default": 8,
+            "minimum": 1,
+            "maximum": 32,
+            "description": "Maximum number of parallel registry requests."
+          },
+          "freshDeps.requestTimeoutMs": {
+            "type": "number",
+            "default": 10000,
+            "minimum": 1000,
+            "description": "Timeout for a single registry request, in milliseconds."
+          },
+          "freshDeps.showSatisfyingUpdates": {
+            "type": "boolean",
+            "default": true,
+            "description": "Show the newest update within the current major before a newer major, including exact pins. Also report the newest in-range version when the latest is outside the declared range."
+          },
+          "freshDeps.includePrerelease": {
+            "type": "boolean",
+            "default": false,
+            "description": "Consider prerelease versions (for example 2.0.0-beta.1) as updates."
+          }
+        }
+      },
+      {
+        "title": "Fresh Deps: Ecosystems",
+        "order": 1,
+        "properties": {
+          "freshDeps.ansible.enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Check Galaxy collections and role pins, including explicit compatible HTTPS collection sources. Ansible configuration files are not read."
+          },
+          "freshDeps.bazel.enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Check Bzlmod dependencies, including literal local includes and HTTPS registry flags in .bazelrc."
+          },
+          "freshDeps.vcpkg.enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Check vcpkg minimums, overrides, and baseline selections in builtin, filesystem, or GitHub-hosted Git registries, including port revisions."
+          },
+          "freshDeps.docker.enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Check versioned Docker Hub and HTTPS OCI images, preserving tag precision and variants. Also checks tag-plus-digest references."
+          },
+          "freshDeps.helm.enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Check Chart.yaml dependencies using explicit HTTPS chart indexes or OCI repositories."
+          },
+          "freshDeps.swift.enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Check literal Swift packages from GitHub, GitLab, Bitbucket, or configured Swift registries."
+          },
+          "freshDeps.conan.enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Check Conan versions and recipe revisions using configured Conan 2 remotes or the Conan Center recipe index."
+          },
+          "freshDeps.scala.enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Check literal sbt Maven coordinates, Scala cross-version dependencies, and configured platform suffixes."
+          },
+          "freshDeps.scala.repositories": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uri"
+            },
+            "default": [
+              "https://repo.maven.apache.org/maven2"
+            ],
+            "description": "Ordered Maven repositories for sbt. Build-script resolvers are not evaluated."
+          },
+          "freshDeps.scala.scalaBinaryVersion": {
+            "type": "string",
+            "default": "",
+            "pattern": "^(?:[0-9]+(?:\\.[0-9]+)?)?$",
+            "description": "Scala binary version for cross-built libraries and sbt plugins. Empty infers literal library versions but skips plugin declarations."
+          },
+          "freshDeps.scala.sbtBinaryVersion": {
+            "type": "string",
+            "default": "",
+            "pattern": "^(?:[0-9]+\\.[0-9]+)?$",
+            "description": "sbt binary version used for plugin artifacts, for example 1.0. Both binary-version settings must be set to check addSbtPlugin declarations."
+          },
+          "freshDeps.scala.platformSuffix": {
+            "type": "string",
+            "default": "",
+            "pattern": "^(?:sjs[0-9]+|native[0-9]+(?:\\.[0-9]+)?)?$",
+            "description": "Platform binary suffix for sbt %%% dependencies, such as sjs1 or native0.5. Empty skips platform-dependent declarations."
+          },
+          "freshDeps.conda.enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Check Conda requirements from named, labelled, HTTPS, or defaults channels, and nested pip requirements."
+          },
+          "freshDeps.conda.subdir": {
+            "type": "string",
+            "default": "",
+            "pattern": "^(?:[a-z0-9]+-[a-z0-9_]+)?$",
+            "description": "Conda target subdirectory, for example linux-64 or osx-arm64. Empty uses the extension host platform. noarch packages are included."
+          },
+          "freshDeps.clojure.enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Check literal Maven dependencies in deps.edn and project.clj."
+          },
+          "freshDeps.clojure.repositories": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uri"
+            },
+            "default": [
+              "https://repo.maven.apache.org/maven2",
+              "https://repo.clojars.org"
+            ],
+            "description": "Default Maven repositories for Clojure. Literal :mvn/repos entries select project sources."
+          },
+          "freshDeps.npm.enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Check npm dependencies, tool pins, overrides, resolutions, and pnpm/Yarn catalogs."
+          },
+          "freshDeps.deno.enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Check npm and JSR imports in Deno configs, conventional import maps, and referenced local import maps."
+          },
+          "freshDeps.githubActions.enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Check action tags, verified SHA release comments, runtime setup inputs, literal matrices, and local version files."
+          },
+          "freshDeps.npm.registry": {
+            "type": "string",
+            "default": "",
+            "description": "npm registry URL. Leave empty to read it from .npmrc, falling back to https://registry.npmjs.org."
+          },
+          "freshDeps.npm.sections": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [
+              "dependencies",
+              "devDependencies",
+              "peerDependencies",
+              "optionalDependencies",
+              "volta",
+              "packageManager",
+              "overrides",
+              "resolutions"
+            ],
+            "description": "package.json sections to inspect, including volta, packageManager, overrides, and resolutions."
+          },
+          "freshDeps.go.enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Check Go modules and runtime directives in go.mod and go.work."
+          },
+          "freshDeps.go.proxy": {
+            "type": "string",
+            "default": "",
+            "description": "Go module proxy URL. Leave empty to read GOPROXY, falling back to https://proxy.golang.org."
+          },
+          "freshDeps.go.includeIndirect": {
+            "type": "boolean",
+            "default": false,
+            "description": "Also check modules marked as // indirect."
+          },
+          "freshDeps.go.checkMajorVersions": {
+            "type": "boolean",
+            "default": true,
+            "description": "Probe for newer major versions (/v2, /v3, ...) of Go modules."
+          },
+          "freshDeps.python.enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Check Python dependencies in project manifests, requirements files, and PEP 723 script metadata."
+          },
+          "freshDeps.python.indexUrl": {
+            "type": "string",
+            "default": "",
+            "description": "Python package index URL. Leave empty to read PIP_INDEX_URL, UV_INDEX_URL or pip's configuration, falling back to https://pypi.org/simple."
+          },
+          "freshDeps.python.includeBuildRequires": {
+            "type": "boolean",
+            "default": false,
+            "description": "Also check [build-system] requires in pyproject.toml."
+          },
+          "freshDeps.rust.enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Check Rust crates, inherited workspace requirements, and configured HTTPS sparse registries."
+          },
+          "freshDeps.dotnet.enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Check NuGet dependencies and dotnet-tools.json tool pins, plus global.json SDK pins using .NET release metadata."
+          },
+          "freshDeps.dotnet.indexUrl": {
+            "type": "string",
+            "default": "",
+            "description": "NuGet V3 service index URL. Leave empty to use https://api.nuget.org/v3/index.json."
+          },
+          "freshDeps.java.enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Check Maven dependencies, parents, plugins, and extensions in pom.xml."
+          },
+          "freshDeps.php.enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Check Composer dependencies using Packagist or explicit Composer repositories."
+          },
+          "freshDeps.dart.enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Check Dart and Flutter dependencies and overrides using public or explicit HTTPS hosted registries."
+          },
+          "freshDeps.gradle.enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Check Gradle catalogs, literal build/settings declarations, and wrapper versions."
+          },
+          "freshDeps.gradle.repositories": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uri"
+            },
+            "default": [
+              "https://repo.maven.apache.org/maven2",
+              "https://dl.google.com/dl/android/maven2",
+              "https://plugins.gradle.org/m2"
+            ],
+            "description": "Maven repositories for Gradle catalogs and build scripts, checked in order until a package is found. Build-script repository declarations are not read."
+          },
+          "freshDeps.java.repository": {
+            "type": "string",
+            "default": "",
+            "description": "Maven repository URL. Leave empty to use https://repo.maven.apache.org/maven2."
+          },
+          "freshDeps.ruby.enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Check Gemfile and source-resolvable gemspec dependencies using RubyGems-compatible sources."
+          },
+          "freshDeps.terraform.enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Check Terraform and OpenTofu providers and registry modules in *.tf and *.tofu files, and GitHub-hosted TFLint plugins in .tflint.hcl."
+          },
+          "freshDeps.terraform.defaultRegistry": {
+            "type": "string",
+            "enum": [
+              "",
+              "registry.terraform.io",
+              "registry.opentofu.org"
+            ],
+            "default": "",
+            "description": "Registry for provider and module sources without a host. Empty uses OpenTofu for *.tofu files and Terraform for *.tf files."
+          },
+          "freshDeps.elixir.enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Check Mix dependencies in mix.exs using public Hex."
+          }
         }
       }
-    }],
+    ],
     "colors": [
       {
         "id": "freshDeps.commentForeground",
@@ -435,7 +490,7 @@
       },
       {
         "id": "freshDeps.majorForeground",
-        "description": "Inline hint colour for major updates \u2014 the ones that need a range bump or a new import path.",
+        "description": "Inline hint colour for major updates — the ones that need a range bump or a new import path.",
         "defaults": {
           "dark": "editorWarning.foreground",
           "light": "editorWarning.foreground",
@@ -489,11 +544,13 @@
     "yaml": "^2.9.1"
   },
   "devDependencies": {
+    "@types/markdown-it": "^14.2.0",
     "@types/node": "^26.6.1",
     "@types/semver": "^7.8.0",
     "@types/vscode": "1.120.0",
     "@vscode/vsce": "^4.0.0",
     "esbuild": "^0.28.2",
+    "markdown-it": "^15.0.2",
     "typescript": "7.0.2"
   }
 }

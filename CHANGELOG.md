@@ -1,10 +1,17 @@
 # Changelog
 
+## 0.6.0
+
+- Add `Fresh Deps: Generate Outdated Dependencies Report` to scan supported manifests across all workspace folders and open a read-only Markdown preview. Include minor/patch and major updates, audit warnings, source links, and failed or skipped checks.
+- Use fresh registry lookups and existing ecosystem, registry, prerelease, lockfile, and audit settings for reports, even with inline hints disabled. Include hidden project manifests, exclude common dependency and build directories, and support cancellation.
+- Check npm `github:owner/repo#<SHA>` pins for updates on the repository's default branch. Support full SHAs and abbreviations of at least seven characters, show updates only when the pin is an ancestor of the branch tip, and include the full target SHA and a comparison link in hovers.
+
 ## 0.5.0
 
 - Extend version-availability checks to all supported ecosystems, Deno imports, and runtime declarations. Preserve withdrawn releases as existence evidence, validate Go pseudo-versions directly, and handle tag styles, runtime matrices, vcpkg baselines, and multiple package sources.
 - Check npm declarations for missing versions, unmatched ranges, and published versions ahead of `latest`. Show per-declaration lookup failures, availability hovers, and version-issue counts in the status bar.
 - Show the newest available update within the current major before the latest major upgrade, including exact pins. Keep separate in-range details in hovers and preserve Go module path hints.
+- Select the highest published stable npm version when the `latest` tag lags behind, using metadata from the selected release. Reserve ahead-of-latest availability warnings for prerelease versions.
 
 ## 0.4.0
 

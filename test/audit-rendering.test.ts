@@ -53,6 +53,21 @@ test('same-major hints take precedence over range steps and retain Go path upgra
   renderer.dispose();
 });
 
+test('GitHub commit hints show a short target SHA', () => {
+  const renderer = new DecorationRenderer();
+  const decorations = new Map<MockDecorationType, MockHint[]>();
+  const editor = {
+    options: { tabSize: 2 },
+    document: { uri: { fsPath: '/project/package.json' }, lineCount: 1,
+      lineAt: () => ({ text: 'plugin', range: { end: { line: 0, character: 6 } } }) },
+    setDecorations: (type: MockDecorationType, values: MockHint[]) => decorations.set(type, values),
+  } as unknown as TextEditor;
+  renderer.render(editor, [{ dep: { name: 'plugin', spec: 'a'.repeat(40), githubRepository: 'owner/repo', line: 0, section: 'dependencies' },
+    current: 'a'.repeat(40), latest: 'b'.repeat(40), kind: 'patch', inRange: false, githubDefaultBranch: 'main' }], 'npm', []);
+  assert.equal([...decorations.values()].flat()[0].renderOptions.after.contentText, '↑ bbbbbbb');
+  renderer.dispose();
+});
+
 test('availability warnings retain updates and ahead hints use informational color', () => {
   const renderer = new DecorationRenderer();
   const decorations = new Map<MockDecorationType, MockHint[]>();

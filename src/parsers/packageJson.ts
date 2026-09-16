@@ -159,11 +159,9 @@ export function parseJsonDependencies(
       const normalized = normalize(token.value, value.value);
       if (normalized) {
         deps.push({
-          name: normalized.name,
-          spec: normalized.spec,
+          ...normalized,
           line: value.line,
           section,
-          ...(normalized.alias ? { alias: normalized.alias } : {}),
         });
       }
     }

@@ -73,7 +73,7 @@ export function buildHover(
 
   const name = update.alternatePath ?? update.dep.name;
   const meta = { ...update.meta, ...details.meta };
-  md.appendMarkdown(`**${name}** - ${update.kind} update available\n\n`);
+  md.appendMarkdown(`**${name}** - ${update.githubDefaultBranch ? 'commit' : update.kind} update available\n\n`);
   if (meta.description) {
     md.appendMarkdown(`${escapeMarkdown(meta.description)}\n\n`);
   }
@@ -101,7 +101,10 @@ export function buildHover(
   } else md.appendMarkdown(
     `| Latest | ${row(displayVersion(update.latestRaw ?? update.latest), latestDate)} |\n`,
   );
-  if (update.satisfying && update.satisfying !== update.sameMajor) {
+  if (update.githubDefaultBranch) {
+    md.appendMarkdown(`| Default branch | ${escapeMarkdown(update.githubDefaultBranch)} |\n`);
+    md.appendMarkdown('| Reference | the pinned commit is an ancestor of the default branch tip |\n');
+  } else if (update.satisfying && update.satisfying !== update.sameMajor) {
     md.appendMarkdown(`| ${update.dep.actionRuntime ? 'Newest within major' : 'Newest in range'} | \`${displayVersion(update.satisfying)}\` |\n`);
   } else if (ecosystem === 'bazel') {
     md.appendMarkdown('| Module | a newer registry version is available; compatibility levels and module resolution are not evaluated |\n');
@@ -162,6 +165,7 @@ function links(
   repository: string | undefined,
 ): string {
   const parts: string[] = [];
+  if (update.dep.githubRepository) return `[Compare commits](https://github.com/${update.dep.githubRepository}/compare/${update.current}...${update.latest})`;
   if (update.dep.runtime) {
     const downloads = { go: 'https://go.dev/dl/', node: 'https://nodejs.org/en/download', python: 'https://www.python.org/downloads/',
       gradle: 'https://gradle.org/releases/', terraform: 'https://releases.hashicorp.com/terraform/', opentofu: 'https://github.com/opentofu/opentofu/releases', dotnet: 'https://dotnet.microsoft.com/download/dotnet' };

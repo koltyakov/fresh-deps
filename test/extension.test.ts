@@ -52,6 +52,7 @@ function setup(t: TestContext) {
   const mocks: Record<string, unknown> = {
     vscode,
     './config': { readSettings: () => settings },
+    './reportCommand': { registerReportCommand: noop },
     './analyzer': {
       ecosystemOf: () => 'npm',
       analyze: (request: { isCancelled(): boolean }) => new Promise<ReturnType<typeof result> | undefined>((resolve, reject) => pending.push({ request, resolve, reject })),

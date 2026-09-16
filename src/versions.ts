@@ -6,7 +6,7 @@ import type { DependencyRef, DependencyUpdate, RegistryVersions, ResolveOptions 
 
 const LOOSE = { loose: true } as const;
 
-/** Specs that never point at a registry version we can compare against. */
+/** Non-registry specs, skipped unless handled explicitly before this check. */
 const NON_REGISTRY_NPM_PREFIXES = [
   'file:', 'link:', 'portal:', 'workspace:', 'catalog:', 'patch:',
   'git:', 'git+', 'github:', 'bitbucket:', 'gitlab:',
@@ -17,6 +17,8 @@ const NON_REGISTRY_NPM_PREFIXES = [
 const UNPINNED_NPM_SPECS = ['', '*', 'x', 'latest', 'next', 'canary', 'beta', 'alpha'];
 
 export interface NormalizedSpec {
+  githubRepository?: string;
+  specRaw?: string;
   /** Name to query the registry with (differs from the manifest key for aliases). */
   name: string;
   /** Version range to compare against. */
@@ -25,11 +27,12 @@ export interface NormalizedSpec {
 }
 
 /**
- * Resolves what should actually be queried for an npm entry, unwrapping
- * `npm:` aliases and rejecting specs that do not resolve to a registry version.
+ * Resolves npm registry entries and GitHub commit pins, unwrapping `npm:` aliases.
  */
 export function normalizeNpmSpec(name: string, rawSpec: string): NormalizedSpec | undefined {
   const spec = rawSpec.trim();
+  const github = /^github:([\w-]+\/[\w.-]+)#([a-f\d]{7,40})$/i.exec(spec);
+  if (github) return { name, spec: github[2].toLowerCase(), specRaw: spec, githubRepository: github[1].replace(/\.git$/, '') };
 
   if (spec.startsWith('npm:')) {
     const target = spec.slice('npm:'.length);
@@ -37,7 +40,7 @@ export function normalizeNpmSpec(name: string, rawSpec: string): NormalizedSpec 
     // A leading @ belongs to the scope, not to the version separator.
     if (at > 0) {
       const aliased = normalizeNpmSpec(target.slice(0, at), target.slice(at + 1));
-      return aliased ? { ...aliased, alias: name } : undefined;
+      return aliased && !aliased.githubRepository ? { ...aliased, alias: name } : undefined;
     }
     return undefined;
   }
@@ -96,6 +99,12 @@ export function computeUpdate(
   versions: RegistryVersions,
   opts: ResolveOptions,
 ): DependencyUpdate | undefined {
+  if (dep.githubRepository) {
+    if (!versions.githubDefaultBranch || !versions.latest || !/^[a-f\d]{40}$/i.test(versions.latest)
+      || versions.latest.toLowerCase().startsWith(dep.spec.toLowerCase())) return undefined;
+    return { dep, current: dep.spec, latest: versions.latest, kind: 'patch', inRange: false,
+      githubDefaultBranch: versions.githubDefaultBranch, meta: versions.meta };
+  }
   if (dep.matrixVersions) return computeMatrixUpdate(dep, versions, opts);
   const { scheme } = opts;
 

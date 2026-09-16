@@ -42,6 +42,18 @@ const dates = {
   latestPublishedAt: '2026-09-02T12:00:00Z',
 };
 
+test('GitHub commit hover shows the default branch and comparison instead of npm range advice', () => {
+  const current = 'a'.repeat(40), latest = 'b'.repeat(40);
+  const value = buildHover({ dep: { name: 'plugin', spec: current, specRaw: `github:owner/repo#${current}`,
+    githubRepository: 'owner/repo', line: 0, section: 'dependencies' }, current, latest,
+    githubDefaultBranch: 'main', kind: 'patch', inRange: false }, 'npm').value;
+  assert.match(value, /commit update available/);
+  assert.match(value, /Default branch \| main/);
+  assert.ok(value.includes(latest));
+  assert.ok(value.includes(`https://github.com/owner/repo/compare/${current}...${latest}`));
+  assert.doesNotMatch(value, /range needs to be widened|npmjs.com|patch update/);
+});
+
 test('availability hovers identify the declaration, registry, and comparison target as plain text', () => {
   const md = buildStatusHover({ dep: update.dep, status: 'ahead', source: 'https://registry.example', latest: '1.0.0',
     message: 'Published <release> [link](command:unsafe)' });

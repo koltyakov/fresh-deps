@@ -53,18 +53,26 @@ test('same-major hints take precedence over range steps and retain Go path upgra
   renderer.dispose();
 });
 
-test('GitHub commit hints show a short target SHA', () => {
+test('GitHub commit hints show a short SHA without widening regular hint alignment', () => {
   const renderer = new DecorationRenderer();
   const decorations = new Map<MockDecorationType, MockHint[]>();
+  const lines = [`"plugin": "github:owner/repo#${'a'.repeat(40)}",`, '"typescript": "7.0.0",', '"vite": "8.0.0",'];
   const editor = {
     options: { tabSize: 2 },
-    document: { uri: { fsPath: '/project/package.json' }, lineCount: 1,
-      lineAt: () => ({ text: 'plugin', range: { end: { line: 0, character: 6 } } }) },
+    document: { uri: { fsPath: '/project/package.json' }, lineCount: lines.length,
+      lineAt: (line: number) => ({ text: lines[line], range: { end: { line, character: lines[line].length } } }) },
     setDecorations: (type: MockDecorationType, values: MockHint[]) => decorations.set(type, values),
   } as unknown as TextEditor;
   renderer.render(editor, [{ dep: { name: 'plugin', spec: 'a'.repeat(40), githubRepository: 'owner/repo', line: 0, section: 'dependencies' },
-    current: 'a'.repeat(40), latest: 'b'.repeat(40), kind: 'patch', inRange: false, githubDefaultBranch: 'main' }], 'npm', []);
-  assert.equal([...decorations.values()].flat()[0].renderOptions.after.contentText, '↑ bbbbbbb');
+    current: 'a'.repeat(40), latest: 'b'.repeat(40), kind: 'patch', inRange: false, githubDefaultBranch: 'main' },
+    ...['typescript', 'vite'].map((name, i): DependencyUpdate => ({ dep: { name, spec: `${7 + i}.0.0`, line: i + 1, section: 'dependencies' },
+      current: `${7 + i}.0.0`, latest: `${7 + i}.0.1`, kind: 'patch', inRange: false }))], 'npm', []);
+  const hints = [...decorations.values()].flat();
+  assert.equal(hints[0].renderOptions.after.contentText, '↑ bbbbbbb');
+  assert.equal(hints[0].renderOptions.before.margin, '0 -1ch 0 1ch');
+  assert.equal(hints[0].renderOptions.after.margin, '0 0 0 4ch');
+  assert.equal(hints[1].renderOptions.after.margin, '0 0 0 4ch');
+  assert.equal(hints[2].renderOptions.after.margin, `0 0 0 ${lines[1].length - lines[2].length + 4}ch`);
   renderer.dispose();
 });
 

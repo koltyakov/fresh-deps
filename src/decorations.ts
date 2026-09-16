@@ -104,21 +104,21 @@ export class DecorationRenderer implements vscode.Disposable {
 
     // Hints line up on a common column within each block, the way trailing
     // comments are aligned by hand. Only decorated lines count towards the
-    // column, so one long untouched dependency cannot push every hint right.
+    // column. GitHub commit pins stay beside their declarations without widening it.
     const lineWidth = new Map<number, number>();
     const columnOf = new Map<string, number>();
     for (const update of hints) {
       const text = lineTextAt(editor, update.dep.line);
       const width = visualWidth(text, tabSize);
       lineWidth.set(update.dep.line, width);
-      columnOf.set(update.dep.section, Math.max(columnOf.get(update.dep.section) ?? 0, width));
+      if (!update.dep.githubRepository) columnOf.set(update.dep.section, Math.max(columnOf.get(update.dep.section) ?? 0, width));
     }
 
     for (const update of hints) {
       // Anchored at the end of the line so the hint trails the whole declaration -
       // past the closing comma or an existing comment - and reads as one.
       const line = editor.document.lineAt(Math.min(update.dep.line, editor.document.lineCount - 1));
-      const padding = (columnOf.get(update.dep.section) ?? 0) - (lineWidth.get(update.dep.line) ?? 0);
+      const padding = update.dep.githubRepository ? 0 : (columnOf.get(update.dep.section) ?? 0) - (lineWidth.get(update.dep.line) ?? 0);
       const file = editor.document.uri.fsPath;
       const token = file.endsWith('pnpm-workspace.yaml') || file.endsWith('.yarnrc.yml') ? '#'
         : ecosystem === 'dotnet' && /(?:^|[/\\])(?:dotnet-tools|global)\.json$/.test(file) ? '//'

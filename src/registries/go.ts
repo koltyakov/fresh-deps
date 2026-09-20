@@ -62,7 +62,14 @@ export class GoClient {
     let misses = 0;
     for (let major = startMajor + 1; major <= startMajor + MAX_MAJOR_PROBES; major++) {
       const candidatePath = layout.pathFor(major);
-      const candidate = await this.latestOf(candidatePath);
+      let candidate: Resolved | undefined;
+      try {
+        candidate = await this.latestOf(candidatePath);
+      } catch {
+        // Major-path discovery is optional. Keep releases already found if a
+        // speculative request times out or the proxy fails.
+        break;
+      }
       if (!candidate) {
         if (++misses >= MAX_CONSECUTIVE_MISSES) {
           break;

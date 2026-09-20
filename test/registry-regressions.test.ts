@@ -49,6 +49,46 @@ test('Go retains the current module release when a newer major path exists', asy
   assert.equal(update?.alternatePath, 'example.com/module/v2');
 });
 
+for (const failure of ['timeout', 'server error', 'missing'] as const) {
+  test(`Go keeps the base release when optional major probes return ${failure}`, async (t) => {
+    goEnvironment(t, undefined, 'none');
+    t.mock.method(globalThis, 'fetch', async (url: string) => {
+      if (url.endsWith('/module/@latest')) return Response.json({ Version: 'v1.9.0' });
+      if (url.endsWith('/v2/@latest')) return new Response('', { status: 404 });
+      if (failure === 'timeout') throw new DOMException('Timed out', 'TimeoutError');
+      return new Response('', { status: failure === 'missing' ? 404 : 503 });
+    });
+    const versions = await goClient().fetchLatest('example.com/module');
+    assert.equal(versions.error, undefined);
+    assert.equal(versions.latestRaw, 'v1.9.0');
+    const options = { scheme: schemeFor('go'), includePrerelease: false, showSatisfyingUpdates: true };
+    const dep = { name: 'example.com/module', spec: 'v1.9.0', section: 'require', line: 0 };
+    assert.equal(computeUpdate(dep, versions, options), undefined);
+    assert.equal(computeUpdate({ ...dep, spec: 'v1.8.0' }, versions, options)?.latestRaw, 'v1.9.0');
+  });
+}
+
+test('Go keeps a discovered newer major when a later probe fails', async (t) => {
+  goEnvironment(t, undefined, 'none');
+  t.mock.method(globalThis, 'fetch', async (url: string) => {
+    if (url.endsWith('/module/@latest')) return Response.json({ Version: 'v1.9.0' });
+    if (url.endsWith('/v2/@latest')) return Response.json({ Version: 'v2.3.0' });
+    throw new DOMException('Timed out', 'TimeoutError');
+  });
+  const versions = await goClient().fetchLatest('example.com/module');
+  assert.equal(versions.latestRaw, 'v2.3.0');
+  assert.equal(versions.path, 'example.com/module/v2');
+  assert.equal(versions.availabilityLatest, '1.9.0');
+});
+
+test('Go still reports failures of the base module lookup', async (t) => {
+  goEnvironment(t, undefined, 'none');
+  t.mock.method(globalThis, 'fetch', async () => {
+    throw new DOMException('Timed out', 'TimeoutError');
+  });
+  await assert.rejects(goClient().fetchLatest('example.com/module'), { name: 'TimeoutError' });
+});
+
 test('Go privacy patterns use path-prefix glob semantics', () => {
   for (const [pattern, name, expected] of [
     ['corp.example', 'corp.example/team/module', true],

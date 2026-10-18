@@ -1,6 +1,6 @@
 ![Fresh Deps](https://raw.githubusercontent.com/koltyakov/fresh-deps/main/assets/banner.jpg)
 
-# Dependency Update Checker (Fresh Deps)
+# Dependency Update Checker
 
 See available dependency updates directly in your VS Code manifest files.
 

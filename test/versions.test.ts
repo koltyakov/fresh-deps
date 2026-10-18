@@ -1,13 +1,31 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import { computeUpdate, needsFullVersionList, normalizeNpmSpec, normalizePythonSpec } from '../src/versions';
+import {
+  computeUpdate,
+  needsFullVersionList,
+  normalizeNpmSpec,
+  normalizePythonSpec,
+} from '../src/versions';
 import { baselineOf, cargoRange, classifyUpdate, isPinned, schemeFor } from '../src/schemes';
 import type { DependencyRef } from '../src/types';
 
 const OPTS = { includePrerelease: false, showSatisfyingUpdates: true, scheme: schemeFor('npm') };
-const PY_OPTS = { includePrerelease: false, showSatisfyingUpdates: true, scheme: schemeFor('python') };
-const CARGO_OPTS = { includePrerelease: false, showSatisfyingUpdates: true, scheme: schemeFor('rust') };
-const dep = (spec: string, name = 'pkg'): DependencyRef => ({ name, spec, line: 0, section: 'dependencies' });
+const PY_OPTS = {
+  includePrerelease: false,
+  showSatisfyingUpdates: true,
+  scheme: schemeFor('python'),
+};
+const CARGO_OPTS = {
+  includePrerelease: false,
+  showSatisfyingUpdates: true,
+  scheme: schemeFor('rust'),
+};
+const dep = (spec: string, name = 'pkg'): DependencyRef => ({
+  name,
+  spec,
+  line: 0,
+  section: 'dependencies',
+});
 
 test('baselineOf takes the floor of a range', () => {
   assert.strictEqual(baselineOf('^1.2.3'), '1.2.3');
@@ -50,6 +68,44 @@ test('computeUpdate flags a major update as out of range', () => {
   assert.strictEqual(update.inRange, false);
 });
 
+test('major suppression selects same-major releases without reusing the major raw version or path', () => {
+  const options = { ...OPTS, ignoreMajorUpdates: true, showSatisfyingUpdates: false };
+  assert.equal(needsFullVersionList('24.22.0', '26.0.0', options), true);
+  assert.equal(needsFullVersionList('24.22.0', '24.23.0', options), false);
+  const versions = {
+    latest: '26.0.0',
+    latestRaw: 'v26.0.0',
+    path: 'pkg/v26',
+    all: ['24.22.0', '24.23.0', '24.24.0-beta.1', '25.0.0', '26.0.0'],
+  };
+  const update = computeUpdate(dep('24.22.0'), versions, options);
+  assert.equal(update?.latest, '24.23.0');
+  assert.equal(update?.kind, 'minor');
+  assert.equal(update?.latestRaw, undefined);
+  assert.equal(update?.alternatePath, undefined);
+  assert.equal(computeUpdate(dep('24.23.0'), versions, options), undefined);
+  assert.equal(computeUpdate(dep('24.22.0'), { latest: '26.0.0' }, options), undefined);
+  assert.equal(
+    computeUpdate(dep('24.22.0'), versions, { ...options, includePrerelease: true })?.latest,
+    '24.24.0-beta.1'
+  );
+  assert.equal(
+    computeUpdate({ ...dep('>=22.0.0'), resolvedVersion: '24.22.0' }, versions, options)?.latest,
+    '24.23.0'
+  );
+});
+
+test('major suppression preserves same-line Actions matrix updates', () => {
+  const matrix = { ...dep('24.0.0', 'node'), matrixVersions: ['22.0.0', '24.0.0'] };
+  const options = { ...OPTS, scheme: schemeFor('githubActions'), ignoreMajorUpdates: true };
+  const update = computeUpdate(
+    matrix,
+    { latest: '26.0.0', all: ['22.0.0', '22.1.0', '24.0.0', '24.2.0', '26.0.0'] },
+    options
+  );
+  assert.deepEqual(update?.matrixUpdate, { versions: ['22.1.0', '24.2.0'], newer: undefined });
+});
+
 test('computeUpdate reports the newest in-range version alongside the latest', () => {
   const versions = { latest: '5.0.0', all: ['4.17.0', '4.17.21', '4.18.0', '5.0.0'] };
   const update = computeUpdate(dep('^4.17.0'), versions, OPTS);
@@ -78,7 +134,7 @@ test('computeUpdate carries a moved Go import path', () => {
   const update = computeUpdate(
     { ...dep('v1.2.0', 'github.com/foo/bar'), section: 'require' },
     { latest: '3.1.0', path: 'github.com/foo/bar/v3' },
-    OPTS,
+    OPTS
   );
   assert.ok(update);
   assert.strictEqual(update.alternatePath, 'github.com/foo/bar/v3');
@@ -95,35 +151,91 @@ test('needsFullVersionList only asks for the full list when it can add something
 });
 
 test('same-major steps work across version schemes, including exact pins', () => {
-  for (const ecosystem of ['npm', 'go', 'rust', 'python', 'dotnet', 'java', 'php', 'dart', 'ruby',
-    'terraform', 'elixir', 'deno', 'githubActions', 'docker', 'helm', 'swift', 'conan', 'conda', 'bazel', 'vcpkg'] as const) {
+  for (const ecosystem of [
+    'npm',
+    'go',
+    'rust',
+    'python',
+    'dotnet',
+    'java',
+    'php',
+    'dart',
+    'ruby',
+    'terraform',
+    'elixir',
+    'deno',
+    'githubActions',
+    'docker',
+    'helm',
+    'swift',
+    'conan',
+    'conda',
+    'bazel',
+    'vcpkg',
+  ] as const) {
     const scheme = schemeFor(ecosystem);
     const spec = ecosystem === 'python' ? '==1.2.3' : ecosystem === 'rust' ? '=1.2.3' : '1.2.3';
     const versions = { latest: '3.0.0', all: ['1.2.3', '1.2.4', '1.9.0', '2.8.0', '3.0.0'] };
     const opts = { ...OPTS, scheme };
     assert.equal(computeUpdate(dep(spec), versions, opts)?.sameMajor, '1.9.0', ecosystem);
-    assert.equal(computeUpdate(dep(spec), versions, { ...opts, showSatisfyingUpdates: false })?.sameMajor, undefined);
+    const restricted = computeUpdate(dep(spec), versions, {
+      ...opts,
+      ignoreMajorUpdates: true,
+      showSatisfyingUpdates: false,
+    });
+    assert.equal(restricted?.latest, '1.9.0', ecosystem);
+    assert.equal(restricted?.kind, 'minor', ecosystem);
+    assert.equal(restricted?.sameMajor, undefined, ecosystem);
+    assert.equal(
+      computeUpdate(
+        dep(spec),
+        { latest: '2.0.0', all: ['1.2.3', '1.2.4', '2.0.0'] },
+        { ...opts, ignoreMajorUpdates: true }
+      )?.kind,
+      'patch',
+      ecosystem
+    );
+    assert.equal(
+      computeUpdate(dep(spec), versions, { ...opts, showSatisfyingUpdates: false })?.sameMajor,
+      undefined
+    );
   }
 });
 
 test('same-major steps preserve range information and avoid duplicate or stale suggestions', () => {
-  const versions = { latest: '3.0.0', all: ['invalid', '1.2.3', '1.2.4', '1.9.0', '1.10.0-beta.1', '3.0.0'] };
+  const versions = {
+    latest: '3.0.0',
+    all: ['invalid', '1.2.3', '1.2.4', '1.9.0', '1.10.0-beta.1', '3.0.0'],
+  };
   const update = computeUpdate(dep('~1.2.3'), versions, OPTS)!;
   assert.equal(update.sameMajor, '1.9.0');
   assert.equal(update.satisfying, '1.2.4');
   assert.equal(computeUpdate(dep('>=1.2.3'), versions, OPTS)?.sameMajor, '1.9.0');
   assert.equal(computeUpdate(dep('1.9.0'), versions, OPTS)?.sameMajor, undefined);
-  assert.equal(computeUpdate(dep('1.2.3'), { latest: '1.9.0', all: versions.all }, OPTS)?.sameMajor, undefined);
-  assert.equal(computeUpdate({ ...dep('^1.2.3'), resolvedVersion: '1.9.0' }, versions, OPTS)?.sameMajor, undefined);
-  assert.equal(computeUpdate(dep('1.2.3'), versions, { ...OPTS, includePrerelease: true })?.sameMajor, '1.10.0-beta.1');
+  assert.equal(
+    computeUpdate(dep('1.2.3'), { latest: '1.9.0', all: versions.all }, OPTS)?.sameMajor,
+    undefined
+  );
+  assert.equal(
+    computeUpdate({ ...dep('^1.2.3'), resolvedVersion: '1.9.0' }, versions, OPTS)?.sameMajor,
+    undefined
+  );
+  assert.equal(
+    computeUpdate(dep('1.2.3'), versions, { ...OPTS, includePrerelease: true })?.sameMajor,
+    '1.10.0-beta.1'
+  );
 });
 
 test('prerelease discovery needs the full list even for pins and in-range stable versions', () => {
   for (const spec of ['1.0.0', '^1.0.0']) {
     assert.ok(needsFullVersionList(spec, '1.0.0', { ...OPTS, includePrerelease: true }));
-    assert.ok(needsFullVersionList(spec, '1.0.0', {
-      ...OPTS, includePrerelease: true, showSatisfyingUpdates: false,
-    }));
+    assert.ok(
+      needsFullVersionList(spec, '1.0.0', {
+        ...OPTS,
+        includePrerelease: true,
+        showSatisfyingUpdates: false,
+      })
+    );
   }
 });
 
@@ -139,19 +251,35 @@ test('normalizePythonSpec keeps only specifiers with a floor to measure from', (
   assert.strictEqual(normalizePythonSpec('requests', '*'), undefined);
   assert.strictEqual(normalizePythonSpec('requests', '!=2.0'), undefined);
   assert.strictEqual(normalizePythonSpec('requests', '<3'), undefined);
-  assert.deepStrictEqual(normalizePythonSpec('requests', ' >=2.28,<3 '), { name: 'requests', spec: '>=2.28,<3' });
+  assert.deepStrictEqual(normalizePythonSpec('requests', ' >=2.28,<3 '), {
+    name: 'requests',
+    spec: '>=2.28,<3',
+  });
 });
 
 test('computeUpdate compares Python declarations by PEP 440 rules', () => {
-  const dep = (spec: string): DependencyRef => ({ name: 'requests', spec, line: 0, section: 'project.dependencies' });
+  const dep = (spec: string): DependencyRef => ({
+    name: 'requests',
+    spec,
+    line: 0,
+    section: 'project.dependencies',
+  });
 
-  const inRange = computeUpdate(dep('>=2.28'), { latest: '2.32.3', all: ['2.28.0', '2.32.3'] }, PY_OPTS);
+  const inRange = computeUpdate(
+    dep('>=2.28'),
+    { latest: '2.32.3', all: ['2.28.0', '2.32.3'] },
+    PY_OPTS
+  );
   assert.ok(inRange);
   assert.strictEqual(inRange.latest, '2.32.3');
   assert.strictEqual(inRange.kind, 'minor');
   assert.strictEqual(inRange.inRange, true);
 
-  const capped = computeUpdate(dep('>=2.28,<3'), { latest: '3.1.0', all: ['2.28.0', '2.32.3', '3.1.0'] }, PY_OPTS);
+  const capped = computeUpdate(
+    dep('>=2.28,<3'),
+    { latest: '3.1.0', all: ['2.28.0', '2.32.3', '3.1.0'] },
+    PY_OPTS
+  );
   assert.ok(capped);
   assert.strictEqual(capped.inRange, false);
   assert.strictEqual(capped.kind, 'major');
@@ -170,7 +298,10 @@ test('computeUpdate hides Python prereleases unless asked', () => {
   const dep = { name: 'pkg', spec: '>=1.0', line: 0, section: 'requirements' };
   const versions = { latest: '1.0', all: ['1.0', '2.0b1'] };
   assert.strictEqual(computeUpdate(dep, versions, PY_OPTS), undefined);
-  assert.strictEqual(computeUpdate(dep, versions, { ...PY_OPTS, includePrerelease: true })?.latest, '2.0b1');
+  assert.strictEqual(
+    computeUpdate(dep, versions, { ...PY_OPTS, includePrerelease: true })?.latest,
+    '2.0b1'
+  );
 });
 
 test('Cargo requirements use implicit caret semantics and comma intersections', () => {
@@ -179,10 +310,18 @@ test('Cargo requirements use implicit caret semantics and comma intersections', 
   assert.strictEqual(cargoRange('=1.2.3'), '1.2.3');
   assert.strictEqual(cargoRange('*'), undefined);
 
-  const compatible = computeUpdate(dep('1.2.3'), { latest: '1.9.0', all: ['1.2.3', '1.9.0'] }, CARGO_OPTS);
+  const compatible = computeUpdate(
+    dep('1.2.3'),
+    { latest: '1.9.0', all: ['1.2.3', '1.9.0'] },
+    CARGO_OPTS
+  );
   assert.ok(compatible);
   assert.strictEqual(compatible.inRange, true);
-  const major = computeUpdate(dep('1.2.3'), { latest: '2.0.0', all: ['1.9.0', '2.0.0'] }, CARGO_OPTS);
+  const major = computeUpdate(
+    dep('1.2.3'),
+    { latest: '2.0.0', all: ['1.9.0', '2.0.0'] },
+    CARGO_OPTS
+  );
   assert.ok(major);
   assert.strictEqual(major.inRange, false);
   assert.strictEqual(major.satisfying, '1.9.0');

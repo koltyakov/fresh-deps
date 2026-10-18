@@ -450,6 +450,7 @@ editing or installing. Auditing must be enabled. "No advisories reported" is not
   "freshDeps.exclude": ["**/fixtures/**", "examples/legacy/**"],
   "freshDeps.packageRules": [
     { "ecosystem": "npm", "name": "@types/*", "ignoreUpdates": true },
+    { "ecosystem": "npm", "name": "node", "section": "volta", "ignoreMajorUpdates": true },
     { "ecosystem": "python", "name": "django", "prereleasePolicy": "if-current-prerelease" }
   ],
   "freshDeps.prereleasePolicy": "inherit"
@@ -461,6 +462,10 @@ editing or installing. Auditing must be enabled. "No advisories reported" is not
   directory contents are neither scanned nor counted.
 - Rules match canonical names and effective ecosystems, not aliases. JSR uses `deno` without `jsr:`.
   Later rules override specified fields; `ignoreUpdates` retains availability/security warnings.
+- Optional `section` globs restrict a rule to manifest sections such as `volta` or `devDependencies`.
+  `ignoreMajorUpdates` works for libraries and runtimes across ecosystems. It keeps suggestions
+  within the current major, so a library on 1.x still receives minor and patch updates, and a Volta Node 24 pin still
+  receives 24.x updates without suggesting Node 25 or later. Availability checks and audits remain enabled.
 - Policies are `inherit`, `never`, `if-current-prerelease`, or `always`. Inherit keeps existing
   prerelease/stability settings; conditional mode uses the lockfile/declaration baseline. Source and
   ecosystem restrictions still apply. Settings can differ per workspace folder.

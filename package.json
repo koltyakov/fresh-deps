@@ -2,7 +2,7 @@
   "name": "fresh-deps",
   "displayName": "Dependency Update Checker",
   "description": "Highlights dependencies that have newer versions available, inline in your manifest files.",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "license": "MIT",
   "publisher": "koltyakov",
   "repository": {
@@ -188,7 +188,9 @@
               "properties": {
                 "name": { "type": "string", "description": "Glob matching the canonical registry package name." },
                 "ecosystem": { "type": "string", "enum": ["npm", "go", "python", "rust", "dotnet", "java", "php", "dart", "gradle", "ruby", "terraform", "elixir", "deno", "githubActions", "docker", "helm", "swift", "conan", "scala", "conda", "clojure", "ansible", "bazel", "vcpkg"] },
+                "section": { "type": "string", "description": "Optional glob matching the manifest section, for example volta or devDependencies." },
                 "ignoreUpdates": { "type": "boolean" },
+                "ignoreMajorUpdates": { "type": "boolean", "description": "Suppress newer major versions while retaining minor and patch update suggestions, availability checks and audits." },
                 "prereleasePolicy": { "type": "string", "enum": ["inherit", "never", "if-current-prerelease", "always"] }
               }
             }

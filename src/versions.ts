@@ -8,9 +8,19 @@ const LOOSE = { loose: true } as const;
 
 /** Non-registry specs, skipped unless handled explicitly before this check. */
 const NON_REGISTRY_NPM_PREFIXES = [
-  'file:', 'link:', 'portal:', 'workspace:', 'catalog:', 'patch:',
-  'git:', 'git+', 'github:', 'bitbucket:', 'gitlab:',
-  'http:', 'https:',
+  'file:',
+  'link:',
+  'portal:',
+  'workspace:',
+  'catalog:',
+  'patch:',
+  'git:',
+  'git+',
+  'github:',
+  'bitbucket:',
+  'gitlab:',
+  'http:',
+  'https:',
 ];
 
 /** Dist-tags and wildcards carry no floor to compare against. */
@@ -32,7 +42,13 @@ export interface NormalizedSpec {
 export function normalizeNpmSpec(name: string, rawSpec: string): NormalizedSpec | undefined {
   const spec = rawSpec.trim();
   const github = /^github:([\w-]+\/[\w.-]+)#([a-f\d]{7,40})$/i.exec(spec);
-  if (github) return { name, spec: github[2].toLowerCase(), specRaw: spec, githubRepository: github[1].replace(/\.git$/, '') };
+  if (github)
+    return {
+      name,
+      spec: github[2].toLowerCase(),
+      specRaw: spec,
+      githubRepository: github[1].replace(/\.git$/, ''),
+    };
 
   if (spec.startsWith('npm:')) {
     const target = spec.slice('npm:'.length);
@@ -59,7 +75,10 @@ export function normalizeNpmSpec(name: string, rawSpec: string): NormalizedSpec 
 
 /** Strips the Go `v` prefix and the `+incompatible` build tag. */
 export function normalizeGoVersion(version: string): string {
-  return version.trim().replace(/^v/, '').replace(/\+incompatible$/, '');
+  return version
+    .trim()
+    .replace(/^v/, '')
+    .replace(/\+incompatible$/, '');
 }
 
 /**
@@ -84,11 +103,13 @@ export function needsFullVersionList(spec: string, latest: string, opts: Resolve
   if (opts.includePrerelease) {
     return true;
   }
-  if (!opts.showSatisfyingUpdates) {
+  if (!opts.showSatisfyingUpdates && !opts.ignoreMajorUpdates) {
     return false;
   }
   const current = scheme.baseline(spec);
-  if (current && scheme.isVersion(latest) && scheme.classify(current, latest) === 'major') return true;
+  if (current && scheme.isVersion(latest) && scheme.classify(current, latest) === 'major')
+    return true;
+  if (!opts.showSatisfyingUpdates) return false;
   if (scheme.isPinned(spec) || !scheme.isRange(spec)) return false;
   return !scheme.satisfies(latest, spec, { includePrerelease: true });
 }
@@ -97,26 +118,56 @@ export function needsFullVersionList(spec: string, latest: string, opts: Resolve
 export function computeUpdate(
   dep: DependencyRef,
   versions: RegistryVersions,
-  opts: ResolveOptions,
+  opts: ResolveOptions
 ): DependencyUpdate | undefined {
   if (dep.githubRepository) {
-    if (!versions.githubDefaultBranch || !versions.latest || !/^[a-f\d]{40}$/i.test(versions.latest)
-      || versions.latest.toLowerCase().startsWith(dep.spec.toLowerCase())) return undefined;
-    return { dep, current: dep.spec, latest: versions.latest, kind: 'patch', inRange: false,
-      githubDefaultBranch: versions.githubDefaultBranch, meta: versions.meta };
+    if (
+      !versions.githubDefaultBranch ||
+      !versions.latest ||
+      !/^[a-f\d]{40}$/i.test(versions.latest) ||
+      versions.latest.toLowerCase().startsWith(dep.spec.toLowerCase())
+    )
+      return undefined;
+    return {
+      dep,
+      current: dep.spec,
+      latest: versions.latest,
+      kind: 'patch',
+      inRange: false,
+      githubDefaultBranch: versions.githubDefaultBranch,
+      meta: versions.meta,
+    };
   }
   if (dep.matrixVersions) return computeMatrixUpdate(dep, versions, opts);
   const { scheme } = opts;
 
-  const current = versions.baseline && scheme.isVersion(versions.baseline) ? versions.baseline : dep.resolvedVersion && scheme.isVersion(dep.resolvedVersion)
-    && scheme.satisfies(dep.resolvedVersion, dep.spec, { includePrerelease: true }) ? dep.resolvedVersion : scheme.baseline(dep.spec);
+  const current =
+    versions.baseline && scheme.isVersion(versions.baseline)
+      ? versions.baseline
+      : dep.resolvedVersion &&
+          scheme.isVersion(dep.resolvedVersion) &&
+          scheme.satisfies(dep.resolvedVersion, dep.spec, { includePrerelease: true })
+        ? dep.resolvedVersion
+        : scheme.baseline(dep.spec);
   if (!current) {
     return undefined;
   }
 
-  const latest = pickLatest(versions, opts);
-  const revisionChanged = !!dep.revision && !!versions.revision && dep.revision !== versions.revision;
-  if (!latest || scheme.compare(latest, current) < 0 || (scheme.compare(latest, current) === 0 && !revisionChanged)) {
+  const latest = opts.ignoreMajorUpdates
+    ? scheme.max(
+        [...(versions.all ?? []), ...(versions.latest ? [versions.latest] : [])].filter(
+          (version) => scheme.isVersion(version) && scheme.classify(current, version) !== 'major'
+        ),
+        opts
+      )
+    : pickLatest(versions, opts);
+  const revisionChanged =
+    !!dep.revision && !!versions.revision && dep.revision !== versions.revision;
+  if (
+    !latest ||
+    scheme.compare(latest, current) < 0 ||
+    (scheme.compare(latest, current) === 0 && !revisionChanged)
+  ) {
     return undefined;
   }
 
@@ -125,19 +176,25 @@ export function computeUpdate(
     return undefined;
   }
 
-  const inRange = dep.spec === '@baseline' && !!versions.baseline ? true : scheme.isRange(dep.spec)
-    ? scheme.satisfies(latest, dep.spec, { includePrerelease: true })
-    : scheme.compare(latest, current) === 0;
+  const inRange =
+    dep.spec === '@baseline' && !!versions.baseline
+      ? true
+      : scheme.isRange(dep.spec)
+        ? scheme.satisfies(latest, dep.spec, { includePrerelease: true })
+        : scheme.compare(latest, current) === 0;
 
   const update: DependencyUpdate = {
     dep,
     current,
     latest,
-    kind: revisionChanged && scheme.compare(current, latest) === 0 ? 'patch' : scheme.classify(current, latest),
+    kind:
+      revisionChanged && scheme.compare(current, latest) === 0
+        ? 'patch'
+        : scheme.classify(current, latest),
     inRange,
   };
 
-  if (versions.latestRaw) {
+  if (versions.latestRaw && latest === versions.latest) {
     update.latestRaw = versions.latestRaw;
   }
 
@@ -145,13 +202,17 @@ export function computeUpdate(
     update.meta = versions.meta;
   }
 
-  if (versions.path && versions.path !== dep.name) {
+  if (versions.path && versions.path !== dep.name && latest === versions.latest) {
     update.alternatePath = versions.path;
   }
 
   if (opts.showSatisfyingUpdates && versions.all?.length && update.kind === 'major') {
-    const best = scheme.max(versions.all.filter((version) => scheme.isVersion(version)
-      && scheme.classify(current, version) !== 'major'), opts);
+    const best = scheme.max(
+      versions.all.filter(
+        (version) => scheme.isVersion(version) && scheme.classify(current, version) !== 'major'
+      ),
+      opts
+    );
     if (best && scheme.compare(best, current) > 0 && scheme.compare(best, latest) < 0) {
       update.sameMajor = best;
     }
@@ -159,12 +220,22 @@ export function computeUpdate(
 
   if (dep.actionRuntime && opts.showSatisfyingUpdates && versions.all?.length) {
     const prefix = actionVersion(current)!.split('.')[0] + '.';
-    const best = scheme.max(versions.all.filter((version) => actionVersion(version)?.startsWith(prefix)), opts);
+    const best = scheme.max(
+      versions.all.filter((version) => actionVersion(version)?.startsWith(prefix)),
+      opts
+    );
     if (best && scheme.compare(best, current) > 0 && scheme.compare(best, latest) < 0) {
       update.satisfying = best;
     }
-  } else if (!inRange && opts.showSatisfyingUpdates && versions.all?.length && !scheme.isPinned(dep.spec)) {
-    const best = scheme.maxSatisfying(versions.all, dep.spec, { includePrerelease: opts.includePrerelease });
+  } else if (
+    !inRange &&
+    opts.showSatisfyingUpdates &&
+    versions.all?.length &&
+    !scheme.isPinned(dep.spec)
+  ) {
+    const best = scheme.maxSatisfying(versions.all, dep.spec, {
+      includePrerelease: opts.includePrerelease,
+    });
     if (best && scheme.compare(best, current) > 0) {
       update.satisfying = best;
     }
@@ -173,11 +244,16 @@ export function computeUpdate(
   return update;
 }
 
-function computeMatrixUpdate(dep: DependencyRef, versions: RegistryVersions, opts: ResolveOptions): DependencyUpdate | undefined {
+function computeMatrixUpdate(
+  dep: DependencyRef,
+  versions: RegistryVersions,
+  opts: ResolveOptions
+): DependencyUpdate | undefined {
   const selectors = dep.matrixVersions!;
   const scheme = githubActionsScheme;
-  const releases = (versions.all ?? []).filter((version) => actionVersion(version)
-    && (opts.includePrerelease || !scheme.isPrerelease(version)));
+  const releases = (versions.all ?? []).filter(
+    (version) => actionVersion(version) && (opts.includePrerelease || !scheme.isPrerelease(version))
+  );
   const updated = selectors.map((spec) => {
     // Advance within the declared major while retaining the selector's precision.
     const prefix = actionVersion(spec)!.split('.')[0] + '.';
@@ -188,13 +264,28 @@ function computeMatrixUpdate(dep: DependencyRef, versions: RegistryVersions, opt
   const latest = scheme.max(actionRuntimeVersions(releases, dep.spec).all ?? [], opts);
   const current = dep.spec;
   const releaseLine = (version: string) => actionVersion(version)!.split('.')[0];
-  const newer = latest && scheme.compare(latest, current) > 0 && releaseLine(latest) !== releaseLine(current) ? latest : undefined;
-  const changes = updated.flatMap((version, i) => version !== selectors[i] ? [{ current: selectors[i], latest: version }] : []);
+  const newer =
+    !opts.ignoreMajorUpdates &&
+    latest &&
+    scheme.compare(latest, current) > 0 &&
+    releaseLine(latest) !== releaseLine(current)
+      ? latest
+      : undefined;
+  const changes = updated.flatMap((version, i) =>
+    version !== selectors[i] ? [{ current: selectors[i], latest: version }] : []
+  );
   if (!newer && !changes.length) return undefined;
-  const comparison = newer ? { current, latest: newer } : changes.reduce((a, b) =>
-    scheme.classify(b.current, b.latest) === 'minor' ? b : a);
-  return { dep, ...comparison, kind: scheme.classify(comparison.current, comparison.latest), inRange: false,
-    ...(versions.meta ? { meta: versions.meta } : {}), matrixUpdate: { versions: updated, newer } };
+  const comparison = newer
+    ? { current, latest: newer }
+    : changes.reduce((a, b) => (scheme.classify(b.current, b.latest) === 'minor' ? b : a));
+  return {
+    dep,
+    ...comparison,
+    kind: scheme.classify(comparison.current, comparison.latest),
+    inRange: false,
+    ...(versions.meta ? { meta: versions.meta } : {}),
+    matrixUpdate: { versions: updated, newer },
+  };
 }
 
 function pickLatest(versions: RegistryVersions, opts: ResolveOptions): string | undefined {

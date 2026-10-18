@@ -1,8 +1,30 @@
 import type { VersionScheme } from './schemes';
 
-export type Ecosystem = 'npm' | 'go' | 'python' | 'rust' | 'dotnet' | 'java' | 'php' | 'dart' | 'gradle'
-  | 'ruby' | 'terraform' | 'elixir' | 'deno' | 'githubActions'
-  | 'docker' | 'helm' | 'swift' | 'conan' | 'scala' | 'conda' | 'clojure' | 'ansible' | 'bazel' | 'vcpkg';
+export type Ecosystem =
+  | 'npm'
+  | 'go'
+  | 'python'
+  | 'rust'
+  | 'dotnet'
+  | 'java'
+  | 'php'
+  | 'dart'
+  | 'gradle'
+  | 'ruby'
+  | 'terraform'
+  | 'elixir'
+  | 'deno'
+  | 'githubActions'
+  | 'docker'
+  | 'helm'
+  | 'swift'
+  | 'conan'
+  | 'scala'
+  | 'conda'
+  | 'clojure'
+  | 'ansible'
+  | 'bazel'
+  | 'vcpkg';
 
 /** A dependency declaration found in a manifest, with its position in the document. */
 export interface DependencyRef {
@@ -108,7 +130,14 @@ export type UpdateKind = 'major' | 'minor' | 'patch' | 'prerelease';
 
 export interface DependencyStatus {
   dep: DependencyRef;
-  status: 'available' | 'ahead' | 'version-missing' | 'range-missing' | 'package-missing' | 'unknown' | 'failed';
+  status:
+    | 'available'
+    | 'ahead'
+    | 'version-missing'
+    | 'range-missing'
+    | 'package-missing'
+    | 'unknown'
+    | 'failed';
   source?: string;
   latest?: string;
   message: string;
@@ -164,6 +193,7 @@ export interface DependencyUpdate {
 export interface ResolveOptions {
   includePrerelease: boolean;
   showSatisfyingUpdates: boolean;
+  ignoreMajorUpdates?: boolean;
   /** Version arithmetic of the ecosystem the declaration came from. */
   scheme: VersionScheme;
 }

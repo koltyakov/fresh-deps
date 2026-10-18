@@ -7,6 +7,7 @@ import { VersionCache } from '../src/cache';
 import { AuditCache } from '../src/audit';
 import { NpmClient } from '../src/registries/npm';
 import { createSettings } from './settings';
+import { createReportSnapshot } from '../src/reportSnapshot';
 
 const dep = { name: '@types/node', spec: '^1.0.0', section: 'dependencies', line: 0 };
 
@@ -16,42 +17,279 @@ test('exclusions use the same glob semantics for manifests and pruned directorie
     assert.equal(exclusionFor('/repo/fixtures', [pattern], '/repo', true), pattern);
   }
   assert.equal(exclusionFor('/repo/.test/package.json', ['**/.test/**'], '/repo'), '**/.test/**');
-  assert.equal(exclusionFor('C:\\repo\\fixtures\\package.json', ['**/fixtures/**'], 'C:\\repo'), '**/fixtures/**');
+  assert.equal(
+    exclusionFor('C:\\repo\\fixtures\\package.json', ['**/fixtures/**'], 'C:\\repo'),
+    '**/fixtures/**'
+  );
   assert.equal(exclusionFor('/other/package.json', ['**'], '/repo'), undefined);
   assert.equal(exclusionFor('/repo/package.json', [], '/repo'), undefined);
 });
 
 test('ordered package policies match canonical names, effective ecosystems and aliases', () => {
-  const settings = createSettings({ packageRules: [
-    { name: '@types/*', ignoreUpdates: true, prereleasePolicy: 'never' },
-    { name: '@types/node', ecosystem: 'npm', ignoreUpdates: false },
-    { name: 'some-package', ecosystem: 'python', ignoreUpdates: true },
-    { name: 'react', ecosystem: 'npm', ignoreUpdates: true },
-  ] });
-  assert.deepEqual(packagePolicy(dep, 'npm', settings), { ignoreUpdates: false, prereleasePolicy: 'never' });
-  assert.equal(packagePolicy({ ...dep, name: '@types/react', alias: 'renamed' }, 'npm', settings).ignoreUpdates, true);
-  assert.equal(packagePolicy({ ...dep, name: 'Some_Package', ecosystem: 'python' }, 'conda', settings).ignoreUpdates, true);
-  assert.equal(packagePolicy({ ...dep, name: 'Some_Package' }, 'conda', settings).ignoreUpdates, false);
+  const settings = createSettings({
+    packageRules: [
+      { name: '@types/*', ignoreUpdates: true, prereleasePolicy: 'never' },
+      { name: '@types/node', ecosystem: 'npm', ignoreUpdates: false },
+      { name: 'some-package', ecosystem: 'python', ignoreUpdates: true },
+      { name: 'react', ecosystem: 'npm', ignoreUpdates: true },
+    ],
+  });
+  assert.deepEqual(packagePolicy(dep, 'npm', settings), {
+    ignoreUpdates: false,
+    ignoreMajorUpdates: false,
+    prereleasePolicy: 'never',
+  });
+  assert.equal(
+    packagePolicy({ ...dep, name: '@types/react', alias: 'renamed' }, 'npm', settings)
+      .ignoreUpdates,
+    true
+  );
+  assert.equal(
+    packagePolicy({ ...dep, name: 'Some_Package', ecosystem: 'python' }, 'conda', settings)
+      .ignoreUpdates,
+    true
+  );
+  assert.equal(
+    packagePolicy({ ...dep, name: 'Some_Package' }, 'conda', settings).ignoreUpdates,
+    false
+  );
   assert.equal(packagePolicy({ ...dep, name: 'npm:react' }, 'deno', settings).ignoreUpdates, true);
 });
+
+test('section-scoped major suppression follows ordered rule overrides', () => {
+  const settings = createSettings({
+    packageRules: [
+      { name: 'node', ecosystem: 'npm', section: 'volta', ignoreMajorUpdates: true },
+      { name: 'node', ecosystem: 'npm', section: 'dev*', ignoreMajorUpdates: true },
+      { name: 'node', section: 'devDependencies', ignoreMajorUpdates: false },
+    ],
+  });
+  const node = { ...dep, name: 'node' };
+  assert.equal(
+    packagePolicy({ ...node, section: 'volta' }, 'npm', settings).ignoreMajorUpdates,
+    true
+  );
+  assert.equal(packagePolicy(node, 'npm', settings).ignoreMajorUpdates, false);
+  assert.equal(
+    packagePolicy({ ...node, section: 'devDependencies' }, 'npm', settings).ignoreMajorUpdates,
+    false
+  );
+  assert.equal(
+    packagePolicy({ ...node, section: 'volta' }, 'python', settings).ignoreMajorUpdates,
+    false
+  );
+});
+
+for (const newer of ['24.22.1', '24.23.0', undefined]) {
+  test(`Volta major suppression ${newer ? `suggests ${newer}` : 'stays quiet when current'} and retains warnings`, async (t) => {
+    const all = ['24.22.0', ...(newer ? [newer] : []), '25.0.0', '26.0.0'];
+    t.mock.method(NpmClient.prototype, 'fetchLatest', async () => ({
+      latest: '26.0.0',
+      published: all,
+      allComplete: true,
+    }));
+    const history = t.mock.method(NpmClient.prototype, 'fetchAll', async () => ({
+      latest: '26.0.0',
+      all,
+      allComplete: true,
+    }));
+    t.mock.method(NpmClient.prototype, 'fetchAudit', async () => ({
+      status: 'checked' as const,
+      advisories: [{ id: 'TEST', title: 'Vulnerable' }],
+    }));
+    const request = {
+      fsPath: '/repo/package.json',
+      text: JSON.stringify(
+        {
+          volta: { node: '24.22.0' },
+          dependencies: { node: '24.22.0' },
+          devDependencies: { '@types/vscode': '1.107.0' },
+        },
+        null,
+        2
+      ),
+      settings: createSettings({
+        showSatisfyingUpdates: false,
+        auditEnabled: true,
+        packageRules: [
+          { name: 'node', ecosystem: 'npm', section: 'volta', ignoreMajorUpdates: true },
+          { name: '@types/vscode', ecosystem: 'npm', ignoreUpdates: true },
+        ],
+      }),
+      cache: new VersionCache(60_000),
+      auditCache: new AuditCache(),
+      allowNetwork: true,
+    };
+    const result = await analyze(request);
+    assert.ok(result);
+    const volta = result.updates.find((update) => update.dep.section === 'volta');
+    assert.equal(volta?.latest, newer);
+    assert.equal(volta?.sameMajor, undefined);
+    assert.equal(volta?.satisfying, undefined);
+    assert.equal(
+      result.updates.find((update) => update.dep.section === 'dependencies')?.latest,
+      '26.0.0'
+    );
+    assert.equal(
+      result.updates.some((update) => update.dep.name === '@types/vscode'),
+      false
+    );
+    assert.equal(history.mock.callCount(), 1);
+    assert.equal(
+      result.statuses?.find((status) => status.dep.section === 'volta')?.status,
+      'available'
+    );
+    assert.equal(
+      result.audits.find((audit) => audit.dep.section === 'volta')?.result.status,
+      'checked'
+    );
+    assert.equal(result.incomplete, false);
+    const snapshot = createReportSnapshot(
+      [{ path: 'package.json', uri: 'file:///repo/package.json', result }],
+      ['repo']
+    );
+    assert.equal(
+      snapshot.files[0].declarations.find((entry) => entry.section === 'volta')?.policy
+        ?.ignoreMajorUpdates,
+      true
+    );
+    assert.ok(
+      snapshot.files[0].issues.some((issue) =>
+        issue.includes('major update suggestions suppressed')
+      )
+    );
+    const cached = await analyze({ ...request, allowNetwork: false });
+    assert.deepEqual(cached?.updates, result.updates);
+    const unrestricted = await analyze({
+      ...request,
+      allowNetwork: false,
+      settings: createSettings({ showSatisfyingUpdates: false }),
+    });
+    assert.equal(
+      unrestricted?.updates.find((update) => update.dep.section === 'volta')?.latest,
+      '26.0.0'
+    );
+    assert.equal(history.mock.callCount(), 1);
+  });
+}
+
+test('cache-only major suppression requests history without network or a major suggestion', async (t) => {
+  t.mock.method(globalThis, 'fetch', () => assert.fail('Typing made a request'));
+  const settings = createSettings({
+    showSatisfyingUpdates: false,
+    packageRules: [{ name: 'node', section: 'volta', ignoreMajorUpdates: true }],
+  });
+  const cache = new VersionCache(60_000);
+  cache.set(`npm|${settings.npm.registry}|node`, {
+    latest: '26.0.0',
+    published: ['24.22.0', '26.0.0'],
+    allComplete: true,
+  });
+  const result = await analyze({
+    fsPath: '/repo/package.json',
+    text: '{"volta":{"node":"24.22.0"}}',
+    settings,
+    cache,
+    auditCache: new AuditCache(),
+    allowNetwork: false,
+  });
+  assert.equal(result?.incomplete, true);
+  assert.equal(result?.updates.length, 0);
+});
+
+for (const fixture of [
+  {
+    fsPath: '/repo/package.json',
+    text: '{"dependencies":{"library":"^1.0.0"}}',
+    key: 'npm|https://registry.npmjs.org|library',
+    ecosystem: 'npm' as const,
+  },
+  {
+    fsPath: '/repo/requirements.txt',
+    text: 'library>=1.0.0',
+    key: 'python|https://pypi.org/simple|library',
+    ecosystem: 'python' as const,
+  },
+]) {
+  test(`${fixture.ecosystem} libraries support major suppression without a section filter`, async (t) => {
+    t.mock.method(globalThis, 'fetch', () => assert.fail('Cached library made a request'));
+    const cache = new VersionCache(60_000);
+    cache.set(fixture.key, {
+      latest: '2.0.0',
+      all: ['1.0.0', '1.5.0', '2.0.0'],
+      allComplete: true,
+    });
+    const result = await analyze({
+      ...fixture,
+      settings: createSettings({ packageRules: [{ name: 'library', ignoreMajorUpdates: true }] }),
+      cache,
+      auditCache: new AuditCache(),
+      allowNetwork: false,
+    });
+    assert.equal(result?.incomplete, false);
+    assert.equal(result?.updates[0]?.latest, '1.5.0');
+    assert.equal(result?.updates[0]?.kind, 'minor');
+  });
+}
 
 test('prerelease policies preserve legacy defaults and use the validated baseline', () => {
   assert.equal(allowsPrerelease(dep, semverScheme, 'inherit', false), false);
   assert.equal(allowsPrerelease(dep, semverScheme, 'inherit', true), true);
   assert.equal(allowsPrerelease(dep, semverScheme, 'if-current-prerelease', true), false);
-  assert.equal(allowsPrerelease({ ...dep, spec: '^2.0.0-beta.1' }, semverScheme, 'if-current-prerelease', false), true);
-  assert.equal(allowsPrerelease({ ...dep, spec: '>=1.0', resolvedVersion: '2.0rc1' }, pep440Scheme, 'if-current-prerelease', false), true);
-  assert.equal(allowsPrerelease({ ...dep, minimumStability: 'beta' }, semverScheme, 'inherit', false), true);
-  assert.equal(allowsPrerelease({ ...dep, minimumStability: 'beta' }, semverScheme, 'never', true), false);
-  assert.equal(allowsPrerelease({ ...dep, allowPrerelease: false }, semverScheme, 'always', true), false);
+  assert.equal(
+    allowsPrerelease(
+      { ...dep, spec: '^2.0.0-beta.1' },
+      semverScheme,
+      'if-current-prerelease',
+      false
+    ),
+    true
+  );
+  assert.equal(
+    allowsPrerelease(
+      { ...dep, spec: '>=1.0', resolvedVersion: '2.0rc1' },
+      pep440Scheme,
+      'if-current-prerelease',
+      false
+    ),
+    true
+  );
+  assert.equal(
+    allowsPrerelease({ ...dep, minimumStability: 'beta' }, semverScheme, 'inherit', false),
+    true
+  );
+  assert.equal(
+    allowsPrerelease({ ...dep, minimumStability: 'beta' }, semverScheme, 'never', true),
+    false
+  );
+  assert.equal(
+    allowsPrerelease({ ...dep, allowPrerelease: false }, semverScheme, 'always', true),
+    false
+  );
 });
 
 test('suppression retains availability and security evidence without update suggestions', async (t) => {
-  t.mock.method(NpmClient.prototype, 'fetchLatest', async () => ({ latest: '2.0.0', all: ['1.0.0', '2.0.0'], allComplete: true }));
-  t.mock.method(NpmClient.prototype, 'fetchAudit', async () => ({ status: 'checked' as const, advisories: [{ id: 'TEST', title: 'Vulnerable' }] }));
-  const result = await analyze({ fsPath: '/repo/package.json', workspaceRoot: '/repo', text: '{"dependencies":{"example":"1.0.0"}}',
-    settings: createSettings({ auditEnabled: true, packageRules: [{ name: 'example', ignoreUpdates: true }] }),
-    cache: new VersionCache(60_000), auditCache: new AuditCache(), allowNetwork: true });
+  t.mock.method(NpmClient.prototype, 'fetchLatest', async () => ({
+    latest: '2.0.0',
+    all: ['1.0.0', '2.0.0'],
+    allComplete: true,
+  }));
+  t.mock.method(NpmClient.prototype, 'fetchAudit', async () => ({
+    status: 'checked' as const,
+    advisories: [{ id: 'TEST', title: 'Vulnerable' }],
+  }));
+  const result = await analyze({
+    fsPath: '/repo/package.json',
+    workspaceRoot: '/repo',
+    text: '{"dependencies":{"example":"1.0.0"}}',
+    settings: createSettings({
+      auditEnabled: true,
+      packageRules: [{ name: 'example', ignoreUpdates: true }],
+    }),
+    cache: new VersionCache(60_000),
+    auditCache: new AuditCache(),
+    allowNetwork: true,
+  });
   assert.equal(result?.updates.length, 0);
   assert.equal(result?.statuses?.[0].status, 'available');
   assert.equal(result?.audits[0].result.status, 'checked');
@@ -61,20 +299,39 @@ test('suppression retains availability and security evidence without update sugg
 
 test('excluded manifests never look up versions or audits', async (t) => {
   t.mock.method(globalThis, 'fetch', () => assert.fail('Excluded file made a request'));
-  const result = await analyze({ fsPath: '/repo/fixtures/package.json', workspaceRoot: '/repo', text: '{"dependencies":{"example":"1.0.0"}}',
-    settings: createSettings({ auditEnabled: true, exclude: ['fixtures'] }), cache: new VersionCache(60_000), auditCache: new AuditCache(), allowNetwork: true });
+  const result = await analyze({
+    fsPath: '/repo/fixtures/package.json',
+    workspaceRoot: '/repo',
+    text: '{"dependencies":{"example":"1.0.0"}}',
+    settings: createSettings({ auditEnabled: true, exclude: ['fixtures'] }),
+    cache: new VersionCache(60_000),
+    auditCache: new AuditCache(),
+    allowNetwork: true,
+  });
   assert.equal(result?.excluded, 'fixtures');
   assert.equal(result?.declarations, 0);
 });
 
 for (const [policy, spec, expected] of [
-  ['if-current-prerelease', '1.0.0', '2.0.0'], ['if-current-prerelease', '2.0.0-beta.1', '3.0.0-beta.1'],
-  ['always', '1.0.0', '3.0.0-beta.1'], ['never', '2.0.0-beta.1', '2.0.0'],
+  ['if-current-prerelease', '1.0.0', '2.0.0'],
+  ['if-current-prerelease', '2.0.0-beta.1', '3.0.0-beta.1'],
+  ['always', '1.0.0', '3.0.0-beta.1'],
+  ['never', '2.0.0-beta.1', '2.0.0'],
 ] as const) {
   test(`${policy} selects ${expected} for ${spec} without changing existence evidence`, async (t) => {
-    t.mock.method(NpmClient.prototype, 'fetchLatest', async () => ({ latest: '2.0.0', all: ['1.0.0', '2.0.0-beta.1', '2.0.0', '3.0.0-beta.1'], allComplete: true }));
-    const result = await analyze({ fsPath: '/repo/package.json', text: JSON.stringify({ dependencies: { example: spec } }),
-      settings: createSettings({ prereleasePolicy: policy }), cache: new VersionCache(60_000), auditCache: new AuditCache(), allowNetwork: true });
+    t.mock.method(NpmClient.prototype, 'fetchLatest', async () => ({
+      latest: '2.0.0',
+      all: ['1.0.0', '2.0.0-beta.1', '2.0.0', '3.0.0-beta.1'],
+      allComplete: true,
+    }));
+    const result = await analyze({
+      fsPath: '/repo/package.json',
+      text: JSON.stringify({ dependencies: { example: spec } }),
+      settings: createSettings({ prereleasePolicy: policy }),
+      cache: new VersionCache(60_000),
+      auditCache: new AuditCache(),
+      allowNetwork: true,
+    });
     assert.equal(result?.updates[0].latest, expected);
     assert.equal(result?.statuses?.[0].status, 'available');
   });
@@ -82,19 +339,43 @@ for (const [policy, spec, expected] of [
 
 test('cache-only typing never fetches prerelease history', async (t) => {
   t.mock.method(globalThis, 'fetch', () => assert.fail('Typing made a request'));
-  const result = await analyze({ fsPath: '/repo/package.json', text: '{"dependencies":{"example":"1.0.0"}}',
-    settings: createSettings({ prereleasePolicy: 'always' }), cache: new VersionCache(60_000), auditCache: new AuditCache(), allowNetwork: false });
+  const result = await analyze({
+    fsPath: '/repo/package.json',
+    text: '{"dependencies":{"example":"1.0.0"}}',
+    settings: createSettings({ prereleasePolicy: 'always' }),
+    cache: new VersionCache(60_000),
+    auditCache: new AuditCache(),
+    allowNetwork: false,
+  });
   assert.equal(result?.incomplete, true);
 });
 
 test('never fetches stable alternatives without discarding cached prerelease evidence', async (t) => {
-  t.mock.method(NpmClient.prototype, 'fetchLatest', async () => ({ latest: '2.0.0-beta.1', published: ['1.0.0', '2.0.0-beta.1'], allComplete: true }));
-  const history = t.mock.method(NpmClient.prototype, 'fetchAll', async () => ({ latest: '2.0.0-beta.1', all: ['1.0.0', '1.9.0', '2.0.0-beta.1'], allComplete: true }));
-  const request = { fsPath: '/repo/package.json', text: '{"dependencies":{"example":"1.0.0"}}',
-    settings: createSettings({ prereleasePolicy: 'never' }), cache: new VersionCache(60_000), auditCache: new AuditCache(), allowNetwork: true };
+  t.mock.method(NpmClient.prototype, 'fetchLatest', async () => ({
+    latest: '2.0.0-beta.1',
+    published: ['1.0.0', '2.0.0-beta.1'],
+    allComplete: true,
+  }));
+  const history = t.mock.method(NpmClient.prototype, 'fetchAll', async () => ({
+    latest: '2.0.0-beta.1',
+    all: ['1.0.0', '1.9.0', '2.0.0-beta.1'],
+    allComplete: true,
+  }));
+  const request = {
+    fsPath: '/repo/package.json',
+    text: '{"dependencies":{"example":"1.0.0"}}',
+    settings: createSettings({ prereleasePolicy: 'never' }),
+    cache: new VersionCache(60_000),
+    auditCache: new AuditCache(),
+    allowNetwork: true,
+  };
   const stable = await analyze(request);
   assert.equal(stable?.updates[0].latest, '1.9.0');
   assert.equal(history.mock.callCount(), 1);
-  const prerelease = await analyze({ ...request, settings: createSettings({ prereleasePolicy: 'always' }), allowNetwork: false });
+  const prerelease = await analyze({
+    ...request,
+    settings: createSettings({ prereleasePolicy: 'always' }),
+    allowNetwork: false,
+  });
   assert.equal(prerelease?.updates[0].latest, '2.0.0-beta.1');
 });

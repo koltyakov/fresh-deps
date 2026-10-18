@@ -4,6 +4,8 @@ import type { PackageDetails } from './analyzer';
 import { display, escapeMarkdown, formatSize, publishedOn } from './format';
 import type { DependencyAudit, DependencyStatus, DependencyUpdate, Ecosystem } from './types';
 import { statusLabel } from './availability';
+import { packageLinks } from './packageLinks';
+import { safeUrl, redact } from './sanitize';
 
 export function buildStatusHover(status: DependencyStatus): vscode.MarkdownString {
   const md = new vscode.MarkdownString();
@@ -12,14 +14,17 @@ export function buildStatusHover(status: DependencyStatus): vscode.MarkdownStrin
   md.appendText(`Declared: ${status.dep.specRaw ?? status.dep.spec}`);
   if (status.source) {
     md.appendMarkdown('\n\n');
-    md.appendText(`Registry: ${status.source}`);
+    md.appendText(`Registry: ${redact(status.source)}`);
   }
   if (status.latest) {
     md.appendMarkdown('\n\n');
     md.appendText(`Latest: ${status.latest}`);
   }
   md.appendMarkdown('\n\n');
-  md.appendText(status.message);
+  md.appendText(redact(status.message));
+  if (status.dep.baselineUnavailable) {
+    md.appendMarkdown('\n\n'); md.appendText(status.dep.baselineUnavailable);
+  }
   return md;
 }
 
@@ -28,14 +33,22 @@ export function buildAuditHover(audit: DependencyAudit): vscode.MarkdownString {
   md.appendText(`Security audit: ${audit.dep.name}`);
   md.appendMarkdown('\n\n');
   if (audit.result.status !== 'checked') {
-    const message = audit.result.status === 'failed' ? `Audit failed: ${audit.result.error}`
+    if (audit.version) {
+      md.appendText(`Requested ${audit.target === 'candidate' ? 'candidate version' : 'version'} ${audit.version}${audit.provider ? ` using ${audit.provider}` : ''}. This audit has not completed.`);
+      md.appendMarkdown('\n\n');
+    }
+    const message = audit.result.status === 'failed' ? `Audit failed: ${redact(audit.result.error)}`
       : audit.result.status === 'unsupported' ? 'Security audits are not supported for this ecosystem or registry.'
       : audit.result.status === 'pending' ? 'Audit not cached. Save or refresh to check.'
       : 'No concrete version could be determined from this declaration.';
     md.appendText(message);
     return md;
   }
-  md.appendText(`Checked ${audit.dep.resolvedVersion === audit.version ? 'lockfile version' : audit.baseline ? 'range baseline' : 'declared version'} ${audit.version}. This is not an installed-dependency or transitive audit.`);
+  md.appendText(`Checked ${audit.target === 'candidate' ? 'candidate version' : audit.dep.resolvedVersion === audit.version ? 'lockfile version' : audit.baseline ? 'range baseline' : 'declared version'} ${audit.version}${audit.provider ? ` using ${audit.provider}` : ''}. This is not an installed-dependency or transitive audit.`);
+  if (audit.dep.baselineOrigin && audit.target !== 'candidate') {
+    md.appendMarkdown('\n\n');
+    md.appendText(`Lockfile: ${redact(audit.dep.baselineOrigin.lockfile)}${audit.dep.baselineOrigin.importer ? `; importer ${audit.dep.baselineOrigin.importer}` : ''}`);
+  }
   md.appendMarkdown('\n\n');
   if (!audit.result.advisories.length) md.appendText('No advisories reported for the checked version.');
   for (const advisory of audit.result.advisories) {
@@ -45,12 +58,19 @@ export function buildAuditHover(audit: DependencyAudit): vscode.MarkdownString {
       md.appendText(`Fixed versions: ${advisory.fixedVersions.join(', ')}`);
       md.appendMarkdown('\n\n');
     }
+    for (const score of advisory.scores ?? []) {
+      md.appendText(`${score.type}: ${score.score}`);
+      md.appendMarkdown('\n\n');
+    }
+    if (!advisory.severity) { md.appendText('Severity unavailable.'); md.appendMarkdown('\n\n'); }
+    for (const range of advisory.affected ?? []) {
+      md.appendText(`Affected ${range.type}${range.repo ? ` ${redact(range.repo)}` : ''}: ${range.events.map((event) => Object.entries(event).map(([key, value]) => `${key} ${value}`).join(', ')).join('; ')}. Fixed boundaries apply to their release branches, not every later version.`);
+      md.appendMarkdown('\n\n');
+    }
     if (advisory.url) {
       try {
-        const url = new URL(advisory.url);
-        if (url.protocol === 'https:' || url.protocol === 'http:') {
-          md.appendMarkdown(`[Advisory](<${url.href.replace(/[<>]/g, encodeURIComponent)}>)\n\n`);
-        }
+        const url = safeUrl(advisory.url);
+        if (url) md.appendMarkdown(`[Advisory](<${url}>)\n\n`);
       } catch { /* Ignore invalid advisory links. */ }
     }
   }
@@ -125,7 +145,7 @@ export function buildHover(
   if (meta.publisher) {
     md.appendMarkdown(`| Published by | ${escapeMarkdown(meta.publisher)} |\n`);
   }
-  const projectUrl = meta.homepage || meta.repository;
+  const projectUrl = safeUrl(meta.homepage || meta.repository);
   if (projectUrl && /^https?:\/\//i.test(projectUrl)) {
     const target = projectUrl.replace(/[\s<>|()]/g, (char) => encodeURIComponent(char)
       .replace(/\(/g, '%28').replace(/\)/g, '%29'));
@@ -151,6 +171,17 @@ export function buildHover(
   }
 
   md.appendMarkdown(`\n${links(update, ecosystem, meta.homepage, meta.repository)}`);
+  const extraLinks = [...packageLinks(update, ecosystem, meta), ...details.links ?? []];
+  for (const link of extraLinks) {
+    const url = safeUrl(link.url);
+    if (url) md.appendMarkdown(` · [${escapeMarkdown(link.label)}](<${url}>)`);
+  }
+  if (update.dep.baselineOrigin) {
+    md.appendMarkdown('\n\n');
+    md.appendText(`Lockfile: ${redact(update.dep.baselineOrigin.lockfile)}${update.dep.baselineOrigin.importer ? `; importer ${update.dep.baselineOrigin.importer}` : ''}${update.dep.baselineOrigin.descriptor ? `; descriptor ${update.dep.baselineOrigin.descriptor}` : ''}`);
+  } else if (update.dep.baselineUnavailable) {
+    md.appendMarkdown('\n\n'); md.appendText(update.dep.baselineUnavailable);
+  }
   return md;
 }
 
@@ -177,7 +208,7 @@ function links(
         const url = new URL(source.replace(/^sparse\+/, ''));
         if (!['https:', 'http:'].includes(url.protocol)) return [];
         url.username = ''; url.password = '';
-        return [`[Package source](<${url.href.replace(/[<>]/g, encodeURIComponent)}>)`];
+        return safeUrl(url.href) ? [`[Package source](<${safeUrl(url.href)}>)`] : [];
       } catch { return []; }
     });
     if (sources.length) return sources.join(' · ');
@@ -255,8 +286,14 @@ function links(
     parts.push(`[npm](https://www.npmjs.com/package/${update.dep.name}/v/${update.latest})`);
   }
   // The homepage is often the repository read differently; showing it twice is noise.
-  if (repository && homepage && repository !== homepage) {
-    parts.push(`[Repository](${repository})`);
+  if (repository && homepage && repository !== homepage && safeUrl(repository)) {
+    parts.push(`[Repository](${safeUrl(repository)})`);
   }
-  return parts.join(' · ');
+  return parts.flatMap((part) => {
+    const match = /^(\[[\s\S]*\])\(([\s\S]*)\)$/.exec(part);
+    if (!match) return [];
+    const raw = match[2].startsWith('<') && match[2].endsWith('>') ? match[2].slice(1, -1) : match[2];
+    const url = safeUrl(raw);
+    return url ? [`${match[1]}(${url})`] : [];
+  }).join(' · ');
 }

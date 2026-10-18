@@ -20,6 +20,7 @@ export interface VersionPair {
 
 /** Optional metadata fetched only when a user hovers over a declaration. */
 export interface PackageDetails {
+  links?: import('../packageLinks').PackageLink[];
   currentPublishedAt?: string;
   latestPublishedAt?: string;
   sameMajorPublishedAt?: string;

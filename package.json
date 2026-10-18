@@ -1,8 +1,8 @@
 {
   "name": "fresh-deps",
-  "displayName": "Fresh Deps",
+  "displayName": "Dependency Update Checker",
   "description": "Highlights dependencies that have newer versions available, inline in your manifest files.",
-  "version": "0.6.3",
+  "version": "0.7.0",
   "license": "MIT",
   "publisher": "koltyakov",
   "repository": {
@@ -19,11 +19,12 @@
   "keywords": [
     "dependencies",
     "outdated",
-    "updates",
     "npm",
+    "package.json",
     "go",
     "python",
     "cargo",
+    "rust",
     "maven",
     "nuget",
     "composer",
@@ -133,6 +134,14 @@
         "title": "Fresh Deps: Generate Outdated Dependencies Report"
       },
       {
+        "command": "freshDeps.reportJson",
+        "title": "Fresh Deps: Generate Dependencies JSON Report"
+      },
+      {
+        "command": "freshDeps.auditCandidate",
+        "title": "Fresh Deps: Audit an Update Version"
+      },
+      {
         "command": "freshDeps.refresh",
         "title": "Fresh Deps: Check for Updates",
         "icon": "$(refresh)"
@@ -160,10 +169,41 @@
         "title": "Fresh Deps",
         "order": 0,
         "properties": {
+          "freshDeps.exclude": {
+            "type": "array",
+            "items": { "type": "string" },
+            "default": [],
+            "scope": "resource",
+            "description": "Workspace-relative glob patterns excluded from all checks, including audits. Applies to editor checks and reports."
+          },
+          "freshDeps.packageRules": {
+            "type": "array",
+            "default": [],
+            "scope": "resource",
+            "description": "Ordered package policies. Later matching rules override specified fields. Suppressing updates does not suppress availability or audit warnings.",
+            "items": {
+              "type": "object",
+              "required": ["name"],
+              "additionalProperties": false,
+              "properties": {
+                "name": { "type": "string", "description": "Glob matching the canonical registry package name." },
+                "ecosystem": { "type": "string", "enum": ["npm", "go", "python", "rust", "dotnet", "java", "php", "dart", "gradle", "ruby", "terraform", "elixir", "deno", "githubActions", "docker", "helm", "swift", "conan", "scala", "conda", "clojure", "ansible", "bazel", "vcpkg"] },
+                "ignoreUpdates": { "type": "boolean" },
+                "prereleasePolicy": { "type": "string", "enum": ["inherit", "never", "if-current-prerelease", "always"] }
+              }
+            }
+          },
+          "freshDeps.prereleasePolicy": {
+            "type": "string",
+            "enum": ["inherit", "never", "if-current-prerelease", "always"],
+            "default": "inherit",
+            "scope": "resource",
+            "description": "Prerelease update policy. Inherit preserves includePrerelease and ecosystem stability rules. Conditional mode uses the lockfile or declaration baseline."
+          },
           "freshDeps.useLockfiles": {
             "type": "boolean",
             "default": false,
-            "description": "Use unambiguous versions from adjacent lockfiles as update and audit baselines. Does not inspect installed packages."
+            "description": "Use unambiguous versions from adjacent or verified npm workspace lockfiles as update and audit baselines. Does not inspect installed packages."
           },
           "freshDeps.audit.provider": {
             "type": "string",
@@ -541,6 +581,7 @@
     "vscode:install": "node scripts/vscode-install.mjs"
   },
   "dependencies": {
+    "minimatch": "^10.2.6",
     "semver": "^7.8.5",
     "yaml": "^2.9.1"
   },

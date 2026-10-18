@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.7.0
+
+- Add Bun `bun.lock` direct-dependency baselines, workspace and alias selection, source checks, provenance, and lockfile refresh handling. Detect legacy `bun.lockb` with text-migration guidance instead of invoking Bun.
+- Add metadata-backed release, changelog and documentation links, public-crate Docs.rs links, and lazy verified comparisons for direct public GitHub Go modules.
+- Add resource-scoped manifest exclusions, ordered package update policies, and conditional prerelease selection while preserving existing defaults. Update suppression retains availability and security warnings.
+- Preserve OSV severity labels, CVSS evidence and package-specific affected ranges. Add an explicit, cancellable candidate-version audit command with the existing provider and source restrictions.
+- Add pnpm lockfile formats 6/9 and Yarn Classic/Berry direct-dependency baselines, verified ancestor workspace discovery, and npm workspace hoisting support. Explain baseline origins and rejected selections, and refresh visible manifests after lockfile changes.
+- Add a versioned, credential-redacted JSON report and share a normalized snapshot with Markdown reports. Report exclusions, policy decisions, runtime assumptions and incomplete checks without writing project files.
+- Invalidate stale analysis immediately on edits and prevent cleared lazy-detail caches from being repopulated by older requests.
+
 ## 0.6.3
 
 - Lower the minimum supported VS Code version to 1.107.0.

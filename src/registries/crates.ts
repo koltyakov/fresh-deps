@@ -9,6 +9,7 @@ interface CrateSummary {
   description?: string | null;
   homepage?: string | null;
   repository?: string | null;
+  documentation?: string | null;
 }
 
 interface CrateVersion {
@@ -60,6 +61,7 @@ export function versionsOf(doc: CratesResponse): RegistryVersions {
   if (doc.crate?.description) meta.description = doc.crate.description;
   if (doc.crate?.homepage) meta.homepage = doc.crate.homepage;
   if (doc.crate?.repository) meta.repository = doc.crate.repository;
+  if (doc.crate?.documentation) meta.documentation = doc.crate.documentation;
   if (release?.license) meta.license = release.license;
   if (release?.created_at) meta.latestPublishedAt = release.created_at;
   if (release?.rust_version) meta.runtimeRequirement = `Rust >=${release.rust_version}`;

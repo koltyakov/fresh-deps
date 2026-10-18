@@ -53,7 +53,7 @@ test('the reader covers every registered setting and maps its default to the mat
     if (key === 'auditEnabled') actual['freshDeps.audit.enabled'] = value;
     else if (key === 'auditProvider') actual['freshDeps.audit.provider'] = value;
     else if (key === 'runtimeVersions') actual['freshDeps.runtimeVersions'] = value;
-    else if (typeof value !== 'object') actual[`freshDeps.${key}`] = value;
+    else if (typeof value !== 'object' || Array.isArray(value)) actual[`freshDeps.${key}`] = value;
     else for (const [option, setting] of Object.entries(value)) actual[`freshDeps.${key}.${option}`] = setting;
   }
   assert.deepEqual(actual, Object.fromEntries(entries.map(([key, property]) => [key, property.default])));

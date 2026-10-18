@@ -34,7 +34,6 @@ import { parseRequirementsTxt } from './parsers/requirementsTxt';
 import { parseGemfile, parseGemspec } from './parsers/gemfile';
 import { parseMixExs } from './parsers/mixExs';
 import { parseTerraform, parseTflint } from './parsers/terraform';
-import { proxyExclusion } from './registries/go';
 import { lookupFor } from './lookups';
 import type { Lookup } from './lookups/types';
 import { schemeFor, semverScheme } from './schemes';
@@ -49,7 +48,8 @@ import type {
 } from './types';
 import { computeUpdate, needsFullVersionList } from './versions';
 import { applyLockfile } from './lockfiles';
-import { osvAudit } from './registries/osv';
+import { auditFetcher as fetchAuditFor } from './auditRouting';
+import { allowsPrerelease, exclusionFor, packagePolicy } from './policies';
 import { addCompatibility } from './compatibility';
 import { RuntimeClient } from './registries/runtime';
 import { cargoProject, nugetProject, dartProject } from './projectSources';
@@ -60,6 +60,7 @@ export { lookupFor } from './lookups';
 export type { Lookup, PackageDetails, VersionPair } from './lookups/types';
 
 export interface AnalyzeRequest {
+  workspaceRoot?: string;
   fsPath: string;
   text: string;
   settings: Settings;
@@ -72,6 +73,10 @@ export interface AnalyzeRequest {
 }
 
 export interface AnalyzeResult {
+  excluded?: string;
+  policies?: { name: string; line: number; section: string; ignoreUpdates: boolean; prereleasePolicy: string }[];
+  runtimeVersions?: Record<string, string>;
+  auditProvider?: 'registry' | 'osv';
   ecosystem: Ecosystem;
   /** Parsed declarations, including those with no update or a skipped lookup. */
   dependencies?: DependencyRef[];
@@ -137,11 +142,13 @@ export async function analyze(request: AnalyzeRequest): Promise<AnalyzeResult | 
   }
 
   const { ecosystem } = manifest;
+  const excluded = exclusionFor(request.fsPath, request.settings.exclude, request.workspaceRoot);
+  if (excluded) return { ecosystem, excluded, declarations: 0, dependencies: [], updates: [], audits: [], failures: new Map(), incomplete: false };
   const parsed = parseManifest(manifest.kind, request);
   if (manifest.kind === 'python-script' && !/^# \/\/\/ script\r?$/m.test(request.text)) return undefined;
   const defaultLookup = lookupFor(ecosystem, request.fsPath, request.settings);
   const deps = request.settings.useLockfiles ? applyLockfile(request.fsPath, ecosystem, parsed,
-    (dep) => defaultLookup?.availabilitySource?.(dep) ?? dep.source) : parsed;
+    (dep) => defaultLookup?.availabilitySource?.(dep) ?? dep.source, request.workspaceRoot) : parsed;
   const lookups = new Map<Ecosystem, Lookup | undefined>([[ecosystem, defaultLookup]]);
   const forEcosystem = (target: Ecosystem): Lookup | undefined => {
     if (!lookups.has(target)) lookups.set(target, lookupFor(target, request.fsPath, request.settings));
@@ -153,7 +160,8 @@ export async function analyze(request: AnalyzeRequest): Promise<AnalyzeResult | 
 
   const { settings } = request;
   const result: AnalyzeResult = { ecosystem, updates: [], audits: [], failures: new Map(), incomplete: false,
-    declarations: deps.length, dependencies: deps, skipped: [], statuses: [] };
+    declarations: deps.length, dependencies: deps, skipped: [], statuses: [], policies: [],
+    runtimeVersions: settings.runtimeVersions, auditProvider: settings.auditEnabled ? settings.auditProvider : undefined };
   const baseOptions: ResolveOptions = {
     includePrerelease: settings.includePrerelease,
     showSatisfyingUpdates: settings.showSatisfyingUpdates,
@@ -168,29 +176,25 @@ export async function analyze(request: AnalyzeRequest): Promise<AnalyzeResult | 
       result.skipped!.push({ name: dep.name, line: dep.line, reason: dep.skipReason });
       return;
     }
-    const opts: ResolveOptions = { ...baseOptions, scheme: dep.versionScheme ?? (dep.semver ? semverScheme : dep.ecosystem ? schemeFor(dep.ecosystem) : baseOptions.scheme),
-      includePrerelease: (baseOptions.includePrerelease || !!dep.minimumStability && dep.minimumStability !== 'stable') && dep.allowPrerelease !== false };
-    if (dep.resolvedVersion && (!opts.scheme.isVersion(dep.resolvedVersion) || !opts.scheme.satisfies(dep.resolvedVersion, dep.spec, { includePrerelease: true }))) delete dep.resolvedVersion;
+    const policy = packagePolicy(dep, ecosystem, settings);
+    const opts: ResolveOptions = { ...baseOptions, scheme: dep.versionScheme ?? (dep.semver ? semverScheme : dep.ecosystem ? schemeFor(dep.ecosystem) : baseOptions.scheme) };
+    if (dep.resolvedVersion && (!opts.scheme.isVersion(dep.resolvedVersion) || !opts.scheme.satisfies(dep.resolvedVersion, dep.spec, { includePrerelease: true }))) {
+      delete dep.resolvedVersion; delete dep.baselineOrigin;
+      dep.baselineUnavailable = 'Lockfile selection does not satisfy the declaration.';
+    }
+    opts.includePrerelease = allowsPrerelease(dep, opts.scheme, policy.prereleasePolicy, baseOptions.includePrerelease);
+    if (policy.ignoreUpdates || policy.prereleasePolicy !== 'inherit') result.policies!.push({ name: dep.name, line: dep.line, section: dep.section, ...policy });
     if (isCancelled()) {
       return;
     }
 
     const key = lookup.key(dep);
-    const sourceUrls = key.match(/https?:\/\/[^|]+/g) ?? [];
-    const hasPublicSource = sourceUrls.length > 0 ? sourceUrls.every((url) => {
-      try { return ['registry.npmjs.org', 'pypi.org', 'api.nuget.org', 'repo.maven.apache.org', 'repo1.maven.org', 'dl.google.com', 'plugins.gradle.org', 'repo.clojars.org', 'proxy.golang.org'].includes(new URL(url).hostname); }
-      catch { return false; }
-    }) : /^(?:rust\|crates\.io|php\|packagist\.org|ruby\|rubygems\.org|dart\|pub\.dev|elixir\|hex\.pm)\|/.test(key);
-    const publicSource = !dep.runtime && !dep.skipReason && (!dep.source || dep.source === 'https://pub.dev') && hasPublicSource
-      && (ecosystem !== 'go' || !proxyExclusion(dep.name));
-    const auditFetcher = dep.githubRepository ? undefined : settings.auditProvider === 'osv'
-      ? publicSource ? (dependency: DependencyRef, version: string) => osvAudit(dependency.ecosystem ?? ecosystem, dependency.name, version, settings.requestTimeoutMs) : undefined
-      : lookup.fetchAudit;
+    const auditFetcher = fetchAuditFor(dep, dep.ecosystem ?? ecosystem, lookup, settings);
     if (settings.auditEnabled) {
       const version = dep.resolvedVersion && opts.scheme.isVersion(dep.resolvedVersion) && opts.scheme.satisfies(dep.resolvedVersion, dep.spec, { includePrerelease: true })
         ? dep.resolvedVersion : opts.scheme.baseline(dep.spec);
       const audit: DependencyAudit = {
-        dep, version, baseline: !dep.resolvedVersion && !opts.scheme.isPinned(dep.spec),
+        dep, version, baseline: !dep.resolvedVersion && !opts.scheme.isPinned(dep.spec), provider: settings.auditProvider,
         result: { status: auditFetcher ? 'unchecked' : 'unsupported' },
       };
       if (auditFetcher && version) {
@@ -213,7 +217,9 @@ export async function analyze(request: AnalyzeRequest): Promise<AnalyzeResult | 
       return checkAvailability(dep, value, opts).status === 'unknown'
         || !!current && !!value.latest && opts.scheme.isVersion(value.latest) && opts.scheme.compare(current, value.latest) > 0;
     };
-    const wantsAll = !dep.githubRepository && (needsAvailability(versions) || !!settings.runtimeVersions[dep.ecosystem ?? ecosystem] || (versions?.latest ? needsFullVersionList(dep.spec, versions.latest, opts) : false));
+    const policyNeedsAll = (value: RegistryVersions | undefined) => policy.prereleasePolicy !== 'inherit' && !opts.includePrerelease
+      && !!value?.latest && opts.scheme.isVersion(value.latest) && opts.scheme.isPrerelease(value.latest);
+    const wantsAll = !dep.githubRepository && (needsAvailability(versions) || policyNeedsAll(versions) || !!settings.runtimeVersions[dep.ecosystem ?? ecosystem] || (versions?.latest ? needsFullVersionList(dep.spec, versions.latest, opts) : false));
 
     if (!request.allowNetwork && (!versions || (wantsAll && !versions.all) || needsAvailability(versions))) {
       result.incomplete = true;
@@ -231,7 +237,7 @@ export async function analyze(request: AnalyzeRequest): Promise<AnalyzeResult | 
           ? await request.cache.resolve(`${key}|all`, () => lookup.fetchAll!(dep), request.signal)
           : await request.cache.resolve(`${key}|latest`, () => lookup.fetch(dep), request.signal);
         // Fetch release history when a same-major or in-range step may exist.
-        if (!dep.githubRepository && lookup.fetchAll && !versions.all && !versions.error && !versions.packageMissing && (needsAvailability(versions) || versions.latest && (wantsAll || needsFullVersionList(dep.spec, versions.latest, opts)))) {
+        if (!dep.githubRepository && lookup.fetchAll && !versions.all && !versions.error && !versions.packageMissing && (needsAvailability(versions) || policyNeedsAll(versions) || versions.latest && (wantsAll || needsFullVersionList(dep.spec, versions.latest, opts)))) {
           const full = await request.cache.resolve(`${key}|all`, () => lookup.fetchAll!(dep), request.signal);
           versions = { ...versions, ...full, ...(versions.meta ? { meta: versions.meta } : {}) };
         }
@@ -282,8 +288,14 @@ export async function analyze(request: AnalyzeRequest): Promise<AnalyzeResult | 
       opts.includePrerelease = false;
       versions = { ...versions, latest: opts.scheme.max(versions.all, { includePrerelease: false }) };
     }
-    const update = computeUpdate(dep, versions, opts);
+    // Explicit policies also filter registries that return a prerelease as `latest`.
+    if (policy.prereleasePolicy !== 'inherit' && !opts.includePrerelease) {
+      const all = versions.all?.filter((version) => opts.scheme.isVersion(version) && !opts.scheme.isPrerelease(version));
+      versions = { ...versions, all, latest: versions.latest && opts.scheme.isPrerelease(versions.latest) ? opts.scheme.max(all ?? [], { includePrerelease: false }) : versions.latest };
+    }
+    const update = policy.ignoreUpdates ? undefined : computeUpdate(dep, versions, opts);
     if (update) {
+      update.source = source;
       addCompatibility(update, versions, dep.ecosystem ?? ecosystem, settings.runtimeVersions[dep.ecosystem ?? ecosystem]);
       result.updates.push(update);
     }
@@ -291,6 +303,7 @@ export async function analyze(request: AnalyzeRequest): Promise<AnalyzeResult | 
 
   result.updates.sort((a, b) => a.dep.line - b.dep.line);
   result.statuses?.sort((a, b) => a.dep.line - b.dep.line);
+  result.policies?.sort((a, b) => a.line - b.line || a.name.localeCompare(b.name));
   return result;
 }
 

@@ -225,6 +225,10 @@ export function metaOf(info: NonNullable<ProjectJson['info']>): PackageMeta {
     meta.publisher = info.author;
   }
   const urls = info.project_urls ?? {};
+  const documentation = Object.entries(urls).find(([key]) => /^(?:documentation|docs)$/i.test(key))?.[1];
+  const changelog = Object.entries(urls).find(([key]) => /^(?:change[ -]?log|release[ _-]?notes)$/i.test(key))?.[1];
+  if (documentation) meta.documentation = documentation;
+  if (changelog) meta.changelog = changelog;
   const homepage = info.home_page || urls.Homepage || urls.Documentation;
   if (homepage) {
     meta.homepage = homepage;

@@ -1,5 +1,5 @@
 import type { AnalyzeResult } from './analyzer';
-import type { DependencyRef } from './types';
+import { createReportSnapshot, type ReportSnapshot } from './reportSnapshot';
 
 export const reportExcludedDirectories = [
   'node_modules', 'bower_components', 'vendor', '.git', '.hg', '.svn',
@@ -12,6 +12,11 @@ export const reportExcludedDirectories = [
 ];
 
 export interface ReportFile {
+  /** Collection context only. Never included in JSON exports. */
+  rootPath?: string;
+  workspace?: string;
+  excluded?: string;
+  directory?: boolean;
   path: string;
   uri: string;
   result?: AnalyzeResult;
@@ -37,63 +42,61 @@ function fileLink(label: string, uri: string, line?: number, relativePath = labe
 }
 
 export function renderReport(files: ReportFile[], roots: string[], now = new Date()): string {
-  const analyzed = files.filter((file) => file.result);
-  const updates = analyzed.flatMap((file) => file.result!.updates);
-  const incomplete = files.some((file) => file.error || file.result?.incomplete || file.result?.failures.size || file.result?.skipped?.length);
+  return renderReportSnapshot(createReportSnapshot(files, roots, now), (path, workspace) => files.find((file) => file.path === path && file.workspace === workspace)?.uri);
+}
+
+export function renderReportSnapshot(snapshot: ReportSnapshot, uriFor: (path: string, workspace?: string) => string | undefined = () => undefined): string {
+  const { summary } = snapshot;
+  const location = (label: string, path: string, workspace?: string, line?: number) => {
+    const uri = uriFor(path, workspace);
+    return uri ? fileLink(label, uri, line, path) : text(label);
+  };
   const lines = [
     '# Outdated dependency report', '',
-    `Generated ${now.toISOString()}`, '',
-    `Workspace folders: ${roots.map(text).join(', ')}`, '',
+    `Generated ${snapshot.generatedAt}`, '',
+    `Workspace folders: ${snapshot.workspaces.map(text).join(', ')}`, '',
     '## Summary', '',
     '| Metric | Count |', '| --- | ---: |',
-    `| Manifests analyzed | ${analyzed.length} |`,
-    `| Declarations found | ${analyzed.reduce((sum, file) => sum + (file.result!.declarations ?? 0), 0)} |`,
-    `| Outdated declarations | ${updates.length} |`,
-    `| Files with updates | ${analyzed.filter((file) => file.result!.updates.length).length} |`,
-    ...(['major', 'minor', 'patch', 'prerelease'] as const).map((kind) => `| ${kind} updates | ${updates.filter((update) => update.kind === kind).length} |`),
+    `| Manifests analyzed | ${summary.manifestsAnalyzed} |`,
+    `| Declarations found | ${summary.declarationsFound} |`,
+    `| Outdated declarations | ${summary.outdatedDeclarations} |`,
+    `| Files with updates | ${summary.filesWithUpdates} |`,
+    ...Object.entries(summary.updatesByKind).map(([kind, count]) => `| ${kind} updates | ${count} |`),
+    `| Excluded files | ${summary.excludedFiles} |`, `| Excluded directories | ${summary.excludedDirectories} |`,
     '',
     'Only dependencies with updates or warnings are listed. Versions show declared requirements. Updates compare declaration baselines or optional lockfile selections, not installed or transitive dependencies. Minor/patch shows the newest update within the current major. A dash means no update or warning was found; check details lists failed or skipped lookups. Audits follow the audit setting and provider.', '',
-    ...(incomplete ? ['Some checks were incomplete. See check details below.', ''] : []),
+    ...(summary.incomplete ? ['Some checks were incomplete. See check details below.', ''] : []),
     '## Dependencies by file', '',
   ];
-  if (!updates.length) lines.push('No updates found among checked declarations.', '');
-  for (const file of analyzed) {
-    const result = file.result!;
-    const key = (dep: DependencyRef) => JSON.stringify([dep.line, dep.section, dep.name, dep.spec]);
-    const dependencies = new Map((result.dependencies ?? []).map((dep) => [key(dep), dep]));
-    for (const entry of [...result.updates, ...result.statuses ?? [], ...result.audits]) dependencies.set(key(entry.dep), entry.dep);
-    const updatesByDep = new Map(result.updates.map((update) => [key(update.dep), update]));
-    const auditsByDep = new Map(result.audits.map((audit) => [key(audit.dep), audit]));
-    const statusesByDep = new Map((result.statuses ?? []).map((status) => [key(status.dep), status]));
-    const hasVersionWarning = (dep: DependencyRef) => result.failures.has(dep.name)
-      || ['version-missing', 'range-missing', 'package-missing', 'failed'].includes(statusesByDep.get(key(dep))?.status ?? '');
-    const rows = [...dependencies.values()].filter((dep) => {
-      const audit = auditsByDep.get(key(dep));
-      return updatesByDep.has(key(dep)) || hasVersionWarning(dep)
+  if (!summary.outdatedDeclarations) lines.push(snapshot.files.some((file) => file.declarations.some((dep) => dep.policy?.ignoreUpdates))
+    ? 'No update suggestions among unsuppressed declarations. Suppressed packages may still have newer versions.' : 'No updates found among checked declarations.', '');
+  for (const file of snapshot.files.filter((file) => file.ecosystem && !file.excluded)) {
+    const rows = file.declarations.filter((dep) => {
+      const audit = dep.audit;
+      return dep.update || dep.failure || ['version-missing', 'range-missing', 'package-missing', 'failed'].includes(dep.availability?.status ?? '')
         || audit?.result.status === 'failed'
         || audit?.result.status === 'checked' && audit.result.advisories.length > 0;
-    }).sort((a, b) => a.line - b.line);
+    });
     if (!rows.length) continue;
     const showAudit = rows.some((dep) => {
-      const audit = auditsByDep.get(key(dep));
+      const audit = dep.audit;
       return audit && audit.result.status !== 'unsupported';
     });
-    lines.push(`### ${fileLink(file.path, file.uri)}`, '', `Manifest ecosystem: ${text(result.ecosystem)}`, '',
+    lines.push(`### ${location(file.path, file.path, file.workspace)}`, '', `Manifest ecosystem: ${text(file.ecosystem!)}`, '',
       `| Type | Name | Version | Minor/patch | Major |${showAudit ? ' Audit warning |' : ''}`,
       `| --- | --- | --- | --- | --- |${showAudit ? ' --- |' : ''}`);
     for (const dep of rows) {
-      const update = updatesByDep.get(key(dep));
-      const audit = auditsByDep.get(key(dep));
-      const line = dep.line + 1;
-      const location = fileLink(dep.name, file.uri, line, file.path);
+      const update = dep.update;
+      const audit = dep.audit;
+      const link = location(dep.name, file.path, file.workspace, dep.line);
       let minor = '-';
       let major = '-';
       if (update) {
-        const latest = update.latestRaw ?? update.latest;
-        if (update.githubDefaultBranch) minor = `${latest} commit`;
-        else if (update.matrixUpdate) {
-          minor = update.matrixUpdate.versions.join(', ');
-          major = update.matrixUpdate.newer ?? '-';
+        const latest = update.latest;
+        if (update.commit) minor = `${latest} commit`;
+        else if (update.matrix) {
+          minor = update.matrix.versions.join(', ');
+          major = update.matrix.newer ?? '-';
         } else if (update.kind === 'major') {
           minor = update.sameMajor ?? '-';
           major = update.alternatePath ? `${update.alternatePath} ${latest}` : latest;
@@ -103,37 +106,38 @@ export function renderReport(files: ReportFile[], roots: string[], now = new Dat
         ? audit.result.advisories.map((advisory) => `${advisory.severity ? `${advisory.severity}: ` : ''}${advisory.id} ${advisory.title}`).join('; ') || '-'
         : audit?.result.status === 'failed' ? `Failed: ${audit.result.error}`
         : !audit || audit.result.status === 'unsupported' ? '' : 'Not checked';
-      const versionWarning = hasVersionWarning(dep)
-        ? statusesByDep.get(key(dep))?.message ?? result.failures.get(dep.name) : undefined;
-      const version = `${dep.specRaw ?? dep.spec}${versionWarning ? `; ${versionWarning}` : ''}`;
-      lines.push(`| ${text(dep.section)} | ${location} | ${text(version)} | ${text(minor)} | ${text(major)} |${showAudit ? ` ${text(warning)} |` : ''}`);
+      const versionWarning = dep.failure || ['version-missing', 'range-missing', 'package-missing', 'failed'].includes(dep.availability?.status ?? '') ? dep.availability?.message ?? dep.failure : undefined;
+      const version = `${dep.declared}${versionWarning ? `; ${versionWarning}` : ''}`;
+      lines.push(`| ${text(dep.section)} | ${link} | ${text(version)} | ${text(minor)} | ${text(major)} |${showAudit ? ` ${text(warning)} |` : ''}`);
     }
     lines.push('');
   }
   lines.push('## Check details', '');
   let details = 0;
-  for (const file of files) {
-    const notes: string[] = [];
+  for (const file of snapshot.files) {
+    const notes: string[] = [...file.issues];
     if (file.error) notes.push(file.error);
-    const result = file.result;
-    if (result) {
-      if (result.incomplete) notes.push('Version check incomplete.');
-      for (const [name, error] of result.failures) notes.push(`${name}: ${error}`);
-      for (const skip of result.skipped ?? []) notes.push(`Line ${skip.line + 1}, ${skip.name}: skipped, ${skip.reason}`);
-      for (const status of result.statuses ?? []) {
-        if (status.status !== 'available' && status.status !== 'failed') notes.push(`Line ${status.dep.line + 1}, ${status.dep.name}: ${status.message}`);
-      }
-      for (const audit of result.audits) {
-        if (audit.result.status === 'failed') notes.push(`${audit.dep.name} audit failed: ${audit.result.error}`);
-        if (audit.result.status === 'checked') for (const advisory of audit.result.advisories) notes.push(`${audit.dep.name} audit: ${advisory.id}, ${advisory.title}`);
+    if (file.excluded) notes.push(`Excluded ${file.directory ? 'directory' : 'file'} by ${file.excluded}. Contained files were not counted.`);
+    for (const dep of file.declarations) {
+      const hasEvidence = dep.update || dep.policy || dep.baselineUnavailable || dep.failure || dep.audit?.result.status === 'failed'
+        || dep.audit?.result.status === 'checked' && dep.audit.result.advisories.length > 0;
+      if (!hasEvidence) continue;
+      if (dep.baseline) notes.push(`${dep.name} baseline: ${dep.baseline.kind} ${dep.baseline.version}${dep.baseline.lockfile ? `, ${dep.baseline.lockfile}` : ''}${dep.baseline.importer ? `, importer ${dep.baseline.importer}` : ''}.`);
+      if (dep.source) notes.push(`${dep.name} source: ${dep.source}`);
+      if (dep.audit?.result.status === 'checked') for (const advisory of dep.audit.result.advisories) {
+        notes.push(`${dep.name} audit: ${advisory.id}, ${advisory.title}${advisory.severity ? `, severity ${advisory.severity}` : ', severity unavailable'}`);
+        if (advisory.fixedVersions?.length) notes.push(`Published fixed versions: ${advisory.fixedVersions.join(', ')}. Candidate versions have not been checked.`);
+        for (const score of advisory.scores ?? []) notes.push(`${score.type}: ${score.score}`);
+        for (const range of advisory.affected ?? []) notes.push(`Affected ${range.type}: ${range.events.map((event) => Object.entries(event).map(([key, value]) => `${key} ${value}`).join(', ')).join('; ')}. Fixed boundaries apply to their release branches.`);
       }
     }
+    if (Object.keys(file.runtimeVersions ?? {}).length) notes.push(`Runtime assumptions: ${JSON.stringify(file.runtimeVersions)}`);
     if (!notes.length) continue;
     details += notes.length;
-    lines.push(`### ${fileLink(file.path, file.uri)}`, '', ...notes.map((note) => `- ${text(note)}`), '');
+    lines.push(`### ${location(file.path, file.path, file.workspace)}`, '', ...notes.map((note) => `- ${text(note)}`), '');
   }
   if (!details) lines.push('No check issues reported.', '');
   lines.push('## Scan scope', '',
-    'Scans supported manifests recursively across all workspace folders, including hidden project configuration. Disabled ecosystems and Python files without script metadata are omitted.', '');
+    'Scans supported manifests recursively across all workspace folders, including hidden project configuration. Disabled ecosystems and Python files without script metadata are omitted.', '', snapshot.scope, '');
   return lines.join('\n');
 }

@@ -3,6 +3,9 @@ import { lookupFor, type AnalyzeResult, type PackageDetails, type VersionPair } 
 import type { Settings } from './config';
 import { buildAuditHover, buildHover, buildStatusHover } from './hover';
 import type { DependencyUpdate, Ecosystem } from './types';
+import { goRepository } from './packageLinks';
+import { githubTags } from './registries/github';
+import { SharedRequests } from './requests';
 
 /**
  * The detail that is not worth a request until someone looks for it: publish
@@ -12,47 +15,54 @@ import type { DependencyUpdate, Ecosystem } from './types';
  */
 export class DetailsResolver {
   private readonly resolved = new Map<string, PackageDetails>();
-  private readonly inFlight = new Map<string, Promise<PackageDetails>>();
+  private readonly inFlight = new SharedRequests<PackageDetails>();
+  private generation = 0;
 
   async resolve(
     fsPath: string,
     ecosystem: Ecosystem,
     update: DependencyUpdate,
     settings: Settings,
+    signal?: AbortSignal,
   ): Promise<PackageDetails> {
     if (update.dep.runtime) return {};
     ecosystem = update.dep.ecosystem ?? ecosystem;
     const versions = versionsOf(update, ecosystem);
     const lookup = lookupFor(ecosystem, fsPath, settings);
-    if (!lookup?.fetchDetails) {
+    const repository = ecosystem === 'go' && update.source === 'https://proxy.golang.org' && !update.dep.source ? goRepository(update) : undefined;
+    if (!lookup || !lookup.fetchDetails && !repository) {
       return {};
     }
 
-    const key = `${lookup.key(update.dep)}|${versions.current}|${versions.latest}|${versions.sameMajor ?? ''}`;
+    const key = `${lookup.key(update.dep)}|${repository ?? ''}|${versions.current}|${versions.latest}|${versions.sameMajor ?? ''}`;
     const cached = this.resolved.get(key);
     if (cached) {
       return cached;
     }
 
     // Hovering wanders over the same line repeatedly; one request answers all of it.
-    let pending = this.inFlight.get(key);
-    if (!pending) {
-      pending = lookup
-        .fetchDetails(update.dep, versions)
-        .then((details) => {
-          this.resolved.set(key, details);
-          return details;
-        })
-        // A failed lookup is not cached, so the next hover tries again rather than
-        // leaving the card permanently thinner than it should be.
-        .catch(() => ({}) as PackageDetails)
-        .finally(() => this.inFlight.delete(key));
-      this.inFlight.set(key, pending);
-    }
-    return pending;
+    const generation = this.generation;
+    return this.inFlight.resolve(key, async () => {
+      const details = await lookup.fetchDetails?.(update.dep, versions) ?? {};
+      if (repository) {
+        try {
+          const tags = await githubTags(repository, settings.requestTimeoutMs);
+          const tagFor = (version: string) => tags?.find((tag) => tag === version) ?? tags?.find((tag) => tag === `v${version.replace(/^v/, '').replace(/\+incompatible$/, '')}`);
+          const from = tagFor(versions.current), to = tagFor(versions.latest);
+          if (from && to) details.links = [{ label: 'Compare versions', url: `https://github.com/${repository}/compare/${encodeURIComponent(from)}...${encodeURIComponent(to)}` }];
+        } catch { /* Optional evidence must not hide dates or other metadata. */ }
+      }
+      if (generation === this.generation) {
+        if (this.resolved.size >= 512) this.resolved.delete(this.resolved.keys().next().value!);
+        this.resolved.set(key, details);
+      }
+      return details;
+    }, signal).catch(() => ({}));
   }
 
   clear(): void {
+    this.generation++;
+    this.inFlight.clear();
     this.resolved.clear();
   }
 }
@@ -115,8 +125,13 @@ export class DependencyHoverProvider implements vscode.HoverProvider {
       position.line,
       line.range.end.character,
     );
-    const details = update ? await this.details.resolve(document.uri.fsPath, result.ecosystem, update, this.settingsFor(document.uri)) : {};
-    if (token.isCancellationRequested) {
+    const controller = new AbortController();
+    const cancellation = token.onCancellationRequested?.(() => controller.abort());
+    if (token.isCancellationRequested) controller.abort();
+    let details: PackageDetails;
+    try { details = update ? await this.details.resolve(document.uri.fsPath, result.ecosystem, update, this.settingsFor(document.uri), controller.signal) : {}; }
+    finally { cancellation?.dispose(); }
+    if (token.isCancellationRequested || this.resultFor(document.uri) !== result) {
       return undefined;
     }
     const contents = update ? [buildHover(update, result.ecosystem, details)] : [];

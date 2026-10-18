@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import * as vscode from 'vscode';
 
-const SCHEME = 'fresh-deps-report';
 
 /** Named, read-only reports that close without a save prompt. */
 export class ReportDocumentProvider implements vscode.TextDocumentContentProvider, vscode.Disposable {
@@ -9,11 +8,11 @@ export class ReportDocumentProvider implements vscode.TextDocumentContentProvide
   private readonly disposables: vscode.Disposable[];
   private disposed = false;
 
-  constructor() {
+  constructor(private readonly scheme = 'fresh-deps-report') {
     this.disposables = [
-      vscode.workspace.registerTextDocumentContentProvider(SCHEME, this),
+      vscode.workspace.registerTextDocumentContentProvider(scheme, this),
       vscode.workspace.onDidCloseTextDocument((document) => {
-        if (document.uri.scheme === SCHEME) this.contents.delete(document.uri.toString());
+        if (document.uri.scheme === scheme) this.contents.delete(document.uri.toString());
       }),
     ];
   }
@@ -22,14 +21,15 @@ export class ReportDocumentProvider implements vscode.TextDocumentContentProvide
     return this.contents.get(uri.toString()) ?? '';
   }
 
-  async open(content: string): Promise<void> {
+  async open(content: string, format: 'markdown' | 'json' = 'markdown', title = 'Outdated Dependencies Report'): Promise<void> {
     if (this.disposed) return;
-    const uri = vscode.Uri.from({ scheme: SCHEME, path: `/${randomUUID()}/Outdated Dependencies Report.md` });
+    const uri = vscode.Uri.from({ scheme: this.scheme, path: `/${randomUUID()}/${title}.${format === 'json' ? 'json' : 'md'}` });
     this.contents.set(uri.toString(), content);
     try {
       const document = await vscode.workspace.openTextDocument(uri);
-      await vscode.languages.setTextDocumentLanguage(document, 'markdown');
-      await vscode.commands.executeCommand('markdown.showPreview', uri);
+      await vscode.languages.setTextDocumentLanguage(document, format);
+      if (format === 'markdown') await vscode.commands.executeCommand('markdown.showPreview', uri);
+      else await vscode.window.showTextDocument(document);
     } catch (error) {
       this.contents.delete(uri.toString());
       throw error;

@@ -9,6 +9,9 @@ import { manifestSelectors } from './manifests';
 import { clearManifestCache } from './projectFiles';
 import { isVersionIssue } from './availability';
 import { registerReportCommand } from './reportCommand';
+import { registerCandidateAuditCommand } from './candidateAuditCommand';
+import { exclusionFor } from './policies';
+import { basename } from 'path';
 
 const CACHE_STATE_KEY = 'freshDeps.cache.v4';
 const TYPING_DEBOUNCE_MS = 400;
@@ -56,7 +59,8 @@ export function activate(context: vscode.ExtensionContext): void {
     const isCancelled = () => controller.signal.aborted || generations.get(key) !== generation;
 
     const settings = readSettings(document.uri);
-    if (!ecosystem || !settings.enabled) {
+    const workspaceRoot = vscode.workspace.getWorkspaceFolder?.(document.uri)?.uri.fsPath;
+    if (!ecosystem || !settings.enabled || exclusionFor(document.uri.fsPath, settings.exclude, workspaceRoot)) {
       results.delete(key);
       clearEditors();
       if (isActive()) status.hide();
@@ -75,6 +79,7 @@ export function activate(context: vscode.ExtensionContext): void {
     try {
       const result = await analyze({
         fsPath: document.uri.fsPath,
+        workspaceRoot,
         text: document.getText(),
         settings,
         cache,
@@ -87,7 +92,7 @@ export function activate(context: vscode.ExtensionContext): void {
       if (isCancelled()) {
         return;
       }
-      if (!result) {
+      if (!result || result.excluded) {
         results.delete(key);
         clearEditors();
         if (isActive()) status.hide();
@@ -111,6 +116,7 @@ export function activate(context: vscode.ExtensionContext): void {
         const checked = result.audits.filter((audit) => audit.result.status === 'checked').length;
         const auditFailed = result.audits.filter((audit) => audit.result.status === 'failed').length;
         status.text = count === 0 ? '$(check) Deps up to date' : `$(arrow-up) ${count} update${count === 1 ? '' : 's'}`;
+        if (count === 0 && result.policies?.some((policy) => policy.ignoreUpdates)) status.text = '$(info) No updates among unsuppressed declarations';
         if (count === 0 && (result.incomplete || result.failures.size || result.skipped?.length)) status.text = '$(info) Dependency check incomplete';
         else if (count === 0 && result.declarations === 0) status.text = '$(info) No supported declarations';
         if (issues) status.text = `${count ? `$(arrow-up) ${count} update${count === 1 ? '' : 's'} | ` : ''}$(warning) ${issues} version issue${issues === 1 ? '' : 's'}`;
@@ -121,7 +127,7 @@ export function activate(context: vscode.ExtensionContext): void {
         else if (auditFailed) status.text += ' | $(warning) Audit incomplete';
         status.tooltip = new vscode.MarkdownString(
           [
-            count === 0 ? 'No updates found among checked declarations.' : `${count} dependencies have newer versions.`,
+            count === 0 ? result.policies?.some((policy) => policy.ignoreUpdates) ? 'No update suggestions among unsuppressed declarations. Suppressed packages may still have newer versions.' : 'No updates found among checked declarations.' : `${count} dependencies have newer versions.`,
             issues ? `\n\n${issues} declarations have version issues. Hover over their hints for details.` : '',
             result.skipped?.length ? `\n\n${result.skipped.length} declarations skipped. See the Fresh Deps output channel for reasons.` : '',
             failed ? `\n\n${failed} lookups failed - see the Fresh Deps output channel.` : '',
@@ -189,6 +195,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
   context.subscriptions.push(
     registerReportCommand(),
+    registerCandidateAuditCommand((uri) => results.get(uri.toString()), auditCache),
     vscode.languages.registerHoverProvider(
       MANIFEST_SELECTOR,
       new DependencyHoverProvider(
@@ -218,8 +225,15 @@ export function activate(context: vscode.ExtensionContext): void {
         } else renderer.clear(editor);
       }
     }),
-    vscode.workspace.onDidSaveTextDocument((document) => { clearManifestCache(); schedule(document, true); }),
-    vscode.workspace.onDidChangeTextDocument((event) => schedule(event.document, false)),
+    vscode.workspace.onDidSaveTextDocument((document) => { clearManifestCache(); if (isLockfile(document.uri.fsPath)) refreshLockfileDependents(); else schedule(document, true); }),
+    vscode.workspace.onDidChangeTextDocument((event) => {
+      const key = event.document.uri.toString();
+      results.delete(key);
+      generations.set(key, (generations.get(key) ?? 0) + 1);
+      controllers.get(key)?.abort();
+      controllers.delete(key);
+      schedule(event.document, false);
+    }),
     vscode.workspace.onDidChangeConfiguration((event) => {
       if (!event.affectsConfiguration('freshDeps')) {
         return;
@@ -231,6 +245,7 @@ export function activate(context: vscode.ExtensionContext): void {
       for (const controller of controllers.values()) controller.abort();
       controllers.clear();
       results.clear();
+      details.clear();
       const visible = new Map(vscode.window.visibleTextEditors.map((editor) => [editor.document.uri.toString(), editor]));
       for (const editor of visible.values()) {
         void refresh(editor, true);
@@ -269,6 +284,24 @@ export function activate(context: vscode.ExtensionContext): void {
       controllers.clear();
     } },
   );
+
+  function isLockfile(filename: string): boolean {
+    return ['package-lock.json', 'npm-shrinkwrap.json', 'pnpm-lock.yaml', 'yarn.lock', 'bun.lock', 'bun.lockb', 'Cargo.lock', 'uv.lock', 'poetry.lock', 'composer.lock', 'pubspec.lock', 'Package.resolved', '.terraform.lock.hcl', 'mix.lock'].includes(basename(filename));
+  }
+  function refreshLockfileDependents(): void {
+    clearManifestCache();
+    for (const editor of vscode.window.visibleTextEditors) {
+      if (!readSettings(editor.document.uri).useLockfiles) continue;
+      const key = editor.document.uri.toString();
+      results.delete(key);
+      generations.set(key, (generations.get(key) ?? 0) + 1);
+      controllers.get(key)?.abort();
+      controllers.delete(key);
+      schedule(editor.document, true);
+    }
+  }
+  const watcher = vscode.workspace.createFileSystemWatcher?.('**/{package-lock.json,npm-shrinkwrap.json,pnpm-lock.yaml,yarn.lock,bun.lock,bun.lockb,Cargo.lock,uv.lock,poetry.lock,composer.lock,pubspec.lock,Package.resolved,.terraform.lock.hcl,mix.lock}');
+  if (watcher) context.subscriptions.push(watcher, watcher.onDidChange(refreshLockfileDependents), watcher.onDidCreate(refreshLockfileDependents), watcher.onDidDelete(refreshLockfileDependents));
 
   updateContext(vscode.window.activeTextEditor);
   void refresh(vscode.window.activeTextEditor, true);

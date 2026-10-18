@@ -4,6 +4,7 @@ import { readProjectFile } from './projectFiles';
 import { scanToml } from './parsers/toml';
 import { tomlField, tomlString } from './parsers/pythonSources';
 import type { DependencyRef, Ecosystem } from './types';
+import { applyNpmLockfile } from './lockfiles/npm';
 
 const defaultSources: Partial<Record<Ecosystem, string>> = {
   npm: 'https://registry.npmjs.org', python: 'https://pypi.org/simple',
@@ -26,8 +27,17 @@ function sourceIdentity(source: string | undefined): string | undefined {
 export function applyLockfile(
   fsPath: string, ecosystem: Ecosystem, deps: DependencyRef[],
   sourceFor: (dep: DependencyRef) => string | undefined = (dep) => dep.source,
+  workspaceRoot?: string,
 ): DependencyRef[] {
+  if (ecosystem === 'npm') return applyNpmLockfile(fsPath, deps, sourceFor, workspaceRoot);
   const dir = dirname(fsPath);
+  let lockfile: string | undefined;
+  const readLock = (name: string) => {
+    const filename = join(dir, name);
+    const text = readProjectFile(filename);
+    if (text !== undefined) lockfile = filename;
+    return text;
+  };
   const versions = new Map<DependencyRef, Set<string>>();
   const expectedSource = (dep: DependencyRef) => {
     const source = sourceFor(dep) ?? defaultSources[ecosystem];
@@ -55,27 +65,14 @@ export function applyLockfile(
     }
   };
   try {
-    if (ecosystem === 'npm') {
-      const text = readProjectFile(join(dir, 'npm-shrinkwrap.json')) ?? readProjectFile(join(dir, 'package-lock.json'));
-      if (!text) return deps;
-      const lock = JSON.parse(text);
-      for (const dep of deps) {
-        if (!['dependencies', 'devDependencies', 'optionalDependencies'].includes(dep.section)) continue;
-        const item = lock.packages?.[`node_modules/${dep.alias ?? dep.name}`] ?? lock.dependencies?.[dep.alias ?? dep.name];
-        if (!item || item.link || dep.alias && item.name !== dep.name) continue;
-        const source = expectedSource(dep);
-        // Older lockfiles omit resolved URLs. Only assume the public default then.
-        const resolved = sourceIdentity(item.resolved);
-        if (source && (resolved ? resolved.startsWith(`${source}/`) : !item.resolved && source === defaultSources.npm)) select(dep, item.version);
-      }
-    } else if (ecosystem === 'php') {
-      const text = readProjectFile(join(dir, 'composer.lock'));
+    if (ecosystem === 'php') {
+      const text = readLock('composer.lock');
       if (text) for (const item of [...JSON.parse(text).packages ?? [], ...JSON.parse(text)['packages-dev'] ?? []]) {
         // Composer locks do not identify their metadata repository. Do not guess custom sources.
         add(item.name, item.version?.replace(/^v/, ''), defaultSources.php);
       }
     } else if (ecosystem === 'dart') {
-      const text = readProjectFile(join(dir, 'pubspec.lock'));
+      const text = readLock('pubspec.lock');
       if (text) {
         const document = parseDocument(text, { uniqueKeys: true });
         if (!document.errors.length) for (const [name, item] of Object.entries(document.toJS({ maxAliasCount: 0 }).packages ?? {})) {
@@ -85,14 +82,14 @@ export function applyLockfile(
         }
       }
     } else if (ecosystem === 'swift') {
-      const text = readProjectFile(join(dir, 'Package.resolved'));
+      const text = readLock('Package.resolved');
       if (text) for (const pin of JSON.parse(text).pins ?? JSON.parse(text).object?.pins ?? []) {
         const repo = /^https:\/\/(github\.com|gitlab\.com|bitbucket\.org)\/(.+?)(?:\.git)?\/?$/.exec(pin.location ?? pin.repositoryURL ?? '');
         if (repo) add(repo[2], pin.state?.version, `https://${repo[1]}`);
       }
     } else if (ecosystem === 'rust' || ecosystem === 'python') {
-      const primary = readProjectFile(join(dir, ecosystem === 'rust' ? 'Cargo.lock' : 'uv.lock'));
-      const text = primary ?? (ecosystem === 'python' ? readProjectFile(join(dir, 'poetry.lock')) : undefined);
+      const primary = readLock(ecosystem === 'rust' ? 'Cargo.lock' : 'uv.lock');
+      const text = primary ?? (ecosystem === 'python' ? readLock('poetry.lock') : undefined);
       if (text) for (const block of text.split(/^\[\[package\]\]\s*$/m).slice(1)) {
         const entries = scanToml(block);
         const name = entries.find((entry) => entry.path.join('.') === 'name')?.value;
@@ -112,13 +109,13 @@ export function applyLockfile(
         if (name?.kind === 'string' && version?.kind === 'string') add(name.text, version.text, registry);
       }
     } else if (ecosystem === 'terraform') {
-      const text = readProjectFile(join(dir, '.terraform.lock.hcl'));
+      const text = readLock('.terraform.lock.hcl');
       if (text) for (const match of text.matchAll(/provider\s+"([^"]+)"\s*\{[^}]*?\bversion\s*=\s*"([^"]+)"/g)) {
         const name = match[1].replace(/^registry\.terraform\.io\//, '');
         for (const dep of deps) if (dep.name === name) select(dep, match[2]);
       }
     } else if (ecosystem === 'elixir') {
-      const text = readProjectFile(join(dir, 'mix.lock'));
+      const text = readLock('mix.lock');
       if (text) for (const match of text.matchAll(/"[^"]+":\s*\{:hex,\s*:([\w]+),\s*"([^"]+)"[^\n]*/g)) {
         // The repository belongs to the outer tuple, not to one of its dependencies.
         if (/,\s*"hexpm"\s*,\s*"[a-f\d]+"\s*\}\s*,?\s*$/.test(match[0])) add(match[1], match[2], defaultSources.elixir);
@@ -127,6 +124,6 @@ export function applyLockfile(
   } catch { return deps; }
   return deps.map((dep) => {
     const selected = versions.get(dep);
-    return selected?.size === 1 && !dep.skipReason && !dep.githubRepository ? { ...dep, resolvedVersion: [...selected][0] } : dep;
+    return selected?.size === 1 && !dep.skipReason && !dep.githubRepository ? { ...dep, resolvedVersion: [...selected][0], ...(lockfile ? { baselineOrigin: { lockfile } } : {}) } : dep;
   });
 }

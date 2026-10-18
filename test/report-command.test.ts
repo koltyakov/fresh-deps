@@ -12,6 +12,7 @@ const uri = (fsPath: string) => ({ scheme: 'file', fsPath, path: fsPath, toStrin
 type Uri = ReturnType<typeof uri>;
 const folders: { name: string; uri: Uri }[] = [];
 let command: () => Promise<void>;
+let jsonCommand: () => Promise<void>;
 let cancelled = false;
 let cancelReport = () => {};
 let opened = '';
@@ -27,7 +28,9 @@ const content = JSON.stringify({ dependencies: { example: '^1.0.0' }, devDepende
 const vscode = {
   commands: {
     registerCommand: (name: string, callback: () => Promise<void>) => {
-      assert.equal(name, 'freshDeps.report'); command = callback; return { dispose() {} };
+      if (name === 'freshDeps.report') command = callback;
+      else { assert.equal(name, 'freshDeps.reportJson'); jsonCommand = callback; }
+      return { dispose() {} };
     },
     executeCommand: async (name: string, value: Uri) => { previews.push(name); previewUris.push(value); },
   },
@@ -35,7 +38,7 @@ const vscode = {
     joinPath: (base: Uri, name: string) => uri(join(base.fsPath, name)),
     from: ({ scheme, path }: { scheme: string; path: string }) => ({ scheme, path, fsPath: path, toString: () => `${scheme}:${path}` }),
   },
-  languages: { setTextDocumentLanguage: async (_document: unknown, language: string) => { assert.equal(language, 'markdown'); } },
+  languages: { setTextDocumentLanguage: async (_document: unknown, language: string) => { assert.ok(['markdown', 'json'].includes(language)); } },
   FileType: { File: 1, Directory: 2, SymbolicLink: 64 },
   ProgressLocation: { Notification: 15 },
   workspace: {
@@ -75,7 +78,7 @@ const vscode = {
         cancelReport = callback;
         return { dispose: () => { cancelReport = () => {}; } };
       } }),
-    showTextDocument: async () => { assert.fail('Open only the Markdown preview, not a source editor'); },
+    showTextDocument: async () => { assert.doesNotThrow(() => JSON.parse(opened)); },
     showErrorMessage: async (message: string) => { assert.fail(message); },
   },
 };
@@ -165,4 +168,32 @@ test('cancelling a report aborts its active registry request without opening a p
   await work;
   assert.equal(signal?.aborted, true);
   assert.equal(previews.length, before);
+});
+
+test('JSON command opens a named read-only report and skips excluded subtrees before reading manifests', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'fresh-deps-json-report-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(join(root, 'fixtures'), { recursive: true });
+  await writeFile(join(root, 'package.json'), content);
+  await writeFile(join(root, 'fixtures', 'package.json'), content);
+  folders.splice(0, folders.length, { name: 'json', uri: uri(root) });
+  settings.auditEnabled = false;
+  settings.exclude = ['fixtures'];
+  cancelled = false;
+  const before = scans.length;
+  const previewsBefore = previews.length;
+  t.mock.method(NpmClient.prototype, 'fetchLatest', async () => ({ latest: '2.0.0', all: ['1.0.0', '2.0.0'], allComplete: true }));
+  const registration = registerReportCommand();
+  t.after(() => { registration.dispose(); settings.exclude = []; });
+  const operation = jsonCommand();
+  assert.equal(jsonCommand(), operation);
+  await operation;
+  const report = JSON.parse(opened);
+  assert.equal(report.schemaVersion, 1);
+  assert.equal(report.summary.manifestsAnalyzed, 1);
+  assert.equal(report.summary.excludedDirectories, 1);
+  assert.equal(report.files.find((file: { path: string }) => file.path === 'fixtures').directory, true);
+  assert.ok(!scans.slice(before).includes(join(root, 'fixtures')));
+  assert.equal(previews.length, previewsBefore, 'JSON uses a read-only editor, not Markdown preview');
+  assert.doesNotMatch(opened, new RegExp(root));
 });

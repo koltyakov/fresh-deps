@@ -28,7 +28,9 @@ function setup(t: TestContext) {
     resolve: (value: ReturnType<typeof result> | undefined) => void;
     reject: (reason: Error) => void;
   }[] = [];
-  const settings = { enabled: true, cacheDurationMinutes: 60 };
+  const settings = { enabled: true, useLockfiles: true, cacheDurationMinutes: 60, exclude: [] as string[] };
+  const lockEvents: (() => void)[] = [];
+  const lockPatterns: string[] = [];
   const scopedSettings = new Map<string, typeof settings>();
   const commands = new Map<string, () => Promise<void>>();
   const inspection: { workspaceFolderValue?: boolean; workspaceValue?: boolean } = {};
@@ -50,6 +52,10 @@ function setup(t: TestContext) {
       onDidChangeVisibleTextEditors: (cb: Events['visible']) => { events.visible = cb; },
     },
     workspace: {
+      getWorkspaceFolder: (uri: MockEditor['document']['uri']) => ({ uri: { fsPath: uri.fsPath.split('/').slice(0, 2).join('/') } }),
+      createFileSystemWatcher: (pattern: string) => { lockPatterns.push(pattern); return { dispose: noop, onDidChange: (callback: () => void) => { lockEvents.push(callback); return { dispose: noop }; },
+        onDidCreate: (callback: () => void) => { lockEvents.push(callback); return { dispose: noop }; },
+        onDidDelete: (callback: () => void) => { lockEvents.push(callback); return { dispose: noop }; } }; },
       onDidCloseTextDocument: (cb: Events['close']) => { events.close = cb; },
       onDidSaveTextDocument: (cb: Events['save']) => { events.save = cb; },
       onDidChangeTextDocument: (cb: Events['change']) => { events.change = cb; },
@@ -68,6 +74,7 @@ function setup(t: TestContext) {
     vscode,
     './config': { readSettings: (uri?: MockEditor['document']['uri']) => uri && scopedSettings.get(uri.toString()) || settings },
     './reportCommand': { registerReportCommand: noop },
+    './candidateAuditCommand': { registerCandidateAuditCommand: noop },
     './analyzer': {
       ecosystemOf: () => 'npm',
       analyze: (request: { isCancelled(): boolean; signal: AbortSignal }) => new Promise<ReturnType<typeof result> | undefined>((resolve, reject) => pending.push({ request, resolve, reject })),
@@ -76,7 +83,7 @@ function setup(t: TestContext) {
       clear(editor: MockEditor) { calls.push(`clear:${editor.document.uri.fsPath}`); }
       render(editor: MockEditor) { calls.push(`render:${editor.document.uri.fsPath}`); }
     } },
-    './details': { DetailsResolver: class {}, DependencyHoverProvider: class {} },
+    './details': { DetailsResolver: class { clear() {} }, DependencyHoverProvider: class {} },
   };
   const load = Module._load;
   t.mock.method(Module, '_load', function (this: typeof Module, id: string, parent: NodeModule | null | undefined, ...args: [isMain?: boolean]) {
@@ -94,7 +101,7 @@ function setup(t: TestContext) {
     events.active(editor);
   };
   return { calls, pending, settings, scopedSettings, editors, events, activate: activateEditor, configure, hoverPatterns, status,
-    commands, inspection, writes, subscriptions };
+    commands, inspection, writes, subscriptions, lockEvents, lockPatterns };
 }
 
 const result = (): AnalyzeResult => ({ ecosystem: 'npm', updates: [], audits: [], failures: new Map(), incomplete: false });
@@ -254,6 +261,48 @@ test('disposing the extension aborts unfinished checks', (t) => {
   for (const disposable of state.subscriptions) disposable?.dispose?.();
   assert.equal(state.pending[0].request.signal.aborted, true);
 });
+
+test('editing immediately invalidates an older request before the typing debounce', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const state = setup(t);
+  state.events.change({ document: state.editors[0].document });
+  assert.equal(state.pending[0].request.signal.aborted, true);
+  state.pending[0].resolve(result());
+  await flush();
+  assert.ok(!state.calls.some((call) => call.startsWith('render:')));
+  t.mock.timers.tick(400);
+  assert.equal(state.pending.length, 2);
+});
+
+test('workspace-relative exclusions clear hints before analysis', (t) => {
+  const state = setup(t);
+  state.scopedSettings.set(state.editors[1].document.uri.toString(), { ...state.settings, exclude: ['package.json'] });
+  state.activate(state.editors[1]);
+  assert.equal(state.pending.length, 1);
+  assert.ok(state.calls.includes('clear:/b/package.json'));
+});
+
+test('external lockfile changes, creation and deletion refresh visible manifest baselines', (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const state = setup(t);
+  assert.equal(state.lockEvents.length, 3);
+  for (const notify of state.lockEvents) notify();
+  t.mock.timers.tick(400);
+  assert.equal(state.pending.length, 3, 'Repeated notifications coalesce per visible manifest');
+  assert.equal(state.pending[0].request.signal.aborted, true);
+});
+
+for (const filename of ['bun.lock', 'bun.lockb']) {
+  test(`${filename} saves refresh manifests and external changes are watched`, (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const state = setup(t);
+    assert.ok(state.lockPatterns.some((pattern) => matchesGlob(`/a/${filename}`, pattern)));
+    state.events.save({ uri: { fsPath: `/a/${filename}`, toString: () => `file:///a/${filename}` }, getText: () => '' });
+    assert.equal(state.pending[0].request.signal.aborted, true);
+    t.mock.timers.tick(400);
+    assert.equal(state.pending.length, 3);
+  });
+}
 
 for (const [scope, target] of [['folder', 3], ['workspace', 2], ['global', 1]] as const) {
   test(`toggle updates the existing ${scope} setting instead of a shadowed global value`, async (t) => {

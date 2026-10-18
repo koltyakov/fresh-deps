@@ -22,6 +22,9 @@ export interface DependencyRef {
   skipReason?: string;
   /** A uniquely resolved version read from a lockfile. */
   resolvedVersion?: string;
+  baselineOrigin?: { lockfile: string; importer?: string; descriptor?: string };
+  /** Why an optional lockfile selection could not be used. */
+  baselineUnavailable?: string;
   revision?: string;
   variants?: string[];
   minimumStability?: 'dev' | 'alpha' | 'beta' | 'rc' | 'stable';
@@ -60,6 +63,8 @@ export interface PackageMeta {
   publisher?: string;
   homepage?: string;
   repository?: string;
+  documentation?: string;
+  changelog?: string;
   /** Installed footprint of the latest release, in bytes. */
   unpackedSize?: number;
   fileCount?: number;
@@ -115,6 +120,8 @@ export interface SecurityAdvisory {
   severity?: string;
   url?: string;
   fixedVersions?: string[];
+  scores?: { type: string; score: string }[];
+  affected?: { type: string; repo?: string; events: Record<string, string>[] }[];
 }
 
 export type AuditResponse =
@@ -126,10 +133,13 @@ export interface DependencyAudit {
   dep: DependencyRef;
   version?: string;
   baseline: boolean;
+  target?: 'baseline' | 'candidate';
+  provider?: 'registry' | 'osv';
   result: AuditResponse | { status: 'pending' | 'unchecked' };
 }
 
 export interface DependencyUpdate {
+  source?: string;
   githubDefaultBranch?: string;
   dep: DependencyRef;
   /** Baseline the update is measured against (the floor of the declared range). */

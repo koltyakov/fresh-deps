@@ -79,7 +79,7 @@ test('a vulnerable dependency at latest still produces an audit without an updat
   assert.equal(result.audits.length, 1);
   assert.deepEqual(result.audits[0], {
     dep: { name: 'pkg', spec: '1.0.0', section: 'dependencies', line: 2 },
-    version: '1.0.0', baseline: false, result: vulnerable,
+    version: '1.0.0', baseline: false, provider: 'registry', result: vulnerable,
   });
   assert.deepEqual(audit.mock.calls.map((call) => call.arguments), [['pkg', '1.0.0']]);
   assert.equal(latest.mock.callCount(), 1);

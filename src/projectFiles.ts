@@ -1,5 +1,6 @@
 import { readFileSync, statSync } from 'fs';
 import { dirname, join, resolve } from 'path';
+import { clearLockfileCache } from './lockfiles/cache';
 
 /** Bounded reads for declarative project files. Missing or malformed files are optional. */
 export function readProjectFile(filename: string): string | undefined {
@@ -7,6 +8,11 @@ export function readProjectFile(filename: string): string | undefined {
     if (statSync(filename).size > 4 * 1024 * 1024) return undefined;
     return readFileSync(filename, 'utf8');
   } catch { return undefined; }
+}
+
+/** Recognize unreadable, oversized, or binary lockfiles without decoding their contents. */
+export function projectFileExists(filename: string): boolean {
+  try { return statSync(filename).isFile(); } catch { return false; }
 }
 
 export function parentFiles(filename: string, name: string): string[] {
@@ -31,6 +37,7 @@ const importMapCache = new Map<string, { expires: number; result: boolean }>();
 
 export function clearManifestCache(): void {
   importMapCache.clear();
+  clearLockfileCache();
 }
 
 export function isReferencedImportMap(filename: string): boolean {

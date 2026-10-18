@@ -7,6 +7,8 @@ import type { DetailsResolver } from '../src/details';
 import type { DependencyAudit, DependencyUpdate, Ecosystem } from '../src/types';
 import { NpmClient } from '../src/registries/npm';
 import { createSettings } from './settings';
+import github = require('../src/registries/github');
+import { GoClient } from '../src/registries/go';
 
 const Module = require('node:module') as {
   _load: (id: string, parent: NodeModule | null | undefined, isMain?: boolean) => unknown;
@@ -41,6 +43,50 @@ const dates = {
   currentPublishedAt: '2026-05-13T12:00:00Z',
   latestPublishedAt: '2026-09-02T12:00:00Z',
 };
+
+test('Go comparison links require verified tags and an unambiguous public module mapping', async (t) => {
+  t.mock.method(GoClient.prototype, 'fetchPublishDate', async () => '2026-01-01');
+  const tags = t.mock.method(github, 'githubTags', async () => ['v1.0.0', 'v2.0.0']);
+  const resolver = new Resolver();
+  const candidate: DependencyUpdate = { ...update, source: 'https://proxy.golang.org', dep: { ...update.dep, name: 'github.com/org/repo', spec: 'v1.0.0' }, current: '1.0.0', latest: '2.0.0' };
+  const settings = createSettings({ go: { proxy: 'https://proxy.golang.org' } });
+  const details = await resolver.resolve('/repo/go.mod', 'go', candidate, settings);
+  assert.equal(details.links?.[0].url, 'https://github.com/org/repo/compare/v1.0.0...v2.0.0');
+  await resolver.resolve('/repo/go.mod', 'go', candidate, settings);
+  assert.equal(tags.mock.callCount(), 1);
+  resolver.clear();
+  tags.mock.mockImplementation(async () => ['v2.0.0']);
+  assert.equal((await resolver.resolve('/repo/go.mod', 'go', candidate, settings)).links, undefined);
+  resolver.clear();
+  tags.mock.mockImplementation(async () => { throw new Error('Rate limited'); });
+  assert.equal((await resolver.resolve('/repo/go.mod', 'go', candidate, settings)).currentPublishedAt, '2026-01-01');
+  const before = tags.mock.callCount();
+  await resolver.resolve('/repo/go.mod', 'go', { ...candidate, source: 'https://private.example/proxy' }, settings);
+  await resolver.resolve('/repo/go.mod', 'go', { ...candidate, dep: { ...candidate.dep, name: 'github.com/org/repo/submodule' } }, settings);
+  assert.equal(tags.mock.callCount(), before);
+});
+
+test('clearing lazy details cannot be undone by an older in-flight answer', async (t) => {
+  let finish!: (value: Map<string, string>) => void;
+  const fetch = t.mock.method(NpmClient.prototype, 'fetchPublishDates', () => new Promise<Map<string, string>>((resolve) => { finish = resolve; }));
+  const resolver = new Resolver();
+  const settings = createSettings();
+  const old = resolver.resolve('/repo/package.json', 'npm', update, settings);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  resolver.clear();
+  finish(new Map());
+  await old;
+  fetch.mock.mockImplementation(async () => new Map());
+  await resolver.resolve('/repo/package.json', 'npm', update, settings);
+  assert.equal(fetch.mock.callCount(), 2);
+});
+
+test('source and advisory links never include registry credentials or sensitive parameters', () => {
+  const source = 'https://user:secret@charts.example/index?token=secret';
+  const value = buildHover({ ...update, dep: { ...update.dep, name: 'chart', source } }, 'helm').value;
+  assert.doesNotMatch(value, /user:secret|token=secret/);
+  assert.match(value, /https:\/\/charts.example/);
+});
 
 test('GitHub commit hover shows the default branch and comparison instead of npm range advice', () => {
   const current = 'a'.repeat(40), latest = 'b'.repeat(40);
@@ -157,8 +203,9 @@ test('declaration and inline hint both resolve publication dates', async () => {
     lineAt: () => ({ text, firstNonWhitespaceCharacterIndex: 2, range: { end: { character: text.length } } }),
   } as unknown as TextDocument;
   let calls = 0;
+  const result = { ecosystem: 'npm', updates: [update], audits: [] } as unknown as AnalyzeResult;
   const provider = new DependencyHoverProvider(
-    () => ({ ecosystem: 'npm', updates: [update], audits: [] } as unknown as AnalyzeResult),
+    () => result,
     () => ({} as Settings),
     { resolve: async () => { calls++; return dates; } } as unknown as DetailsResolver,
   );
@@ -186,8 +233,9 @@ test('Deno multiline import aliases retain hovers on the specifier line', async 
     uri: { fsPath: '/project/deno.json' },
     lineAt: () => ({ text, firstNonWhitespaceCharacterIndex: 4, range: { end: { character: text.length } } }),
   } as unknown as TextDocument;
+  const result = { ecosystem: 'deno', updates: [{ ...update, dep: { name: 'jsr:@std/assert', spec: '1.0.0', alias: 'check', line: 0, section: 'imports' } }], audits: [] } as unknown as AnalyzeResult;
   const provider = new DependencyHoverProvider(
-    () => ({ ecosystem: 'deno', updates: [{ ...update, dep: { name: 'jsr:@std/assert', spec: '1.0.0', alias: 'check', line: 0, section: 'imports' } }], audits: [] } as unknown as AnalyzeResult),
+    () => result,
     () => ({} as Settings),
     { resolve: async () => ({}) } as unknown as DetailsResolver,
   );
@@ -240,6 +288,13 @@ test('audit hovers label baselines and reject executable advisory links', () => 
   assert.match(hover.value, /Fixed versions: 2\.0/);
 });
 
+test('unsupported candidate audit hovers still identify the requested version and provider', () => {
+  const hover = buildAuditHover({ dep: update.dep, target: 'candidate', version: '2.0.0', baseline: false, provider: 'osv', result: { status: 'unsupported' } });
+  assert.match(hover.value, /candidate version 2\.0\.0 using osv/);
+  assert.match(hover.value, /not supported/);
+  assert.doesNotMatch(hover.value, /No advisories reported/);
+});
+
 test('audit-only declarations show advisories without resolving update details', async () => {
   const text = '  "@types/vscode": "1.120.0",';
   const document = {
@@ -248,8 +303,9 @@ test('audit-only declarations show advisories without resolving update details',
   } as unknown as TextDocument;
   const audit: DependencyAudit = { dep: update.dep, version: '1.120.0', baseline: false,
     result: { status: 'checked', advisories: [{ id: 'GHSA-test', title: 'Unsafe input' }] } };
+  const result = { ecosystem: 'npm', updates: [], audits: [audit] } as unknown as AnalyzeResult;
   const provider = new DependencyHoverProvider(
-    () => ({ ecosystem: 'npm', updates: [], audits: [audit] } as unknown as AnalyzeResult), () => ({} as Settings),
+    () => result, () => ({} as Settings),
     { resolve: () => assert.fail('audit-only hover must not fetch update details') } as unknown as DetailsResolver,
   );
   for (const character of [5, text.length]) {

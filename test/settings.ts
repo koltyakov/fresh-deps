@@ -16,7 +16,7 @@ export function createSettings(overrides: SettingsOverrides = {}): Settings {
   for (const key of Object.keys(overrides) as (keyof Settings)[]) {
     const value = overrides[key];
     Object.assign(settings, {
-      [key]: typeof value === 'object' ? { ...settings[key] as object, ...structuredClone(value) } : value,
+      [key]: Array.isArray(value) ? structuredClone(value) : typeof value === 'object' ? { ...settings[key] as object, ...structuredClone(value) } : value,
     });
   }
   return settings;

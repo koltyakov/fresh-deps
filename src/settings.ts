@@ -1,4 +1,5 @@
 import type { Ecosystem } from './types';
+import type { PackageRule, PrereleasePolicy } from './policies';
 
 type EcosystemSettings = Record<Ecosystem, { enabled: boolean }> & {
   npm: { registry: string; sections: string[] };
@@ -21,6 +22,9 @@ export type Settings = EcosystemSettings & {
   requestTimeoutMs: number;
   showSatisfyingUpdates: boolean;
   includePrerelease: boolean;
+  prereleasePolicy: PrereleasePolicy;
+  exclude: string[];
+  packageRules: PackageRule[];
   useLockfiles: boolean;
   auditProvider: 'registry' | 'osv';
   runtimeVersions: Record<string, string>;
@@ -42,6 +46,9 @@ export function readSettingsFrom(read: <T>(key: string) => T | undefined): Setti
     requestTimeoutMs: get('requestTimeoutMs'),
     showSatisfyingUpdates: get('showSatisfyingUpdates'),
     includePrerelease: get('includePrerelease'),
+    prereleasePolicy: get('prereleasePolicy'),
+    exclude: get('exclude'),
+    packageRules: get('packageRules'),
     useLockfiles: get('useLockfiles'),
     auditProvider: get('audit.provider'),
     runtimeVersions: get('runtimeVersions'),

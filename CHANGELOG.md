@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.6.3
+
+- Lower the minimum supported VS Code version to 1.107.0.
+- Fix OSV audits for Deno npm imports and shared audit results with `package.json`.
+- Respect pip command-specific index precedence and match lockfile selections to package sources.
+- Honor folder-specific inline hint settings and keep status updates tied to the active editor.
+- Render hints in all split editors and invalidate existing entries when cache duration changes.
+- Abort canceled checks without interrupting registry requests still needed by another editor.
+- Separate registry adapters from dependency analysis and add regression tests for these workflows.
+
+## 0.6.2
+
+- Preserve Go update hints when optional newer-major probes time out or return proxy errors. Keep the base release or the latest discovered major, while still reporting failures of the base module lookup.
+
+## 0.6.1
+
+- Keep GitHub commit-pin hints beside their declarations without widening the aligned columns used by regular dependency hints.
+
 ## 0.6.0
 
 - Add `Fresh Deps: Generate Outdated Dependencies Report` to scan supported manifests across all workspace folders and open a read-only Markdown preview. Include minor/patch and major updates, audit warnings, source links, and failed or skipped checks.

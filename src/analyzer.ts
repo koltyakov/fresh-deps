@@ -3,9 +3,6 @@ import { checkAvailability } from './availability';
 import { parseAnsible } from './parsers/ansible';
 import { parseBazelProject } from './parsers/bazelProject';
 import { parseVcpkgProject } from './parsers/vcpkgProject';
-import { AnsibleClient } from './registries/ansible';
-import { BazelClient } from './registries/bazel';
-import { VcpkgClient } from './registries/vcpkg';
 import { parseDockerfile, parseCompose } from './parsers/docker';
 import { parseHelm } from './parsers/helm';
 import { parseSwift } from './parsers/swift';
@@ -15,13 +12,6 @@ import { parseConda } from './parsers/conda';
 import { parseClojure, parseLeiningen } from './parsers/clojure';
 import { parseDotnetPins } from './parsers/dotnetPins';
 import { parseYarnCatalog } from './parsers/yarnCatalog';
-import { DockerClient } from './registries/docker';
-import { HelmClient } from './registries/helm';
-import { SwiftClient } from './registries/swift';
-import { ConanClient } from './registries/conan';
-import { CondaClient, condaSubdir } from './registries/conda';
-import { DotnetSdkClient } from './registries/dotnetSdk';
-import { dockerTag } from './docker';
 import { AuditCache } from './audit';
 import type { VersionCache } from './cache';
 import type { Settings } from './config';
@@ -32,9 +22,6 @@ import { parseGradleCatalog } from './parsers/gradleCatalog';
 import { parseGradleBuild } from './parsers/gradleBuild';
 import { parseDeno } from './parsers/deno';
 import { parseGithubActions } from './parsers/githubActions';
-import { JsrClient } from './registries/jsr';
-import { GithubActionsClient } from './registries/githubActions';
-import { actionTagStyle } from './githubActions';
 import { parseNugetManifest } from './parsers/nuget';
 import { parsePackageJson } from './parsers/packageJson';
 import { parsePipfile } from './parsers/pipfile';
@@ -47,27 +34,16 @@ import { parseRequirementsTxt } from './parsers/requirementsTxt';
 import { parseGemfile, parseGemspec } from './parsers/gemfile';
 import { parseMixExs } from './parsers/mixExs';
 import { parseTerraform, parseTflint } from './parsers/terraform';
-import { CratesClient } from './registries/crates';
-import { GoClient, proxyExclusion } from './registries/go';
-import { NpmClient } from './registries/npm';
-import { githubCommitVersions } from './registries/githubCommit';
-import { MavenClient } from './registries/maven';
-import { NugetClient } from './registries/nuget';
-import { PackagistClient } from './registries/packagist';
-import { PubClient } from './registries/pub';
-import { normalizeName, PyPiClient } from './registries/pypi';
-import { RubyGemsClient } from './registries/rubygems';
-import { HexClient } from './registries/hex';
-import { TerraformClient } from './registries/terraform';
+import { proxyExclusion } from './registries/go';
+import { lookupFor } from './lookups';
+import type { Lookup } from './lookups/types';
 import { schemeFor, semverScheme } from './schemes';
 import type {
   DependencyRef,
   DependencyStatus,
   DependencyAudit,
-  AuditResponse,
   DependencyUpdate,
   Ecosystem,
-  PackageMeta,
   RegistryVersions,
   ResolveOptions,
 } from './types';
@@ -80,6 +56,9 @@ import { cargoProject, nugetProject, dartProject } from './projectSources';
 import { readProjectFile, isReferencedImportMap, jsonc } from './projectFiles';
 import { registeredManifest } from './manifests';
 
+export { lookupFor } from './lookups';
+export type { Lookup, PackageDetails, VersionPair } from './lookups/types';
+
 export interface AnalyzeRequest {
   fsPath: string;
   text: string;
@@ -89,6 +68,7 @@ export interface AnalyzeRequest {
   /** When false only cached versions are used, so typing never hits the network. */
   allowNetwork: boolean;
   isCancelled?: () => boolean;
+  signal?: AbortSignal;
 }
 
 export interface AnalyzeResult {
@@ -149,6 +129,7 @@ export function ecosystemOf(fsPath: string): Ecosystem | undefined {
 }
 
 export async function analyze(request: AnalyzeRequest): Promise<AnalyzeResult | undefined> {
+  const isCancelled = () => request.signal?.aborted || request.isCancelled?.();
   const cacheGeneration = request.cache.generation;
   const manifest = manifestOf(request.fsPath);
   if (!manifest || !enabledFor(manifest.ecosystem, request.settings)) {
@@ -158,8 +139,9 @@ export async function analyze(request: AnalyzeRequest): Promise<AnalyzeResult | 
   const { ecosystem } = manifest;
   const parsed = parseManifest(manifest.kind, request);
   if (manifest.kind === 'python-script' && !/^# \/\/\/ script\r?$/m.test(request.text)) return undefined;
-  const deps = request.settings.useLockfiles ? applyLockfile(request.fsPath, ecosystem, parsed) : parsed;
   const defaultLookup = lookupFor(ecosystem, request.fsPath, request.settings);
+  const deps = request.settings.useLockfiles ? applyLockfile(request.fsPath, ecosystem, parsed,
+    (dep) => defaultLookup?.availabilitySource?.(dep) ?? dep.source) : parsed;
   const lookups = new Map<Ecosystem, Lookup | undefined>([[ecosystem, defaultLookup]]);
   const forEcosystem = (target: Ecosystem): Lookup | undefined => {
     if (!lookups.has(target)) lookups.set(target, lookupFor(target, request.fsPath, request.settings));
@@ -189,7 +171,7 @@ export async function analyze(request: AnalyzeRequest): Promise<AnalyzeResult | 
     const opts: ResolveOptions = { ...baseOptions, scheme: dep.versionScheme ?? (dep.semver ? semverScheme : dep.ecosystem ? schemeFor(dep.ecosystem) : baseOptions.scheme),
       includePrerelease: (baseOptions.includePrerelease || !!dep.minimumStability && dep.minimumStability !== 'stable') && dep.allowPrerelease !== false };
     if (dep.resolvedVersion && (!opts.scheme.isVersion(dep.resolvedVersion) || !opts.scheme.satisfies(dep.resolvedVersion, dep.spec, { includePrerelease: true }))) delete dep.resolvedVersion;
-    if (request.isCancelled?.()) {
+    if (isCancelled()) {
       return;
     }
 
@@ -215,13 +197,13 @@ export async function analyze(request: AnalyzeRequest): Promise<AnalyzeResult | 
         const auditKey = `${key}|audit|${version}|${settings.auditProvider}`;
         const cached = request.auditCache.get(auditKey, settings.cacheDurationMinutes * 60_000);
         audit.result = cached ?? (request.allowNetwork
-          ? await request.auditCache.resolve(auditKey, () => auditFetcher(dep, version))
+          ? await request.auditCache.resolve(auditKey, () => auditFetcher(dep, version), request.signal)
           : { status: 'pending' });
         if (audit.result.status === 'pending') result.incomplete = true;
       }
       result.audits.push(audit);
     }
-    if (request.isCancelled?.()) return;
+    if (isCancelled()) return;
     let versions = request.cache.get(key);
     const source = lookup.availabilitySource?.(dep) ?? dep.source ?? key.split('|')[1];
     const needsAvailability = (value: RegistryVersions | undefined) => {
@@ -246,23 +228,24 @@ export async function analyze(request: AnalyzeRequest): Promise<AnalyzeResult | 
       const known = versions?.meta;
       try {
         versions = wantsAll && lookup.fetchAll
-          ? await request.cache.resolve(`${key}|all`, () => lookup.fetchAll!(dep))
-          : await request.cache.resolve(`${key}|latest`, () => lookup.fetch(dep));
+          ? await request.cache.resolve(`${key}|all`, () => lookup.fetchAll!(dep), request.signal)
+          : await request.cache.resolve(`${key}|latest`, () => lookup.fetch(dep), request.signal);
         // Fetch release history when a same-major or in-range step may exist.
         if (!dep.githubRepository && lookup.fetchAll && !versions.all && !versions.error && !versions.packageMissing && (needsAvailability(versions) || versions.latest && (wantsAll || needsFullVersionList(dep.spec, versions.latest, opts)))) {
-          const full = await request.cache.resolve(`${key}|all`, () => lookup.fetchAll!(dep));
+          const full = await request.cache.resolve(`${key}|all`, () => lookup.fetchAll!(dep), request.signal);
           versions = { ...versions, ...full, ...(versions.meta ? { meta: versions.meta } : {}) };
         }
         if (known && !versions.meta && !versions.error) {
           versions = { ...versions, meta: known };
         }
       } catch (error) {
+        if (isCancelled()) return;
         versions = { error: error instanceof Error ? error.message : String(error) };
       }
       if (request.cache.generation === cacheGeneration) request.cache.set(key, versions);
     }
 
-    if (!versions || request.isCancelled?.()) return;
+    if (!versions || isCancelled()) return;
     let availability = versions;
     const initialStatus = checkAvailability(dep, versions, opts).status;
     if (lookup.fetchAvailability && !versions.error && initialStatus !== 'available' && initialStatus !== 'ahead') {
@@ -270,8 +253,9 @@ export async function analyze(request: AnalyzeRequest): Promise<AnalyzeResult | 
       let evidence = request.cache.get(availabilityKey);
       if (!evidence && request.allowNetwork) {
         try {
-          evidence = await request.cache.resolve(availabilityKey, () => lookup.fetchAvailability!(dep, versions!));
+          evidence = await request.cache.resolve(availabilityKey, () => lookup.fetchAvailability!(dep, versions!), request.signal);
         } catch (error) {
+          if (isCancelled()) return;
           evidence = { error: error instanceof Error ? error.message : String(error) };
         }
         if (request.cache.generation === cacheGeneration) request.cache.set(availabilityKey, evidence);
@@ -396,354 +380,6 @@ function parseManifest(kind: ManifestKind, request: AnalyzeRequest): DependencyR
     case 'terraform': return parseTerraform(text, settings.terraform.defaultRegistry
       || (request.fsPath.endsWith('.tofu') ? 'registry.opentofu.org' : 'registry.terraform.io'));
   }
-}
-
-export interface Lookup {
-  /** Human-readable source when the cache key does not identify it clearly. */
-  availabilitySource?(dep: DependencyRef): string;
-  /** Direct existence probe for sources whose listings omit valid versions. */
-  fetchAvailability?(dep: DependencyRef, known: RegistryVersions): Promise<RegistryVersions>;
-  key(dep: DependencyRef): string;
-  fetch(dep: DependencyRef): Promise<RegistryVersions>;
-  fetchAll?(dep: DependencyRef): Promise<RegistryVersions>;
-  fetchAudit?(dep: DependencyRef, version: string): Promise<AuditResponse>;
-  /**
-   * Detail worth a request of its own - publish dates, prose the version lookup
-   * does not carry. Fetched only when someone asks to see it, so a check never
-   * pays for it, and absent where no registry answer is cheap enough to be worth it.
-   */
-  fetchDetails?(dep: DependencyRef, versions: VersionPair): Promise<PackageDetails>;
-}
-
-/** Versions shown in a hint, spelled the way their registry spells them. */
-export interface VersionPair {
-  current: string;
-  latest: string;
-  sameMajor?: string;
-}
-
-/** What a detail lookup managed to find; every part of it is optional. */
-export interface PackageDetails {
-  /** ISO 8601 publish dates. */
-  currentPublishedAt?: string;
-  latestPublishedAt?: string;
-  sameMajorPublishedAt?: string;
-  meta?: PackageMeta;
-}
-
-/**
- * Builds the registry client for an ecosystem. Taking the manifest path and the
- * settings rather than a whole request lets the hover reuse it without inventing
- * an analysis it does not need.
- */
-export function lookupFor(ecosystem: Ecosystem, fsPath: string, settings: Settings): Lookup | undefined {
-  switch (ecosystem) {
-    case 'ansible': {
-      const client = new AnsibleClient(settings.requestTimeoutMs);
-      return { key: (dep) => `ansible|${dep.source ?? 'galaxy.ansible.com'}|${dep.section}|${dep.name}`,
-        fetch: (dep) => client.fetchVersions(dep.name, dep.section === 'roles', dep.source) };
-    }
-    case 'bazel': {
-      const client = new BazelClient(settings.requestTimeoutMs);
-      return { key: (dep) => `bazel|${dep.source ?? 'bcr.bazel.build'}|${dep.name}`, fetch: (dep) => client.fetchVersions(dep.name, dep.source),
-        fetchAvailability: (dep, known) => sourceAvailability(known, (dep.source ?? 'https://bcr.bazel.build').split('|')
-          .map((source) => ({ source, fetch: () => client.fetchVersions(dep.name, source) }))),
-        fetchDetails: async (dep, versions) => ({ meta: { compatibilityLevel: await client.compatibility(dep.name, versions.latest, dep.source) } }) };
-    }
-    case 'vcpkg': {
-      const client = new VcpkgClient(settings.requestTimeoutMs);
-      return { key: (dep) => `vcpkg|microsoft/vcpkg|${dep.name}|${dep.spec}|${dep.source}|${dep.vcpkgVersionField ?? ''}`,
-        fetch: (dep) => client.fetchVersions(dep.name, dep.spec, dep.vcpkgVersionField, dep.source) };
-    }
-    case 'docker': {
-      const client = new DockerClient(settings.requestTimeoutMs);
-      return { key: (dep) => `docker|${dep.source ?? 'hub.docker.com'}|${dep.name}|${dockerTag(dep.spec)?.style}|${dep.revision ?? ''}`,
-        fetch: (dep) => client.fetchVersions(dep.name, dep.spec, dep.source, dep.revision) };
-    }
-    case 'helm': {
-      const client = new HelmClient(settings.requestTimeoutMs);
-      return { key: (dep) => `helm|${dep.source}|${dep.name}`, fetch: (dep) => client.fetchVersions(dep.name, dep.source!) };
-    }
-    case 'swift': {
-      const client = new SwiftClient(settings.requestTimeoutMs);
-      return { key: (dep) => `swift|${dep.source ?? 'github.com'}|${dep.name.toLowerCase()}`, fetch: (dep) => client.fetchVersions(dep.name, dep.source) };
-    }
-    case 'conan': {
-      const client = new ConanClient(settings.requestTimeoutMs);
-      return { key: (dep) => `conan|${client.remotes.map((remote) => remote.url).join('|') || 'conan-center-index'}|${dep.name}|${dep.revision ?? ''}`, fetch: (dep) => client.fetchVersions(dep.name, dep.revision) };
-    }
-    case 'conda': {
-      const client = new CondaClient(settings.requestTimeoutMs, settings.conda.subdir || condaSubdir());
-      return { key: (dep) => `conda|${dep.source}|${client.subdir}|${dep.name}`, fetch: (dep) => client.fetchVersions(dep.name, dep.source!) };
-    }
-    case 'scala': {
-      const lookup = mavenRepositoriesLookup(ecosystem, settings.scala.repositories, settings.requestTimeoutMs);
-      return { ...lookup, key: (dep) => `${lookup.key(dep)}|${dep.variants?.join(',') ?? ''}`,
-        async fetchAvailability(dep, known) {
-          if (!dep.variants?.length) return lookup.fetchAvailability!(dep, known);
-          const results = await Promise.all(dep.variants.map(async (name) => {
-            const variant = { ...dep, name, variants: undefined };
-            return lookup.fetchAvailability!(variant, await lookup.fetch(variant));
-          }));
-          const published = results[0].published?.filter((version) => results.every((result) => result.published?.includes(version))) ?? [];
-          return { published, allComplete: results.every((result) => result.allComplete), source: results[0].source };
-        },
-        async fetch(dep) {
-          if (!dep.variants?.length) return lookup.fetch(dep);
-          const results = await Promise.all(dep.variants.map((name) => lookup.fetch({ ...dep, name })));
-          const failure = results.find((result) => result.error);
-          if (failure) return failure;
-          const all = results[0].all?.filter((version) => results.every((result) => result.all?.includes(version))) ?? [];
-          return { all, allComplete: results.every((result) => result.allComplete), source: results[0].source,
-            latest: schemeFor('scala').max(all, { includePrerelease: false }) };
-        } };
-    }
-    case 'clojure': return mavenRepositoriesLookup(ecosystem, settings.clojure.repositories, settings.requestTimeoutMs);
-    case 'deno': {
-      const npm = npmLookup(fsPath, settings);
-      const jsr = new JsrClient(settings.requestTimeoutMs);
-      const unprefixed = (dep: DependencyRef): DependencyRef => ({ ...dep, name: dep.name.slice(4) });
-      return {
-        key: (dep) => dep.name.startsWith('npm:') ? npm.key(unprefixed(dep)) : `deno|jsr.io|${dep.name}`,
-        availabilitySource: (dep) => dep.name.startsWith('npm:') ? npm.availabilitySource!(unprefixed(dep)) : 'https://jsr.io',
-        fetch: (dep) => dep.name.startsWith('npm:') ? npm.fetch(unprefixed(dep)) : jsr.fetchVersions(dep.name.slice(4)),
-        fetchAll: (dep) => dep.name.startsWith('npm:') ? npm.fetchAll!(unprefixed(dep)) : jsr.fetchVersions(dep.name.slice(4)),
-        fetchAudit: (dep, version) => dep.name.startsWith('npm:') ? npm.fetchAudit!(unprefixed(dep), version)
-          : Promise.resolve({ status: 'unsupported' }),
-        fetchDetails: (dep, versions) => dep.name.startsWith('npm:') ? npm.fetchDetails!(unprefixed(dep), versions) : Promise.resolve({}),
-      };
-    }
-    case 'githubActions': {
-      const client = new GithubActionsClient(settings.requestTimeoutMs);
-      return {
-        availabilitySource: (dep) => dep.actionRuntime ? `GitHub Actions ${dep.actionRuntime} release manifest` : `https://github.com/${dep.name}`,
-        key: (dep) => dep.actionRuntime
-          ? `githubActions|runtime|${dep.actionRuntime}|${dep.matrixVersions ? '3' : actionTagStyle(dep.spec)}`
-          : `githubActions|github.com|${dep.name.toLowerCase()}|${actionTagStyle(dep.spec)}${dep.revision ? `|${dep.revision}` : ''}`,
-        fetch: (dep) => dep.actionRuntime ? client.fetchRuntimeVersions(dep.actionRuntime, dep.matrixVersions ? '0.0.0' : dep.spec)
-          : client.fetchVersions(dep.name, dep.spec, dep.revision),
-      };
-    }
-    case 'php':
-      return composerLookup(settings);
-    case 'dart':
-      return dartLookup(settings);
-    case 'gradle':
-      return gradleLookup(settings);
-    case 'npm':
-      return npmLookup(fsPath, settings);
-    case 'go':
-      return goLookup(settings);
-    case 'python':
-      return pythonLookup(settings);
-    case 'rust':
-      return rustLookup(settings);
-    case 'dotnet':
-      return dotnetLookup(settings);
-    case 'java':
-      return mavenLookup(settings);
-    case 'ruby':
-      return rubyLookup(settings);
-    case 'terraform':
-      return terraformLookup(settings);
-    case 'elixir':
-      return hexLookup(settings);
-  }
-}
-
-function npmLookup(fsPath: string, settings: Settings): Lookup {
-  const client = new NpmClient({
-    ...(settings.npm.registry ? { registryOverride: settings.npm.registry } : {}),
-    cwd: path.dirname(fsPath),
-    timeoutMs: settings.requestTimeoutMs,
-  });
-  const clients = new Map<string, NpmClient>();
-  const clientFor = (dep: DependencyRef) => {
-    if (!dep.source || settings.npm.registry) return client;
-    let scoped = clients.get(dep.source);
-    if (!scoped) {
-      scoped = new NpmClient({ registryOverride: dep.source, cwd: path.dirname(fsPath), timeoutMs: settings.requestTimeoutMs });
-      clients.set(dep.source, scoped);
-    }
-    return scoped;
-  };
-  return {
-    key: (dep) => dep.githubRepository ? `npm|github.com|${dep.githubRepository.toLowerCase()}|${dep.spec}` : `npm|${clientFor(dep).registryFor(dep.name)}|${dep.name}`,
-    availabilitySource: (dep) => dep.githubRepository ? `https://github.com/${dep.githubRepository}` : clientFor(dep).registryFor(dep.name),
-    fetch: (dep) => dep.githubRepository ? githubCommitVersions(dep.githubRepository, dep.spec, settings.requestTimeoutMs) : clientFor(dep).fetchLatest(dep.name),
-    fetchAll: (dep) => dep.githubRepository ? githubCommitVersions(dep.githubRepository, dep.spec, settings.requestTimeoutMs) : clientFor(dep).fetchAll(dep.name),
-    fetchAudit: (dep, version) => dep.githubRepository ? Promise.resolve({ status: 'unsupported' }) : clientFor(dep).fetchAudit(dep.name, version),
-    // The descriptive fields already came back with the version; only the dates
-    // are missing, and they live in a document big enough to be worth deferring.
-    async fetchDetails(dep, versions) {
-      if (dep.githubRepository) return {};
-      const dates = await clientFor(dep).fetchPublishDates(dep.name, [versions.current, versions.latest, ...(versions.sameMajor ? [versions.sameMajor] : [])]);
-      return {
-        currentPublishedAt: dates.get(versions.current),
-        latestPublishedAt: dates.get(versions.latest),
-        sameMajorPublishedAt: versions.sameMajor ? dates.get(versions.sameMajor) : undefined,
-      };
-    },
-  };
-}
-
-function goLookup(settings: Settings): Lookup | undefined {
-  const client = new GoClient({
-    ...(settings.go.proxy ? { proxyOverride: settings.go.proxy } : {}),
-    checkMajorVersions: settings.go.checkMajorVersions,
-    timeoutMs: settings.requestTimeoutMs,
-  });
-  if (!client.proxy) {
-    return undefined;
-  }
-  return {
-    key: (dep) => `go|${client.proxy}|${dep.name}|${settings.go.checkMajorVersions ? 'major' : 'base'}`,
-    fetch: (dep) => client.fetchLatest(dep.name),
-    availabilitySource: () => client.proxy!,
-    fetchAvailability: (dep) => client.fetchAvailability(dep.name, dep.spec),
-    // The proxy dated the latest version on the response that resolved it, so only
-    // the declared one is still unknown - one small request under its own path,
-    // which is where it lives even when the module has since moved to a new major.
-    async fetchDetails(dep, versions) {
-      const [currentPublishedAt, sameMajorPublishedAt] = await Promise.all([
-        client.fetchPublishDate(dep.name, versions.current),
-        versions.sameMajor ? client.fetchPublishDate(dep.name, versions.sameMajor) : undefined,
-      ]);
-      return { currentPublishedAt, sameMajorPublishedAt };
-    },
-  };
-}
-
-function pythonLookup(settings: Settings): Lookup {
-  const client = new PyPiClient({
-    ...(settings.python.indexUrl ? { indexOverride: settings.python.indexUrl } : {}),
-    timeoutMs: settings.requestTimeoutMs,
-  });
-  const clients = new Map<string, PyPiClient>();
-  const clientFor = (dep: DependencyRef): PyPiClient => {
-    if (!dep.source || settings.python.indexUrl) return client;
-    let scoped = clients.get(dep.source);
-    if (!scoped) {
-      scoped = new PyPiClient({ indexOverride: dep.source, timeoutMs: settings.requestTimeoutMs });
-      clients.set(dep.source, scoped);
-    }
-    return scoped;
-  };
-  return {
-    key: (dep) => `python|${clientFor(dep).index}|${normalizeName(dep.name)}`,
-    availabilitySource: (dep) => clientFor(dep).index,
-    fetch: (dep) => clientFor(dep).fetchVersions(dep.name),
-    fetchAudit: (dep, version) => clientFor(dep).fetchAudit(dep.name, version),
-    // The index already dated every file it listed, so only the prose costs a request.
-    async fetchDetails(dep, versions) {
-      const [dates, meta] = await Promise.all([
-        clientFor(dep).fetchPublishDates(dep.name, [versions.current, versions.latest, ...(versions.sameMajor ? [versions.sameMajor] : [])]),
-        clientFor(dep).fetchInfo(dep.name, versions.latest),
-      ]);
-      return {
-        currentPublishedAt: dates.get(versions.current),
-        latestPublishedAt: dates.get(versions.latest),
-        sameMajorPublishedAt: versions.sameMajor ? dates.get(versions.sameMajor) : undefined,
-        ...(meta ? { meta } : {}),
-      };
-    },
-  };
-}
-
-function rustLookup(settings: Settings): Lookup {
-  const client = new CratesClient(settings.requestTimeoutMs);
-  return {
-    key: (dep) => `rust|${dep.source ?? 'crates.io'}|${dep.name.toLowerCase().replace(/_/g, '-')}`,
-    fetch: (dep) => client.fetchVersions(dep.name, dep.source),
-  };
-}
-
-function dotnetLookup(settings: Settings): Lookup {
-  const client = new NugetClient(settings.dotnet.indexUrl, settings.requestTimeoutMs);
-  const sdk = new DotnetSdkClient(settings.requestTimeoutMs);
-  return {
-    key: (dep) => dep.section === 'sdk' ? 'dotnet|sdk|release-metadata' : `dotnet|${settings.dotnet.indexUrl || dep.source || client.index}|${dep.name.toLowerCase()}`,
-    availabilitySource: (dep) => dep.section === 'sdk' ? '.NET SDK release metadata' : settings.dotnet.indexUrl || dep.source || client.index,
-    async fetch(dep) {
-      if (dep.section === 'sdk') return sdk.fetchVersions();
-      if (!dep.source || settings.dotnet.indexUrl) return client.fetchVersions(dep.name);
-      const all: string[] = [];
-      let allComplete = true;
-      for (const url of dep.source.split('|')) {
-        const result = await new NugetClient(url, settings.requestTimeoutMs).fetchVersions(dep.name);
-        if (result.error && result.error !== 'not found') return result;
-        // A hidden or inaccessible feed cannot prove a version absent.
-        if (!result.allComplete) allComplete = false;
-        all.push(...result.all ?? []);
-      }
-      return all.length ? { all: [...new Set(all)], allComplete, latest: schemeFor('dotnet').max(all, { includePrerelease: false }) } : { error: 'not found' };
-    },
-  };
-}
-
-function mavenLookup(settings: Settings): Lookup {
-  const client = new MavenClient(settings.java.repository, settings.requestTimeoutMs);
-  return {
-    key: (dep) => `maven|${client.repository}|${dep.name}`,
-    fetch: (dep) => client.fetchVersions(dep.name),
-  };
-}
-
-function composerLookup(settings: Settings): Lookup {
-  const client = new PackagistClient(settings.requestTimeoutMs);
-  return { key: (dep) => `php|${dep.source ?? 'packagist.org'}|${dep.name}`, fetch: (dep) => client.fetchVersions(dep.name, dep.source) };
-}
-
-function dartLookup(settings: Settings): Lookup {
-  const client = new PubClient(settings.requestTimeoutMs);
-  return { key: (dep) => `dart|${dep.source ?? 'pub.dev'}|${dep.name}`, fetch: (dep) => client.fetchVersions(dep.name, dep.source) };
-}
-
-function gradleLookup(settings: Settings): Lookup {
-  return mavenRepositoriesLookup('gradle', settings.gradle.repositories, settings.requestTimeoutMs);
-}
-
-function mavenRepositoriesLookup(ecosystem: string, repositories: string[], timeoutMs: number): Lookup {
-  const clients = repositories.map((repository) => new MavenClient(repository, timeoutMs));
-  const forDependency = (dep: DependencyRef) => dep.source ? dep.source.split('|').map((url) => new MavenClient(url, timeoutMs)) : clients;
-  return {
-    key: (dep) => `${ecosystem}|${forDependency(dep).map((client) => client.repository).join('|')}|${dep.name}`,
-    fetchAvailability: (dep, known) => sourceAvailability(known, forDependency(dep)
-      .map((client) => ({ source: client.repository, fetch: () => client.fetchVersions(dep.name) }))),
-    async fetch(dep) {
-      for (const client of forDependency(dep)) {
-        const result = await client.fetchVersions(dep.name);
-        if (result.error !== 'not found') return result;
-      }
-      return { error: 'not found' };
-    },
-  };
-}
-
-/** Another configured source may contain a pin missing from the update source. */
-async function sourceAvailability(known: RegistryVersions, sources: { source: string; fetch(): Promise<RegistryVersions> }[]): Promise<RegistryVersions> {
-  const results = await Promise.all(sources.map(async (entry) => {
-    if (entry.source === known.source) return known;
-    try { return await entry.fetch(); }
-    catch { return { allComplete: false }; }
-  }));
-  return { published: [...new Set(results.flatMap((result) => result.published ?? result.all ?? []))],
-    allComplete: results.every((result) => result.allComplete), source: sources.map((entry) => entry.source).join(', ') };
-}
-
-function rubyLookup(settings: Settings): Lookup {
-  const client = new RubyGemsClient(settings.requestTimeoutMs);
-  return { key: (dep) => `ruby|${dep.source ?? 'rubygems.org'}|${dep.name}`, fetch: (dep) => client.fetchVersions(dep.name, dep.source) };
-}
-
-function terraformLookup(settings: Settings): Lookup {
-  const client = new TerraformClient(settings.requestTimeoutMs);
-  return { key: (dep) => `terraform|${dep.name.toLowerCase()}`, fetch: (dep) => client.fetchVersions(dep.name) };
-}
-
-function hexLookup(settings: Settings): Lookup {
-  const client = new HexClient(settings.requestTimeoutMs);
-  return { key: (dep) => `elixir|${dep.source ?? 'hex.pm'}|${dep.name.toLowerCase()}`, fetch: (dep) => client.fetchVersions(dep.name, dep.source) };
 }
 
 /** Runs `worker` over every item with a bounded number of requests in flight. */

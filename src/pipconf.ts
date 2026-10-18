@@ -81,8 +81,8 @@ export function resolveIndexUrl(override: string | undefined, config: PipConfig)
     override,
     process.env.PIP_INDEX_URL,
     process.env.UV_INDEX_URL,
-    config.get('global.index-url'),
     config.get('install.index-url'),
+    config.get('global.index-url'),
   ];
   const chosen = candidates.map((value) => value?.trim()).find((value) => !!value);
   return (chosen || DEFAULT_INDEX).replace(/\/+$/, '');

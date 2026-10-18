@@ -1,3 +1,5 @@
+import { requestSignal } from './requests';
+
 export class HttpError extends Error {
   constructor(readonly status: number, message: string, readonly retryAt?: number) {
     super(message);
@@ -9,6 +11,7 @@ export interface RequestOptions {
   headers?: Record<string, string>;
   method?: 'POST';
   body?: string;
+  signal?: AbortSignal;
 }
 
 /**
@@ -41,7 +44,7 @@ export async function request(url: string, options: RequestOptions, accept: stri
       ...(githubToken ? { authorization: `Bearer ${githubToken}` } : {}),
       ...options.headers,
     },
-    signal: AbortSignal.timeout(options.timeoutMs),
+    signal: requestSignal(options.timeoutMs, options.signal),
   });
 
   if (response.status === 404 || response.status === 410) {

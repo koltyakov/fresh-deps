@@ -2,6 +2,7 @@ import { dockerScheme, dockerTag } from '../docker';
 import { fetchJson, HttpError } from '../http';
 import type { RegistryVersions } from '../types';
 import { OciClient, basicAuth } from './oci';
+import { requestSignal } from '../requests';
 
 export function dockerVersions(tags: string[], spec: string): RegistryVersions {
   const style = dockerTag(spec)?.style;
@@ -41,7 +42,7 @@ export class DockerClient {
     let url = `${base}?n=10000`;
     for (let page = 0; page < 100; page++) {
       const response = await fetch(url, { headers: { authorization: `Bearer ${token}`, accept: 'application/json', 'user-agent': 'vscode-fresh-deps' },
-        signal: AbortSignal.timeout(this.timeoutMs), redirect: 'error' });
+        signal: requestSignal(this.timeoutMs), redirect: 'error' });
       if (response.status === 404) return undefined;
       if (!response.ok) throw new HttpError(response.status, `${response.status} ${response.statusText}`);
       const doc = await response.json() as { tags?: string[] | null };

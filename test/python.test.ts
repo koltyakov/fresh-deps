@@ -6,6 +6,23 @@ import { parseRequirementsTxt } from '../src/parsers/requirementsTxt';
 import { parseRequirement } from '../src/parsers/pep508';
 import { normalizeName, versionFromFilename, yankedVersions } from '../src/registries/pypi';
 import { resolveIndexUrl, splitCredentials, type PipConfig } from '../src/pipconf';
+
+test('pip command-specific indexes override global indexes without bypassing explicit settings or environment', (t) => {
+  const previous = { PIP_INDEX_URL: process.env.PIP_INDEX_URL, UV_INDEX_URL: process.env.UV_INDEX_URL };
+  t.after(() => {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  });
+  delete process.env.PIP_INDEX_URL;
+  delete process.env.UV_INDEX_URL;
+  const config = new Map([['global.index-url', 'https://pypi.org/simple'], ['install.index-url', 'https://private.example/simple']]);
+  assert.equal(resolveIndexUrl(undefined, config), 'https://private.example/simple');
+  process.env.PIP_INDEX_URL = 'https://environment.example/simple';
+  assert.equal(resolveIndexUrl(undefined, config), 'https://environment.example/simple');
+  assert.equal(resolveIndexUrl('https://explicit.example/simple', config), 'https://explicit.example/simple');
+});
 import type { DependencyRef } from '../src/types';
 
 const summary = (deps: DependencyRef[]) => deps.map((d) => [d.name, d.spec, d.section, d.line]);

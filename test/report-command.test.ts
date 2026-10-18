@@ -13,6 +13,7 @@ type Uri = ReturnType<typeof uri>;
 const folders: { name: string; uri: Uri }[] = [];
 let command: () => Promise<void>;
 let cancelled = false;
+let cancelReport = () => {};
 let opened = '';
 let unsavedPath = '';
 const scans: string[] = [];
@@ -70,7 +71,10 @@ const vscode = {
   },
   window: {
     withProgress: async (_options: unknown, work: (progress: unknown, token: unknown) => Promise<unknown>) =>
-      work({ report() {} }, { get isCancellationRequested() { return cancelled; } }),
+      work({ report() {} }, { get isCancellationRequested() { return cancelled; }, onCancellationRequested: (callback: () => void) => {
+        cancelReport = callback;
+        return { dispose: () => { cancelReport = () => {}; } };
+      } }),
     showTextDocument: async () => { assert.fail('Open only the Markdown preview, not a source editor'); },
     showErrorMessage: async (message: string) => { assert.fail(message); },
   },
@@ -134,4 +138,31 @@ test('recursively scans real nested manifests and renders actual analysis, inclu
   await command();
   assert.equal(scans.length, scanCount);
   assert.equal(previews.length, 1);
+});
+
+test('cancelling a report aborts its active registry request without opening a partial report', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'fresh-deps-cancel-report-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await writeFile(join(root, 'package.json'), content);
+  folders.splice(0, folders.length, { name: 'cancel', uri: uri(root) });
+  settings.auditEnabled = false;
+  cancelled = false;
+  let started!: () => void;
+  const ready = new Promise<void>((resolve) => { started = resolve; });
+  let signal: AbortSignal | undefined;
+  t.mock.method(globalThis, 'fetch', (_url: string, options: RequestInit) => new Promise<Response>((_resolve, reject) => {
+    signal = options.signal!;
+    signal.addEventListener('abort', () => reject(signal!.reason), { once: true });
+    started();
+  }));
+  const registration = registerReportCommand();
+  t.after(() => registration.dispose());
+  const before = previews.length;
+  const work = command();
+  await ready;
+  cancelled = true;
+  cancelReport();
+  await work;
+  assert.equal(signal?.aborted, true);
+  assert.equal(previews.length, before);
 });

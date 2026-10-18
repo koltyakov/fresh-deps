@@ -7,6 +7,10 @@ const ecosystems: Partial<Record<Ecosystem, string>> = {
 };
 
 export async function osvAudit(ecosystem: Ecosystem, name: string, version: string, timeoutMs: number): Promise<AuditResponse> {
+  if (ecosystem === 'deno' && name.startsWith('npm:')) {
+    ecosystem = 'npm';
+    name = name.slice(4);
+  }
   const mapped = ecosystems[ecosystem];
   if (!mapped) return { status: 'unsupported' };
   const doc = await fetchJson<{ vulns?: { id: string; summary?: string; details?: string; withdrawn?: string; references?: { url: string }[] }[] }>('https://api.osv.dev/v1/query', {

@@ -15,6 +15,33 @@ const vulnerable: AuditResponse = {
 const clean: AuditResponse = { status: 'checked', advisories: [] };
 const versionKey = 'npm|https://registry.example|pkg';
 
+test('Deno npm imports share real OSV audit results with package.json without suppressing checks', async (t) => {
+  t.mock.method(npmrc, 'readNpmConfig', () => new Map());
+  const queries: unknown[] = [];
+  t.mock.method(globalThis, 'fetch', async (url: string, options?: RequestInit) => {
+    if (url === 'https://api.osv.dev/v1/query') {
+      queries.push(JSON.parse(options!.body as string));
+      return Response.json({ vulns: [{ id: 'TEST-1', summary: 'Example vulnerability' }] });
+    }
+    return Response.json(url.endsWith('/latest') ? { version: '1.0.0' }
+      : { versions: { '1.0.0': {} }, 'dist-tags': { latest: '1.0.0' } });
+  });
+  const base = { settings: createSettings({ auditEnabled: true, auditProvider: 'osv', npm: { registry: 'https://registry.npmjs.org' } }),
+    cache: new VersionCache(60_000), auditCache: new AuditCache(), allowNetwork: true };
+  for (const [fsPath, text] of [
+    ['/project/deno.json', '{"imports":{"pkg":"npm:example@1.0.0"}}'],
+    ['/project/package.json', '{"dependencies":{"example":"1.0.0"}}'],
+  ]) {
+    const result = await analyze({ ...base, fsPath, text });
+    assert.deepEqual(result?.audits[0].result, { status: 'checked', advisories: [{ id: 'TEST-1', title: 'Example vulnerability', url: 'https://osv.dev/vulnerability/TEST-1' }] });
+  }
+  assert.deepEqual(queries, [{ package: { ecosystem: 'npm', name: 'example' }, version: '1.0.0' }]);
+  const privateResult = await analyze({ ...base, fsPath: '/project/deno.json', text: '{"imports":{"pkg":"npm:private-package@1.0.0"}}',
+    settings: createSettings({ auditEnabled: true, auditProvider: 'osv', npm: { registry: 'https://private.example' } }) });
+  assert.equal(privateResult?.audits[0].result.status, 'unsupported');
+  assert.equal(queries.length, 1);
+});
+
 function setup(t: TestContext, spec = '1.0.0') {
   t.mock.method(npmrc, 'readNpmConfig', () => new Map());
   const network = t.mock.method(globalThis, 'fetch', () => {

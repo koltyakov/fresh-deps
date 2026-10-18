@@ -2,6 +2,7 @@ import { readFileSync } from 'fs';
 import { homedir } from 'os';
 import { join } from 'path';
 import { HttpError } from '../http';
+import { requestSignal } from '../requests';
 
 export function basicAuth(host: string): string | undefined {
   try {
@@ -22,7 +23,7 @@ export class OciClient {
     const basic = basicAuth(target.host);
     const fetchWith = (authorization?: string) => fetch(url, {
       headers: { accept, 'user-agent': 'vscode-fresh-deps', ...(authorization ? { authorization } : {}) },
-      signal: AbortSignal.timeout(this.timeoutMs), redirect: 'error',
+      signal: requestSignal(this.timeoutMs), redirect: 'error',
     });
     let response = await fetchWith(this.tokens.get(target.origin) ?? basic);
     if (response.status === 401) {
@@ -34,7 +35,7 @@ export class OciClient {
       for (const key of ['service', 'scope']) if (fields.has(key)) realm.searchParams.set(key, fields.get(key)!);
       const tokenResponse = await fetch(realm.href, {
         headers: { accept: 'application/json', ...((realm.origin === target.origin || target.hostname === 'registry-1.docker.io' && realm.origin === 'https://auth.docker.io') && basic ? { authorization: basic } : {}) },
-        signal: AbortSignal.timeout(this.timeoutMs), redirect: 'error',
+        signal: requestSignal(this.timeoutMs), redirect: 'error',
       });
       if (!tokenResponse.ok) throw new HttpError(tokenResponse.status, 'OCI token request failed');
       const tokenDoc = await tokenResponse.json() as { token?: string; access_token?: string };

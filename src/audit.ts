@@ -1,9 +1,11 @@
 import type { AuditResponse } from './types';
+import { SharedRequests } from './requests';
 
 /** Audit answers are version-specific and never persisted with registry metadata. */
 export class AuditCache {
   private readonly entries = new Map<string, { at: number; result: AuditResponse }>();
-  private readonly pending = new Map<string, Promise<AuditResponse>>();
+  private readonly pending = new SharedRequests<AuditResponse>();
+  private generation = 0;
 
   get(key: string, ttl: number): AuditResponse | undefined {
     const entry = this.entries.get(key);
@@ -12,24 +14,23 @@ export class AuditCache {
     return Date.now() - entry.at < lifetime ? entry.result : undefined;
   }
 
-  async resolve(key: string, fetch: () => Promise<AuditResponse>): Promise<AuditResponse> {
-    const existing = this.pending.get(key);
-    if (existing) return existing;
-    const pending = Promise.resolve().then(fetch).catch((error): AuditResponse => ({
-      status: 'failed', error: error instanceof Error ? error.message : String(error),
-    })).then((result) => {
-      if (this.pending.get(key) === pending) {
-        this.entries.set(key, { at: Date.now(), result });
-        this.pending.delete(key);
+  resolve(key: string, fetch: () => Promise<AuditResponse>, signal?: AbortSignal): Promise<AuditResponse> {
+    const generation = this.generation;
+    return this.pending.resolve(key, async (requestSignal) => {
+      let result: AuditResponse;
+      try { result = await fetch(); }
+      catch (error) {
+        requestSignal.throwIfAborted();
+        result = { status: 'failed', error: error instanceof Error ? error.message : String(error) };
       }
+      if (!requestSignal.aborted && generation === this.generation) this.entries.set(key, { at: Date.now(), result });
       return result;
-    });
-    this.pending.set(key, pending);
-    return pending;
+    }, signal);
   }
 
   clear(): void {
     this.entries.clear();
     this.pending.clear();
+    this.generation++;
   }
 }

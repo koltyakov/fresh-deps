@@ -2,7 +2,7 @@
   "name": "fresh-deps",
   "displayName": "Fresh Deps",
   "description": "Highlights dependencies that have newer versions available, inline in your manifest files.",
-  "version": "0.6.2",
+  "version": "0.6.3",
   "license": "MIT",
   "publisher": "koltyakov",
   "repository": {
@@ -10,7 +10,7 @@
     "url": "https://github.com/koltyakov/fresh-deps.git"
   },
   "engines": {
-    "vscode": "^1.120.0"
+    "vscode": "^1.107.0"
   },
   "categories": [
     "Linters",
@@ -185,6 +185,7 @@
           "freshDeps.enabled": {
             "type": "boolean",
             "default": true,
+            "scope": "resource",
             "description": "Show inline hints for dependencies that have newer versions."
           },
           "freshDeps.cacheDurationMinutes": {
@@ -545,12 +546,16 @@
   },
   "devDependencies": {
     "@types/markdown-it": "^14.2.0",
-    "@types/node": "^26.6.2",
+    "@types/node": "^26.6.5",
     "@types/semver": "^7.8.0",
-    "@types/vscode": "1.120.0",
+    "@types/vscode": "1.107.0",
     "@vscode/vsce": "^4.0.0",
     "esbuild": "^0.28.2",
-    "markdown-it": "^15.0.2",
+    "markdown-it": "^15.0.3",
     "typescript": "7.0.2"
+  },
+  "allowScripts": {
+    "@vscode/vsce-sign@2.1.0": true,
+    "esbuild@0.28.2": true
   }
 }

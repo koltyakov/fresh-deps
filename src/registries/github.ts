@@ -1,7 +1,8 @@
 import { createHash } from 'crypto';
 import { request, fetchJson } from '../http';
+import { SharedRequests } from '../requests';
 
-const pending = new Map<string, Promise<string[] | undefined>>();
+const pending = new SharedRequests<string[] | undefined>();
 const responses = new Map<string, { etag: string; tags: { name: string }[] }>();
 
 export async function githubTagCommit(name: string, tag: string, timeoutMs: number): Promise<string | undefined> {
@@ -16,12 +17,7 @@ export async function githubTagCommit(name: string, tag: string, timeoutMs: numb
 export function githubTags(name: string, timeoutMs: number): Promise<string[] | undefined> {
   const token = process.env.FRESH_DEPS_GITHUB_TOKEN || process.env.GH_TOKEN || process.env.GITHUB_TOKEN || '';
   const key = `${name.toLowerCase()}|${createHash('sha256').update(token).digest('hex')}`;
-  let promise = pending.get(key);
-  if (!promise) {
-    promise = load(key, name, timeoutMs).finally(() => pending.delete(key));
-    pending.set(key, promise);
-  }
-  return promise;
+  return pending.resolve(key, () => load(key, name, timeoutMs));
 }
 
 async function load(key: string, name: string, timeoutMs: number): Promise<string[] | undefined> {

@@ -5,6 +5,11 @@ import { readSettingsFrom } from '../src/settings';
 import { configurationProperties, createSettings } from './settings';
 import type { Uri } from 'vscode';
 
+test('inline enablement is registered as a resource-scoped setting', () => {
+  const properties = Object.assign({}, ...manifest.contributes.configuration.map((group) => group.properties));
+  assert.equal(properties['freshDeps.enabled'].scope, 'resource');
+});
+
 test('VS Code settings reads retain the requested resource scope and effective values', () => {
   const Module = require('node:module') as {
     _load: (id: string, parent: NodeModule | null | undefined, isMain?: boolean) => unknown;

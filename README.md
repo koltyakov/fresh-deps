@@ -24,7 +24,7 @@ link to the package registry. Hints are editor decorations, so your files stay u
 
 ## Get started
 
-1. Install **Fresh Deps** from the VS Code Extensions view. Requires VS Code 1.120.0 or later.
+1. Install **Fresh Deps** from the VS Code Extensions view. Requires VS Code 1.107.0 or later.
 2. Open a supported manifest, such as `package.json`, `go.mod`, or `pyproject.toml`.
 3. Look for version hints at the end of dependency lines. Hover a hint to inspect the update.
 
@@ -456,9 +456,13 @@ Customize the colors through `workbench.colorCustomizations` using `freshDeps.co
 ## Resolved versions and runtime compatibility
 
 `freshDeps.useLockfiles` is off by default. When enabled, Fresh Deps reads adjacent npm shrinkwrap/package-lock,
-Cargo, uv/Poetry, Composer, pub, Swift, Terraform, and Mix lockfiles. A selected version must be unambiguous and satisfy
-the declaration before it becomes the update or audit baseline. The hover labels that baseline as a lockfile version.
+Cargo, uv/Poetry, Composer, pub, Swift, Terraform, and Mix lockfiles. A selected version must be unambiguous, match
+the declaration's package source where the lockfile records it, and satisfy the declared requirement before it becomes
+the update or audit baseline. Unidentifiable custom sources are not guessed. The hover labels that baseline as a lockfile version.
 This does not inspect installed packages or resolve the dependency graph.
+
+Changing the cache duration invalidates existing version entries. A duration of zero also prevents older persisted
+entries from being reused after a window reload.
 
 Set concrete interpreter versions in `freshDeps.runtimeVersions` to add a runtime-compatible release row to the hover:
 

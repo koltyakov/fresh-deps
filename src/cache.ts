@@ -1,7 +1,9 @@
 import type { RegistryVersions } from './types';
+import { SharedRequests } from './requests';
 
 interface Entry {
   value: RegistryVersions;
+  at: number;
   expires: number;
 }
 
@@ -10,24 +12,18 @@ const ERROR_TTL_MS = 5 * 60 * 1000;
 
 export class VersionCache {
   private entries = new Map<string, Entry>();
-  private pending = new Map<string, Promise<RegistryVersions>>();
+  private pending = new SharedRequests<RegistryVersions>();
   generation = 0;
 
   /** Share requests across declarations and editors without sharing comparison policy. */
-  resolve(key: string, fetch: () => Promise<RegistryVersions>): Promise<RegistryVersions> {
-    let pending = this.pending.get(key);
-    if (!pending) {
-      pending = Promise.resolve().then(fetch).finally(() => {
-        if (this.pending.get(key) === pending) this.pending.delete(key);
-      });
-      this.pending.set(key, pending);
-    }
-    return pending;
+  resolve(key: string, fetch: () => Promise<RegistryVersions>, signal?: AbortSignal): Promise<RegistryVersions> {
+    return this.pending.resolve(key, fetch, signal);
   }
 
   constructor(private ttlMs: number) {}
 
   setTtl(ttlMs: number): void {
+    if (ttlMs !== this.ttlMs) this.clear();
     this.ttlMs = ttlMs;
   }
 
@@ -36,7 +32,7 @@ export class VersionCache {
     if (!entry) {
       return undefined;
     }
-    if (entry.expires <= Date.now()) {
+    if (Math.min(entry.expires, entry.at + this.ttlMs) <= Date.now()) {
       this.entries.delete(key);
       return undefined;
     }
@@ -45,7 +41,8 @@ export class VersionCache {
 
   set(key: string, value: RegistryVersions): void {
     const ttl = value.error || value.packageMissing ? Math.min(ERROR_TTL_MS, this.ttlMs) : this.ttlMs;
-    this.entries.set(key, { value, expires: Date.now() + ttl });
+    const at = Date.now();
+    this.entries.set(key, { value, at, expires: at + ttl });
   }
 
   clear(): void {
@@ -66,7 +63,8 @@ export class VersionCache {
     }
     const now = Date.now();
     for (const [key, entry] of data) {
-      if (entry?.expires > now) {
+      // Old snapshots without a fetch timestamp cannot honor a shorter current TTL.
+      if (Number.isFinite(entry?.at) && Math.min(entry.expires, entry.at + this.ttlMs) > now) {
         this.entries.set(key, entry);
       }
     }

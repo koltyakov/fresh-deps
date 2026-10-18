@@ -37,7 +37,11 @@ export interface VersionScheme {
   isRange(spec: string): boolean;
   satisfies(version: string, spec: string, opts: { includePrerelease: boolean }): boolean;
   /** Newest of `versions` that the spec allows. */
-  maxSatisfying(versions: string[], spec: string, opts: { includePrerelease: boolean }): string | undefined;
+  maxSatisfying(
+    versions: string[],
+    spec: string,
+    opts: { includePrerelease: boolean }
+  ): string | undefined;
   /** Newest of `versions` outright. */
   max(versions: string[], opts: { includePrerelease: boolean }): string | undefined;
   classify(current: string, latest: string): UpdateKind;
@@ -86,14 +90,18 @@ export const semverScheme: VersionScheme = {
   isPinned,
   isRange: (spec) => semver.validRange(spec, LOOSE) !== null,
   satisfies: (version, spec, opts) =>
-    semver.satisfies(version, semver.validRange(spec, LOOSE) ?? spec, { ...LOOSE, includePrerelease: opts.includePrerelease }),
+    semver.satisfies(version, semver.validRange(spec, LOOSE) ?? spec, {
+      ...LOOSE,
+      includePrerelease: opts.includePrerelease,
+    }),
   maxSatisfying: (versions, spec, opts) =>
     semver.maxSatisfying(versions, semver.validRange(spec, LOOSE) ?? spec, {
       ...LOOSE,
       includePrerelease: opts.includePrerelease,
     }) ?? undefined,
   max: (versions, opts) =>
-    semver.maxSatisfying(versions, '*', { ...LOOSE, includePrerelease: opts.includePrerelease }) ?? undefined,
+    semver.maxSatisfying(versions, '*', { ...LOOSE, includePrerelease: opts.includePrerelease }) ??
+    undefined,
   classify: classifyUpdate,
 };
 
@@ -103,17 +111,22 @@ export function cargoRange(spec: string): string | undefined {
   if (!trimmed || trimmed === '*' || trimmed.includes('||')) {
     return undefined;
   }
-  const parts = trimmed.split(',').map((part) => part.trim()).filter(Boolean);
+  const parts = trimmed
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean);
   if (parts.length === 0) {
     return undefined;
   }
-  const translated = parts.map((part) => {
-    const compact = part.replace(/^(>=|<=|>|<|=|\^|~)\s+/, '$1');
-    if (compact.startsWith('=')) {
-      return compact.slice(1);
-    }
-    return /^(>=|<=|>|<|\^|~)/.test(compact) || /[xX*]/.test(compact) ? compact : `^${compact}`;
-  }).join(' ');
+  const translated = parts
+    .map((part) => {
+      const compact = part.replace(/^(>=|<=|>|<|=|\^|~)\s+/, '$1');
+      if (compact.startsWith('=')) {
+        return compact.slice(1);
+      }
+      return /^(>=|<=|>|<|\^|~)/.test(compact) || /[xX*]/.test(compact) ? compact : `^${compact}`;
+    })
+    .join(' ');
   return semver.validRange(translated, LOOSE) ? translated : undefined;
 }
 
@@ -127,12 +140,18 @@ export const cargoScheme: VersionScheme = {
   isRange: (spec) => cargoRange(spec) !== undefined,
   satisfies: (version, spec, opts) => {
     const range = cargoRange(spec);
-    return !!range && semver.satisfies(version, range, { ...LOOSE, includePrerelease: opts.includePrerelease });
+    return (
+      !!range &&
+      semver.satisfies(version, range, { ...LOOSE, includePrerelease: opts.includePrerelease })
+    );
   },
   maxSatisfying: (versions, spec, opts) => {
     const range = cargoRange(spec);
     return range
-      ? semver.maxSatisfying(versions, range, { ...LOOSE, includePrerelease: opts.includePrerelease }) ?? undefined
+      ? (semver.maxSatisfying(versions, range, {
+          ...LOOSE,
+          includePrerelease: opts.includePrerelease,
+        }) ?? undefined)
       : undefined;
   },
 };
@@ -164,20 +183,34 @@ function pessimisticScheme(dialect: 'terraform' | 'hex'): VersionScheme {
     const range = rangeOf(spec);
     const prerelease = semver.prerelease(version, LOOSE);
     if (dialect === 'terraform' && prerelease?.length) {
-      return /-/.test(spec) && /^(?:=\s*)?v?\d+(?:\.\d+){0,2}-[0-9A-Za-z.-]+(?:\+[0-9A-Za-z.-]+)?$/.test(spec.trim())
-        && !!range && semver.satisfies(version, range, { ...LOOSE, includePrerelease: true });
+      return (
+        /-/.test(spec) &&
+        /^(?:=\s*)?v?\d+(?:\.\d+){0,2}-[0-9A-Za-z.-]+(?:\+[0-9A-Za-z.-]+)?$/.test(spec.trim()) &&
+        !!range &&
+        semver.satisfies(version, range, { ...LOOSE, includePrerelease: true })
+      );
     }
-    const includePrerelease = opts.includePrerelease || (dialect === 'hex' && /\d-[0-9A-Za-z]/.test(spec));
+    const includePrerelease =
+      opts.includePrerelease || (dialect === 'hex' && /\d-[0-9A-Za-z]/.test(spec));
     return !!range && semver.satisfies(version, range, { ...LOOSE, includePrerelease });
   };
   return {
     ...semverScheme,
-    baseline: (spec) => { const range = rangeOf(spec); return range ? baselineOf(range) : undefined; },
-    isPinned: (spec) => /^(?:==?|=)?\s*v?\d+(?:\.\d+){0,2}(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(spec.trim()),
+    baseline: (spec) => {
+      const range = rangeOf(spec);
+      return range ? baselineOf(range) : undefined;
+    },
+    isPinned: (spec) =>
+      /^(?:==?|=)?\s*v?\d+(?:\.\d+){0,2}(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(
+        spec.trim()
+      ),
     isRange: (spec) => rangeOf(spec) !== undefined,
     satisfies,
-    maxSatisfying: (versions, spec, opts) => versions.filter((version) => semverScheme.isVersion(version)
-      && satisfies(version, spec, opts)).sort((a, b) => semver.compare(a, b, LOOSE)).at(-1),
+    maxSatisfying: (versions, spec, opts) =>
+      versions
+        .filter((version) => semverScheme.isVersion(version) && satisfies(version, spec, opts))
+        .toSorted((a, b) => semver.compare(a, b, LOOSE))
+        .at(-1),
   };
 }
 

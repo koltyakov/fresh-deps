@@ -6,6 +6,10 @@ out/**
 scripts/**
 node_modules/**
 esbuild.js
+oxlint.config.mts
+oxfmt.config.mts
+.npmrc
+.gitattributes
 tsconfig*.json
 **/*.map
 **/*.ts

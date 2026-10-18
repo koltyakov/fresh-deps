@@ -93,7 +93,14 @@ class Scanner {
       }
       if (!literal && ch === '\\') {
         const escaped = this.peek(1);
-        out += escaped === 'n' ? '\n' : escaped === 't' ? '\t' : escaped === 'r' ? '\r' : escaped ?? '';
+        out +=
+          escaped === 'n'
+            ? '\n'
+            : escaped === 't'
+              ? '\t'
+              : escaped === 'r'
+                ? '\r'
+                : (escaped ?? '');
         this.advance(2);
         continue;
       }
@@ -260,7 +267,9 @@ export function versionOf(value: TomlValue): { text: string; line: number } | un
     return { text: value.text, line: value.line };
   }
   if (value.kind === 'table') {
-    const version = value.entries.find((entry) => entry.path.length === 1 && entry.path[0] === 'version');
+    const version = value.entries.find(
+      (entry) => entry.path.length === 1 && entry.path[0] === 'version'
+    );
     if (version?.value.kind === 'string') {
       return { text: version.value.text, line: version.value.line };
     }

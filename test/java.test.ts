@@ -7,7 +7,8 @@ import { computeUpdate } from '../src/versions';
 import { schemeFor } from '../src/schemes';
 import type { DependencyRef } from '../src/types';
 
-const summary = (deps: DependencyRef[]) => deps.map((dep) => [dep.name, dep.spec, dep.section, dep.line]);
+const summary = (deps: DependencyRef[]) =>
+  deps.map((dep) => [dep.name, dep.spec, dep.section, dep.line]);
 
 test('pom.xml: reads direct and managed dependencies', () => {
   const text = [
@@ -141,13 +142,15 @@ test('Maven ranges and maximum selection use normalized qualifier lists', () => 
 });
 
 test('Maven metadata ignores prereleases when choosing latest', () => {
-  const result = versionsFromMetadata([
-    '<metadata><versioning><release>1.10.0</release><versions>',
-    '<version>1.9.0</version>',
-    '<version>2.0.0-RC1</version>',
-    '<version>1.10.0</version>',
-    '</versions></versioning></metadata>',
-  ].join(''));
+  const result = versionsFromMetadata(
+    [
+      '<metadata><versioning><release>1.10.0</release><versions>',
+      '<version>1.9.0</version>',
+      '<version>2.0.0-RC1</version>',
+      '<version>1.10.0</version>',
+      '</versions></versioning></metadata>',
+    ].join('')
+  );
   assert.strictEqual(result.latest, '1.10.0');
   assert.deepStrictEqual(result.all, ['1.9.0', '2.0.0-RC1', '1.10.0']);
 });

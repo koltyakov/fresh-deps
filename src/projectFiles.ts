@@ -7,12 +7,18 @@ export function readProjectFile(filename: string): string | undefined {
   try {
     if (statSync(filename).size > 4 * 1024 * 1024) return undefined;
     return readFileSync(filename, 'utf8');
-  } catch { return undefined; }
+  } catch {
+    return undefined;
+  }
 }
 
 /** Recognize unreadable, oversized, or binary lockfiles without decoding their contents. */
 export function projectFileExists(filename: string): boolean {
-  try { return statSync(filename).isFile(); } catch { return false; }
+  try {
+    return statSync(filename).isFile();
+  } catch {
+    return false;
+  }
 }
 
 export function parentFiles(filename: string, name: string): string[] {
@@ -28,9 +34,14 @@ export function parentFiles(filename: string, name: string): string[] {
 }
 
 export function jsonc(text: string): unknown {
-  const clean = text.replace(/"(?:\\[\s\S]|[^"\\])*"|\/\/[^\n]*|\/\*[\s\S]*?\*\//g,
-    (match) => match.startsWith('"') ? match : match.replace(/[^\n]/g, ' '));
-  return JSON.parse(clean.replace(/"(?:\\[\s\S]|[^"\\])*"|,\s*(?=[}\]])/g, (match) => match.startsWith('"') ? match : ''));
+  const clean = text.replace(/"(?:\\[\s\S]|[^"\\])*"|\/\/[^\n]*|\/\*[\s\S]*?\*\//g, (match) =>
+    match.startsWith('"') ? match : match.replace(/[^\n]/g, ' ')
+  );
+  return JSON.parse(
+    clean.replace(/"(?:\\[\s\S]|[^"\\])*"|,\s*(?=[}\]])/g, (match) =>
+      match.startsWith('"') ? match : ''
+    )
+  );
 }
 
 const importMapCache = new Map<string, { expires: number; result: boolean }>();
@@ -51,13 +62,20 @@ export function isReferencedImportMap(filename: string): boolean {
 }
 
 function referencedImportMap(filename: string): boolean {
-  for (const file of parentFiles(filename, 'deno.json').flatMap((file) => [file, `${file}c`])) {
+  for (const file of parentFiles(filename, 'deno.json').flatMap((path) => [path, `${path}c`])) {
     try {
       const text = readProjectFile(file);
       if (!text) continue;
       const config = jsonc(text) as { importMap?: unknown };
-      if (typeof config.importMap === 'string' && !/^\w+:/.test(config.importMap) && resolve(dirname(file), config.importMap) === resolve(filename)) return true;
-    } catch { /* An incomplete Deno config does not select an import map. */ }
+      if (
+        typeof config.importMap === 'string' &&
+        !/^\w+:/.test(config.importMap) &&
+        resolve(dirname(file), config.importMap) === resolve(filename)
+      )
+        return true;
+    } catch {
+      /* An incomplete Deno config does not select an import map. */
+    }
   }
   return false;
 }

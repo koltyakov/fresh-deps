@@ -10,7 +10,8 @@ export function goLookup(settings: Settings): Lookup | undefined {
   });
   if (!client.proxy) return undefined;
   return {
-    key: (dep) => `go|${client.proxy}|${dep.name}|${settings.go.checkMajorVersions ? 'major' : 'base'}`,
+    key: (dep) =>
+      `go|${client.proxy}|${dep.name}|${settings.go.checkMajorVersions ? 'major' : 'base'}`,
     fetch: (dep) => client.fetchLatest(dep.name),
     availabilitySource: () => client.proxy!,
     fetchAvailability: (dep) => client.fetchAvailability(dep.name, dep.spec),

@@ -20,18 +20,35 @@ import { createSettings } from './settings';
 
 const opts = { includePrerelease: false };
 const baseline = 'a'.repeat(40);
-const vcpkgManifest = (extra: object) => JSON.stringify({ 'builtin-baseline': baseline, ...extra }, null, 2);
-const collectionUrl = 'https://galaxy.ansible.com/api/v3/plugin/ansible/content/published/collections/index/ansible/posix/versions/?limit=100';
+const vcpkgManifest = (extra: object) =>
+  JSON.stringify({ 'builtin-baseline': baseline, ...extra }, null, 2);
+const collectionUrl =
+  'https://galaxy.ansible.com/api/v3/plugin/ansible/content/published/collections/index/ansible/posix/versions/?limit=100';
 
 test('Ansible, Bazel and vcpkg manifests activate with independent settings', () => {
-  for (const [file, ecosystem] of [['requirements.yml', 'ansible'], ['roles/requirements.yaml', 'ansible'],
-    ['MODULE.bazel', 'bazel'], ['vcpkg.json', 'vcpkg']] as const) {
+  for (const [file, ecosystem] of [
+    ['requirements.yml', 'ansible'],
+    ['roles/requirements.yaml', 'ansible'],
+    ['MODULE.bazel', 'bazel'],
+    ['vcpkg.json', 'vcpkg'],
+  ] as const) {
     assert.equal(manifestOf(`/workspace/${file}`)?.ecosystem, ecosystem);
     assert.equal(createSettings()[ecosystem].enabled, true);
-    assert.ok(manifest.activationEvents.some((event) => event.startsWith('workspaceContains:')
-      && matchesGlob(`/workspace/${file}`, event.slice('workspaceContains:'.length))), file);
+    assert.ok(
+      manifest.activationEvents.some(
+        (event) =>
+          event.startsWith('workspaceContains:') &&
+          matchesGlob(`/workspace/${file}`, event.slice('workspaceContains:'.length))
+      ),
+      file
+    );
   }
-  for (const file of ['requirements.json', 'MODULE.bazel.lock', 'BUILD.bazel', 'vcpkg-configuration.json']) {
+  for (const file of [
+    'requirements.json',
+    'MODULE.bazel.lock',
+    'BUILD.bazel',
+    'vcpkg-configuration.json',
+  ]) {
     assert.equal(manifestOf(`/workspace/${file}`), undefined);
   }
 });
@@ -46,9 +63,13 @@ roles:
     name: docker_alias
     version: "7.0.0"
 `);
-  assert.deepEqual(deps.map(({ name, line, section, semver }) => [name, line, section, semver]), [
-    ['ansible.posix', 2, 'collections', undefined], ['geerlingguy.docker', 7, 'roles', true],
-  ]);
+  assert.deepEqual(
+    deps.map(({ name, line, section, semver }) => [name, line, section, semver]),
+    [
+      ['ansible.posix', 2, 'collections', undefined],
+      ['geerlingguy.docker', 7, 'roles', true],
+    ]
+  );
   assert.equal(parseAnsible('- src: geerlingguy.docker\n  version: v7.0.0')[0]?.section, 'roles');
   assert.equal(parseAnsible('collections: [{name: ansible.posix, version: 1.0.0}]')[0]?.line, 0);
 });
@@ -63,10 +84,24 @@ test('Ansible skips custom sources, dynamic values, aliases and unrelated YAML',
     '{name: ansible.posix, version: "<2.0.0"}',
     '{name: ansible.posix, version: "!=2.0.0"}',
     '{name: ansible.posix, version: 1.0.0, <<: {source: https://private.example}}',
-  ]) assert.deepEqual(parseAnsible(`collections: [${entry}]`), [], entry);
-  assert.equal(parseAnsible('collections: [{name: private.pkg, version: 1.0.0, source: https://private.example}]')[0]?.source, 'https://private.example');
-  assert.deepEqual(parseAnsible('roles: [{src: https://github.com/a/b, version: 1.0.0}, {name: a.b, scm: git, version: 1.0.0}]'), []);
-  assert.deepEqual(parseAnsible('base: &pin 1.0.0\ncollections: [{name: ansible.posix, version: *pin}]'), []);
+  ])
+    assert.deepEqual(parseAnsible(`collections: [${entry}]`), [], entry);
+  assert.equal(
+    parseAnsible(
+      'collections: [{name: private.pkg, version: 1.0.0, source: https://private.example}]'
+    )[0]?.source,
+    'https://private.example'
+  );
+  assert.deepEqual(
+    parseAnsible(
+      'roles: [{src: https://github.com/a/b, version: 1.0.0}, {name: a.b, scm: git, version: 1.0.0}]'
+    ),
+    []
+  );
+  assert.deepEqual(
+    parseAnsible('base: &pin 1.0.0\ncollections: [{name: ansible.posix, version: *pin}]'),
+    []
+  );
   assert.deepEqual(parseAnsible('collections: [\n'), []);
   assert.deepEqual(parseAnsible('dependencies: [numpy]'), []);
 });
@@ -77,7 +112,10 @@ test('Ansible comma constraints support exclusions without npm caret semantics',
   assert.equal(ansibleScheme.satisfies('1.4.0', spec, opts), false);
   assert.equal(ansibleScheme.satisfies('1.5.0', spec, opts), true);
   assert.equal(ansibleScheme.satisfies('2.0.0', spec, opts), false);
-  assert.equal(ansibleScheme.maxSatisfying(['1.3.0', '1.4.0', '1.5.0', '2.0.0'], spec, opts), '1.5.0');
+  assert.equal(
+    ansibleScheme.maxSatisfying(['1.3.0', '1.4.0', '1.5.0', '2.0.0'], spec, opts),
+    '1.5.0'
+  );
   assert.equal(ansibleScheme.isPinned('==1.0.0'), true);
   assert.equal(ansibleScheme.isRange('^1.0.0'), false);
   assert.equal(ansibleScheme.baseline('>=2.0.0,<1.0.0'), undefined);
@@ -87,9 +125,19 @@ test('Galaxy collection pagination collects complete version lists', async (t) =
   const urls: string[] = [];
   t.mock.method(globalThis, 'fetch', async (url: string) => {
     urls.push(url);
-    return Response.json(urls.length === 1
-      ? { meta: { count: 3 }, data: [{ version: '1.5.0' }], links: { next: '?limit=100&offset=1' } }
-      : { meta: { count: 3 }, data: [{ version: '2.0.0' }, { version: '3.0.0-rc.1' }], links: { next: null } });
+    return Response.json(
+      urls.length === 1
+        ? {
+            meta: { count: 3 },
+            data: [{ version: '1.5.0' }],
+            links: { next: '?limit=100&offset=1' },
+          }
+        : {
+            meta: { count: 3 },
+            data: [{ version: '2.0.0' }, { version: '3.0.0-rc.1' }],
+            links: { next: null },
+          }
+    );
   });
   const result = await new AnsibleClient(1000).fetchVersions('ansible.posix', false);
   assert.equal(result.latest, '2.0.0');
@@ -101,13 +149,29 @@ test('Galaxy roles use the full versions endpoint rather than the truncated summ
   const urls: string[] = [];
   t.mock.method(globalThis, 'fetch', async (url: string) => {
     urls.push(url);
-    return Response.json(urls.length === 1
-      ? { results: [{ id: 10923, name: 'docker', username: 'geerlingguy', summary_fields: { versions: [{ name: '1.0.0' }] } }] }
-      : { count: 2, results: [{ name: '7.0.0' }, { name: '8.0.0' }], next: null });
+    return Response.json(
+      urls.length === 1
+        ? {
+            results: [
+              {
+                id: 10923,
+                name: 'docker',
+                username: 'geerlingguy',
+                summary_fields: { versions: [{ name: '1.0.0' }] },
+              },
+            ],
+          }
+        : { count: 2, results: [{ name: '7.0.0' }, { name: '8.0.0' }], next: null }
+    );
   });
-  assert.equal((await new AnsibleClient(1000).fetchVersions('geerlingguy.docker', true)).latest, '8.0.0');
-  assert.deepEqual(urls, ['https://galaxy.ansible.com/api/v1/roles/?owner__username=geerlingguy&name=docker',
-    'https://galaxy.ansible.com/api/v1/roles/10923/versions/?page_size=100']);
+  assert.equal(
+    (await new AnsibleClient(1000).fetchVersions('geerlingguy.docker', true)).latest,
+    '8.0.0'
+  );
+  assert.deepEqual(urls, [
+    'https://galaxy.ansible.com/api/v1/roles/?owner__username=geerlingguy&name=docker',
+    'https://galaxy.ansible.com/api/v1/roles/10923/versions/?page_size=100',
+  ]);
 });
 
 test('Galaxy rejects incomplete listings, pagination loops and off-host links', async (t) => {
@@ -127,7 +191,10 @@ test('Galaxy rejects incomplete listings, pagination loops and off-host links', 
     calls++;
     return Response.json({ data: [{ version: '1.0.0' }], links: { next: `?offset=${calls}` } });
   });
-  assert.match((await new AnsibleClient(1000).fetchVersions('ansible.posix', false)).error!, /100 pages/);
+  assert.match(
+    (await new AnsibleClient(1000).fetchVersions('ansible.posix', false)).error!,
+    /100 pages/
+  );
   assert.equal(calls, 100);
 });
 
@@ -143,11 +210,23 @@ bazel_dep(name = 'abseil-cpp', version = '20240116.2.bcr.1', repo_name = 'absl')
 bazel_dep(name = "patched", version = "1.0")
 archive_override(module_name = "patched", urls = ["https://example.org/source"])
 `;
-  assert.deepEqual(parseBazel(text).map(({ name, spec, line }) => [name, spec, line]), [
-    ['rules_cc', '0.1.0', 4], ['abseil-cpp', '20240116.2.bcr.1', 7],
-  ]);
-  for (const override of ['git_override', 'local_path_override', 'single_version_override', 'multiple_version_override']) {
-    assert.deepEqual(parseBazel(`bazel_dep(name="rules_cc", version="1.0")\n${override}(module_name="rules_cc")`), []);
+  assert.deepEqual(
+    parseBazel(text).map(({ name, spec, line }) => [name, spec, line]),
+    [
+      ['rules_cc', '0.1.0', 4],
+      ['abseil-cpp', '20240116.2.bcr.1', 7],
+    ]
+  );
+  for (const override of [
+    'git_override',
+    'local_path_override',
+    'single_version_override',
+    'multiple_version_override',
+  ]) {
+    assert.deepEqual(
+      parseBazel(`bazel_dep(name="rules_cc", version="1.0")\n${override}(module_name="rules_cc")`),
+      []
+    );
   }
 });
 
@@ -161,12 +240,20 @@ test('Bazel skips expressions, includes, computed overrides and malformed declar
     'bazel_dep(name="rules_cc", version="1.0")\ngit_override(module_name=NAME)',
     '"""bazel_dep(name="rules_cc", version="1.0")"""',
     'something.bazel_dep(name="rules_cc", version="1.0")',
-  ]) assert.deepEqual(parseBazel(text), [], text);
+  ])
+    assert.deepEqual(parseBazel(text), [], text);
 });
 
 test('Bazel ordering handles relaxed releases, prereleases and numeric identifiers', () => {
-  for (const [a, b] of [['1.9', '1.10'], ['1.0', '1.0.0'], ['1.0.0', '1.0.0.bcr.1'],
-    ['1.0.0.bcr.2', '1.0.0.bcr.10'], ['1.0-rc.2', '1.0-rc.10'], ['1.0-rc.1', '1.0'], ['1.0.2', '1.0.a']]) {
+  for (const [a, b] of [
+    ['1.9', '1.10'],
+    ['1.0', '1.0.0'],
+    ['1.0.0', '1.0.0.bcr.1'],
+    ['1.0.0.bcr.2', '1.0.0.bcr.10'],
+    ['1.0-rc.2', '1.0-rc.10'],
+    ['1.0-rc.1', '1.0'],
+    ['1.0.2', '1.0.a'],
+  ]) {
     assert.equal(bazelScheme.compare(a, b), -1, `${a} < ${b}`);
   }
   assert.equal(bazelScheme.compare('1.0+build', '1.0'), 0);
@@ -180,7 +267,10 @@ test('Bazel ordering handles relaxed releases, prereleases and numeric identifie
 });
 
 test('BCR metadata excludes yanked versions and preserves prereleases for opt-in', () => {
-  const result = bazelVersions({ versions: ['1.0', '2.0', '1.0.bcr.1', '3.0-rc.1', null], yanked_versions: { '2.0': 'broken' } });
+  const result = bazelVersions({
+    versions: ['1.0', '2.0', '1.0.bcr.1', '3.0-rc.1', null],
+    yanked_versions: { '2.0': 'broken' },
+  });
   assert.equal(result.latest, '1.0.bcr.1');
   assert.deepEqual(result.all, ['1.0', '1.0.bcr.1', '3.0-rc.1']);
   assert.ok(bazelVersions({ versions: '1.0' }).error);
@@ -189,14 +279,24 @@ test('BCR metadata excludes yanked versions and preserves prereleases for opt-in
 
 test('vcpkg parses minimums, feature dependencies and overrides with port revisions', () => {
   const text = vcpkgManifest({
-    dependencies: ['bare', { name: 'fmt', 'version>=': '10.0.0#1', features: ['header-only'] }, { name: 'zlib', 'version>=': '1.0' }],
+    dependencies: [
+      'bare',
+      { name: 'fmt', 'version>=': '10.0.0#1', features: ['header-only'] },
+      { name: 'zlib', 'version>=': '1.0' },
+    ],
     overrides: [{ name: 'zlib', version: '1.2.13', 'port-version': 2 }],
     features: { test: { dependencies: [{ name: 'catch2', 'version>=': '3.0.0' }] } },
   });
   const deps = parseVcpkg(text);
-  assert.deepEqual(deps.map(({ name, spec, section }) => [name, spec, section]), [
-    ['zlib', '1.2.13#2', 'overrides'], ['bare', '@baseline', 'dependencies'], ['fmt', '>=10.0.0#1', 'dependencies'], ['catch2', '>=3.0.0', 'features'],
-  ]);
+  assert.deepEqual(
+    deps.map(({ name, spec, section }) => [name, spec, section]),
+    [
+      ['zlib', '1.2.13#2', 'overrides'],
+      ['bare', '@baseline', 'dependencies'],
+      ['fmt', '>=10.0.0#1', 'dependencies'],
+      ['catch2', '>=3.0.0', 'features'],
+    ]
+  );
   for (const dep of deps) {
     assert.equal(dep.source, baseline);
     assert.ok(text.split('\n')[dep.line].includes(dep.specRaw?.split('#')[0] ?? dep.name));
@@ -206,13 +306,39 @@ test('vcpkg parses minimums, feature dependencies and overrides with port revisi
 
 test('vcpkg requires a builtin baseline and skips custom configurations and unsupported versions', () => {
   assert.deepEqual(parseVcpkg('{"dependencies":[{"name":"fmt","version>=":"1.0"}]}'), []);
-  assert.deepEqual(parseVcpkg(vcpkgManifest({ 'builtin-baseline': 'master', dependencies: [{ name: 'fmt', 'version>=': '1.0' }] })), []);
-  assert.deepEqual(parseVcpkg(vcpkgManifest({ 'vcpkg-configuration': {}, dependencies: [{ name: 'fmt', 'version>=': '1.0' }] })), []);
-  assert.deepEqual(parseVcpkg(vcpkgManifest({ overrides: [
-    { name: 'one', 'version-string': '1.0' }, { name: 'two', version: '1.0', 'port-version': -1 },
-    { name: 'three', version: '1.0', 'version-date': '2024-01-01' }, { name: 'four', 'version-date': '1.0' },
-    { name: 'five', version: '1.0#2', 'port-version': 1 }, { name: 'six', 'version-semver': '1.0' },
-  ] })), []);
+  assert.deepEqual(
+    parseVcpkg(
+      vcpkgManifest({
+        'builtin-baseline': 'master',
+        dependencies: [{ name: 'fmt', 'version>=': '1.0' }],
+      })
+    ),
+    []
+  );
+  assert.deepEqual(
+    parseVcpkg(
+      vcpkgManifest({
+        'vcpkg-configuration': {},
+        dependencies: [{ name: 'fmt', 'version>=': '1.0' }],
+      })
+    ),
+    []
+  );
+  assert.deepEqual(
+    parseVcpkg(
+      vcpkgManifest({
+        overrides: [
+          { name: 'one', 'version-string': '1.0' },
+          { name: 'two', version: '1.0', 'port-version': -1 },
+          { name: 'three', version: '1.0', 'version-date': '2024-01-01' },
+          { name: 'four', 'version-date': '1.0' },
+          { name: 'five', version: '1.0#2', 'port-version': 1 },
+          { name: 'six', 'version-semver': '1.0' },
+        ],
+      })
+    ),
+    []
+  );
   assert.deepEqual(parseVcpkg('{"builtin-baseline": "abc", // comment\n}'), []);
 });
 
@@ -230,11 +356,17 @@ test('vcpkg compares revisions after upstream versions and supports dates', () =
 });
 
 test('vcpkg registry comparison stays within the current versioning scheme', () => {
-  const data = { versions: [
-    { version: '1.0', 'port-version': 0 }, { version: '1.0', 'port-version': 3 }, { version: '1.1', 'port-version': 0 },
-    { 'version-string': '9999', 'port-version': 0 }, { 'version-date': '2025-01-01', 'port-version': 0 },
-    { 'version-semver': '9.0.0', 'port-version': 0 }, { version: '1.2', 'port-version': -1 },
-  ] };
+  const data = {
+    versions: [
+      { version: '1.0', 'port-version': 0 },
+      { version: '1.0', 'port-version': 3 },
+      { version: '1.1', 'port-version': 0 },
+      { 'version-string': '9999', 'port-version': 0 },
+      { 'version-date': '2025-01-01', 'port-version': 0 },
+      { 'version-semver': '9.0.0', 'port-version': 0 },
+      { version: '1.2', 'port-version': -1 },
+    ],
+  };
   assert.deepEqual(vcpkgVersions(data, '>=1.0#0').all, ['1.0', '1.0#3', '1.1']);
   assert.equal(vcpkgVersions(data, '>=1.0').latest, '1.1');
   assert.ok(vcpkgVersions(data, '0.1').error);
@@ -245,38 +377,74 @@ test('vcpkg registry comparison stays within the current versioning scheme', () 
 });
 
 const fixtures = [
-  { ecosystem: 'ansible', file: 'requirements.yml', text: 'collections: [{name: ansible.posix, version: ">=1.0.0,<2.0.0"}]',
-    url: collectionUrl, body: { data: [{ version: '1.5.0' }, { version: '2.0.0' }], links: { next: null } }, latest: '2.0.0', satisfying: '1.5.0' },
-  { ecosystem: 'bazel', file: 'MODULE.bazel', text: 'bazel_dep(name="rules_cc", version="1.0")',
-    url: 'https://bcr.bazel.build/modules/rules_cc/metadata.json', body: { versions: ['1.0', '1.0.bcr.1'] }, latest: '1.0.bcr.1', satisfying: undefined },
-  { ecosystem: 'vcpkg', file: 'vcpkg.json', text: vcpkgManifest({ dependencies: [{ name: 'fmt', 'version>=': '1.0#1' }] }),
+  {
+    ecosystem: 'ansible',
+    file: 'requirements.yml',
+    text: 'collections: [{name: ansible.posix, version: ">=1.0.0,<2.0.0"}]',
+    url: collectionUrl,
+    body: { data: [{ version: '1.5.0' }, { version: '2.0.0' }], links: { next: null } },
+    latest: '2.0.0',
+    satisfying: '1.5.0',
+  },
+  {
+    ecosystem: 'bazel',
+    file: 'MODULE.bazel',
+    text: 'bazel_dep(name="rules_cc", version="1.0")',
+    url: 'https://bcr.bazel.build/modules/rules_cc/metadata.json',
+    body: { versions: ['1.0', '1.0.bcr.1'] },
+    latest: '1.0.bcr.1',
+    satisfying: undefined,
+  },
+  {
+    ecosystem: 'vcpkg',
+    file: 'vcpkg.json',
+    text: vcpkgManifest({ dependencies: [{ name: 'fmt', 'version>=': '1.0#1' }] }),
     url: 'https://raw.githubusercontent.com/microsoft/vcpkg/master/versions/f-/fmt.json',
-    body: { versions: [{ version: '1.0', 'port-version': 1 }, { version: '1.0', 'port-version': 2 }] }, latest: '1.0#2', satisfying: undefined },
+    body: {
+      versions: [
+        { version: '1.0', 'port-version': 1 },
+        { version: '1.0', 'port-version': 2 },
+      ],
+    },
+    latest: '1.0#2',
+    satisfying: undefined,
+  },
 ] as const;
 
-for (const fixture of fixtures) test(`${fixture.ecosystem} integrates updates, offline cache, settings and failures`, async (t) => {
-  let calls = 0;
-  t.mock.method(globalThis, 'fetch', async (url: string) => {
-    calls++;
-    assert.equal(url, fixture.url);
-    return Response.json(fixture.body);
+for (const fixture of fixtures)
+  test(`${fixture.ecosystem} integrates updates, offline cache, settings and failures`, async (t) => {
+    let calls = 0;
+    t.mock.method(globalThis, 'fetch', async (url: string) => {
+      calls++;
+      assert.equal(url, fixture.url);
+      return Response.json(fixture.body);
+    });
+    const request: AnalyzeRequest = {
+      fsPath: `/project/${fixture.file}`,
+      text: fixture.text,
+      settings: createSettings({ auditEnabled: true }),
+      cache: new VersionCache(60_000),
+      auditCache: new AuditCache(),
+      allowNetwork: false,
+    };
+    assert.equal((await analyze(request))?.incomplete, true);
+    assert.equal(calls, 0);
+    const result = await analyze({ ...request, allowNetwork: true });
+    assert.equal(result?.failures.size, 0);
+    assert.equal(result?.updates[0]?.latest, fixture.latest);
+    assert.equal(result?.updates[0]?.satisfying, fixture.satisfying);
+    assert.equal(result?.audits[0]?.result.status, 'unsupported');
+    assert.deepEqual((await analyze(request))?.updates, result?.updates);
+    assert.equal(calls, 1);
+    const disabled = createSettings({ [fixture.ecosystem]: { enabled: false } });
+    assert.equal(await analyze({ ...request, settings: disabled }), undefined);
+    t.mock.method(globalThis, 'fetch', async () => new Response('', { status: 503 }));
+    assert.equal(
+      (await analyze({ ...request, cache: new VersionCache(60_000), allowNetwork: true }))?.failures
+        .size,
+      1
+    );
   });
-  const request: AnalyzeRequest = { fsPath: `/project/${fixture.file}`, text: fixture.text,
-    settings: createSettings({ auditEnabled: true }), cache: new VersionCache(60_000), auditCache: new AuditCache(), allowNetwork: false };
-  assert.equal((await analyze(request))?.incomplete, true);
-  assert.equal(calls, 0);
-  const result = await analyze({ ...request, allowNetwork: true });
-  assert.equal(result?.failures.size, 0);
-  assert.equal(result?.updates[0]?.latest, fixture.latest);
-  assert.equal(result?.updates[0]?.satisfying, fixture.satisfying);
-  assert.equal(result?.audits[0]?.result.status, 'unsupported');
-  assert.deepEqual((await analyze(request))?.updates, result?.updates);
-  assert.equal(calls, 1);
-  const disabled = createSettings({ [fixture.ecosystem]: { enabled: false } });
-  assert.equal(await analyze({ ...request, settings: disabled }), undefined);
-  t.mock.method(globalThis, 'fetch', async () => new Response('', { status: 503 }));
-  assert.equal((await analyze({ ...request, cache: new VersionCache(60_000), allowNetwork: true }))?.failures.size, 1);
-});
 
 test('cache keys isolate Galaxy roles and collections and vcpkg declarations', () => {
   const settings = createSettings();
@@ -294,9 +462,17 @@ test('vcpkg skips sibling registry configuration before any network access', asy
   const directory = mkdtempSync(join(tmpdir(), 'fresh-deps-vcpkg-'));
   t.after(() => rmSync(directory, { recursive: true, force: true }));
   writeFileSync(join(directory, 'vcpkg-configuration.json'), '{}');
-  t.mock.method(globalThis, 'fetch', async () => { assert.fail('custom registry names must not be queried'); });
-  const result = await analyze({ fsPath: join(directory, 'vcpkg.json'), text: fixtures[2].text, settings: createSettings(),
-    cache: new VersionCache(60_000), auditCache: new AuditCache(), allowNetwork: true });
+  t.mock.method(globalThis, 'fetch', async () => {
+    assert.fail('custom registry names must not be queried');
+  });
+  const result = await analyze({
+    fsPath: join(directory, 'vcpkg.json'),
+    text: fixtures[2].text,
+    settings: createSettings(),
+    cache: new VersionCache(60_000),
+    auditCache: new AuditCache(),
+    allowNetwork: true,
+  });
   assert.deepEqual(result?.updates, []);
   assert.equal(result?.incomplete, false);
 });

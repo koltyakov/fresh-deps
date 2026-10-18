@@ -9,11 +9,31 @@ function closingBrace(text: string, open: number): number {
   for (let i = open; i < text.length; i++) {
     const char = text[i];
     const next = text[i + 1];
-    if (lineComment) { if (char === '\n') lineComment = false; continue; }
-    if (blockComment) { if (char === '*' && next === '/') { blockComment = false; i++; } continue; }
-    if (!quote && (char === '#' || (char === '/' && next === '/'))) { lineComment = true; if (char === '/') i++; continue; }
-    if (!quote && char === '/' && next === '*') { blockComment = true; i++; continue; }
-    if (char === '"' && text[i - 1] !== '\\') { quote = !quote; continue; }
+    if (lineComment) {
+      if (char === '\n') lineComment = false;
+      continue;
+    }
+    if (blockComment) {
+      if (char === '*' && next === '/') {
+        blockComment = false;
+        i++;
+      }
+      continue;
+    }
+    if (!quote && (char === '#' || (char === '/' && next === '/'))) {
+      lineComment = true;
+      if (char === '/') i++;
+      continue;
+    }
+    if (!quote && char === '/' && next === '*') {
+      blockComment = true;
+      i++;
+      continue;
+    }
+    if (char === '"' && text[i - 1] !== '\\') {
+      quote = !quote;
+      continue;
+    }
     if (quote) continue;
     if (char === '{') depth++;
     if (char === '}' && --depth === 0) return i;
@@ -26,15 +46,21 @@ function blocks(text: string, name: string, offset = 0): { body: string; start: 
   const pattern = new RegExp(`\\b${name}\\s*\\{`, 'g');
   let quote = false;
   let escaped = false;
-  const structure = text.split('').map((char) => {
-    if (quote) {
-      if (!escaped && char === '"') quote = false;
-      escaped = !escaped && char === '\\';
-      return char === '\n' ? char : ' ';
-    }
-    if (char === '"') { quote = true; return ' '; }
-    return char;
-  }).join('');
+  const structure = text
+    .split('')
+    .map((char) => {
+      if (quote) {
+        if (!escaped && char === '"') quote = false;
+        escaped = !escaped && char === '\\';
+        return char === '\n' ? char : ' ';
+      }
+      if (char === '"') {
+        quote = true;
+        return ' ';
+      }
+      return char;
+    })
+    .join('');
   for (const match of structure.matchAll(pattern)) {
     const open = (match.index ?? 0) + match[0].lastIndexOf('{');
     const close = closingBrace(text, open);
@@ -51,7 +77,8 @@ function maskComments(text: string): string {
     endPattern.lastIndex = (match.index ?? 0) + match[0].length;
     const end = endPattern.exec(text);
     const stop = end ? end.index + end[0].length : text.length;
-    for (let i = match.index ?? 0; i < stop; i++) if (heredocMasked[i] !== '\n' && heredocMasked[i] !== '\r') heredocMasked[i] = ' ';
+    for (let i = match.index ?? 0; i < stop; i++)
+      if (heredocMasked[i] !== '\n' && heredocMasked[i] !== '\r') heredocMasked[i] = ' ';
   }
   text = heredocMasked.join('');
   let quote = false;
@@ -62,10 +89,16 @@ function maskComments(text: string): string {
     const char = text[i];
     const next = text[i + 1];
     if (lineComment) {
-      if (char === '\n') { lineComment = false; result += char; } else result += ' ';
+      if (char === '\n') {
+        lineComment = false;
+        result += char;
+      } else result += ' ';
     } else if (blockComment) {
-      if (char === '*' && next === '/') { result += '  '; blockComment = false; i++; }
-      else result += char === '\n' ? '\n' : ' ';
+      if (char === '*' && next === '/') {
+        result += '  ';
+        blockComment = false;
+        i++;
+      } else result += char === '\n' ? '\n' : ' ';
     } else if (!quote && (char === '#' || (char === '/' && next === '/'))) {
       lineComment = true;
       result += char === '/' ? '  ' : ' ';
@@ -86,8 +119,11 @@ export function parseTflint(text: string): DependencyRef[] {
   const tokens = codeTokens(maskComments(text));
   const deps: DependencyRef[] = [];
   for (let i = 0; i < tokens.length; i++) {
-    const plugin = tokens[i].kind === 'word' && tokens[i].value === 'plugin'
-      && tokens[i + 1]?.kind === 'string' && tokens[i + 2]?.value === '{';
+    const plugin =
+      tokens[i].kind === 'word' &&
+      tokens[i].value === 'plugin' &&
+      tokens[i + 1]?.kind === 'string' &&
+      tokens[i + 2]?.value === '{';
     if (plugin) {
       const end = groupEnd(tokens, i + 2);
       if (end < 0) break;
@@ -101,9 +137,13 @@ export function parseTflint(text: string): DependencyRef[] {
         }
         const value = tokens[j + 2];
         const next = tokens[j + 3];
-        if (token.kind === 'word' && tokens[j + 1]?.value === '=' && value
-          && (j + 3 === end || next.line > value.line)
-          && (value.kind === 'string' || (value.kind === 'word' && /^(true|false)$/.test(value.value)))) {
+        if (
+          token.kind === 'word' &&
+          tokens[j + 1]?.value === '=' &&
+          value &&
+          (j + 3 === end || next.line > value.line) &&
+          (value.kind === 'string' || (value.kind === 'word' && /^(true|false)$/.test(value.value)))
+        ) {
           fields.set(token.value, value);
           j += 2;
         }
@@ -111,11 +151,22 @@ export function parseTflint(text: string): DependencyRef[] {
       const source = fields.get('source');
       const version = fields.get('version');
       const enabled = fields.get('enabled');
-      const match = source?.kind === 'string' && /^github\.com\/([\w-]+\/[\w.-]+)$/.exec(source.value);
-      if (match && version?.kind === 'string' && /^\d+\.\d+\.\d+(?:-[\w.-]+)?(?:\+[\w.-]+)?$/.test(version.value)
-        && !(enabled?.kind === 'word' && enabled.value === 'false')) {
-        deps.push({ name: `tflint:${match[1]}`, spec: version.value, alias: tokens[i + 1].value,
-          line: version.line, section: 'plugins', semver: true });
+      const match =
+        source?.kind === 'string' && /^github\.com\/([\w-]+\/[\w.-]+)$/.exec(source.value);
+      if (
+        match &&
+        version?.kind === 'string' &&
+        /^\d+\.\d+\.\d+(?:-[\w.-]+)?(?:\+[\w.-]+)?$/.test(version.value) &&
+        !(enabled?.kind === 'word' && enabled.value === 'false')
+      ) {
+        deps.push({
+          name: `tflint:${match[1]}`,
+          spec: version.value,
+          alias: tokens[i + 1].value,
+          line: version.line,
+          section: 'plugins',
+          semver: true,
+        });
       }
       i = end;
     } else if (tokens[i].kind === 'punct' && tokens[i].value === '{') {
@@ -126,14 +177,22 @@ export function parseTflint(text: string): DependencyRef[] {
   return deps;
 }
 
-export function parseTerraform(text: string, defaultRegistry = 'registry.terraform.io'): DependencyRef[] {
+export function parseTerraform(
+  text: string,
+  defaultRegistry = 'registry.terraform.io'
+): DependencyRef[] {
   const clean = maskComments(text);
   const deps: DependencyRef[] = [];
   for (const terraform of blocks(clean, 'terraform')) {
     const runtime = /\brequired_version\s*=\s*"([^"${}]+)"/.exec(terraform.body);
-    if (runtime) deps.push({ name: defaultRegistry === 'registry.opentofu.org' ? 'opentofu' : 'terraform',
-      spec: runtime[1], runtime: defaultRegistry === 'registry.opentofu.org' ? 'opentofu' : 'terraform',
-      line: text.slice(0, terraform.start + runtime.index).split('\n').length - 1, section: 'required_version' });
+    if (runtime)
+      deps.push({
+        name: defaultRegistry === 'registry.opentofu.org' ? 'opentofu' : 'terraform',
+        spec: runtime[1],
+        runtime: defaultRegistry === 'registry.opentofu.org' ? 'opentofu' : 'terraform',
+        line: text.slice(0, terraform.start + runtime.index).split('\n').length - 1,
+        section: 'required_version',
+      });
     for (const providers of blocks(terraform.body, 'required_providers', terraform.start)) {
       const entry = /\b([A-Za-z][\w-]*)\s*=\s*/g;
       let match: RegExpExecArray | null;
@@ -163,32 +222,51 @@ export function parseTerraform(text: string, defaultRegistry = 'registry.terrafo
         const host = parts.length === 3 ? parts.shift() : undefined;
         if ((host && !/^[\w.-]+$/.test(host)) || parts.length !== 2 || !spec) continue;
         const registry = host ?? defaultRegistry;
-        const name = registry !== 'registry.terraform.io' ? `${registry}/${parts.join('/')}` : parts.join('/');
+        const name =
+          registry !== 'registry.terraform.io' ? `${registry}/${parts.join('/')}` : parts.join('/');
         const absolute = providers.start + versionAt;
-        deps.push({ name, spec, line: text.slice(0, absolute).split('\n').length - 1, section: 'required_providers',
-          ...(local !== parts[1] ? { alias: local } : {}) });
+        deps.push({
+          name,
+          spec,
+          line: text.slice(0, absolute).split('\n').length - 1,
+          section: 'required_providers',
+          ...(local !== parts[1] ? { alias: local } : {}),
+        });
       }
     }
   }
   const tokens = codeTokens(clean);
   for (let i = 0; i < tokens.length; i++) {
-    if (tokens[i].value === 'module' && tokens[i + 1]?.kind === 'string' && tokens[i + 2]?.value === '{') {
+    if (
+      tokens[i].value === 'module' &&
+      tokens[i + 1]?.kind === 'string' &&
+      tokens[i + 2]?.value === '{'
+    ) {
       const end = groupEnd(tokens, i + 2);
       if (end < 0) continue;
       const body = tokens.slice(i + 3, end);
       const literal = (key: string) => {
         const at = body.findIndex((token) => token.kind === 'word' && token.value === key);
         const value = body[at + 2];
-        return at >= 0 && body[at + 1]?.value === '=' && value?.kind === 'string'
-          && (!body[at + 3] || body[at + 3].line > value.line || body[at + 3].value === ',') ? value : undefined;
+        return at >= 0 &&
+          body[at + 1]?.value === '=' &&
+          value?.kind === 'string' &&
+          (!body[at + 3] || body[at + 3].line > value.line || body[at + 3].value === ',')
+          ? value
+          : undefined;
       };
       const source = literal('source');
       const version = literal('version');
-      const match = source && /^(?:([\w.-]+\.[\w.-]+)\/)?([\w-]+\/[\w-]+\/[\w-]+)$/.exec(source.value);
-      if (match && version && !/[$%{}]/.test(version.value)) deps.push({
-        name: `module:${match[1] ?? defaultRegistry}/${match[2]}`, spec: version.value,
-        alias: tokens[i + 1].value, line: version.line, section: 'modules',
-      });
+      const match =
+        source && /^(?:([\w.-]+\.[\w.-]+)\/)?([\w-]+\/[\w-]+\/[\w-]+)$/.exec(source.value);
+      if (match && version && !/[$%{}]/.test(version.value))
+        deps.push({
+          name: `module:${match[1] ?? defaultRegistry}/${match[2]}`,
+          spec: version.value,
+          alias: tokens[i + 1].value,
+          line: version.line,
+          section: 'modules',
+        });
       i = end;
     } else if (tokens[i].value === '{') {
       const end = groupEnd(tokens, i);

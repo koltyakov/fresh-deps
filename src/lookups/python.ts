@@ -25,7 +25,11 @@ export function pythonLookup(settings: Settings): Lookup {
     fetchAudit: (dep, version) => clientFor(dep).fetchAudit(dep.name, version),
     async fetchDetails(dep, versions) {
       const [dates, meta] = await Promise.all([
-        clientFor(dep).fetchPublishDates(dep.name, [versions.current, versions.latest, ...(versions.sameMajor ? [versions.sameMajor] : [])]),
+        clientFor(dep).fetchPublishDates(dep.name, [
+          versions.current,
+          versions.latest,
+          ...(versions.sameMajor ? [versions.sameMajor] : []),
+        ]),
         clientFor(dep).fetchInfo(dep.name, versions.latest),
       ]);
       return {

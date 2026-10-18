@@ -17,7 +17,11 @@ export function parseNugetManifest(text: string): DependencyRef[] {
   for (const name of conditional) properties.delete(name);
   const resolve = (raw: string | undefined): string | undefined => {
     if (!raw) return raw;
-    for (let i = 0; i < 10 && raw.includes('$('); i++) raw = raw.replace(/\$\(([^)]+)\)/g, (whole, key: string) => properties.get(key.toLowerCase()) ?? whole);
+    for (let i = 0; i < 10 && raw.includes('$('); i++)
+      raw = raw.replace(
+        /\$\(([^)]+)\)/g,
+        (whole, key: string) => properties.get(key.toLowerCase()) ?? whole
+      );
     return raw;
   };
   const msbuild = /<(PackageReference|PackageVersion)\b([^>]*?)(?:\/\s*>|>([\s\S]*?)<\/\1\s*>)/gi;
@@ -46,7 +50,7 @@ function add(
   offset: number,
   rawName: string | undefined,
   rawSpec: string | undefined,
-  section: string,
+  section: string
 ): void {
   const name = rawName ? decodeXml(rawName).trim() : '';
   const spec = rawSpec ? decodeXml(rawSpec).trim() : '';
@@ -56,9 +60,11 @@ function add(
   // packages.config records an installed version, not PackageReference's minimum.
   const installed = section === 'packages' && parseNugetVersion(spec);
   deps.push({
-    name, spec: installed ? `[${spec}]` : spec,
+    name,
+    spec: installed ? `[${spec}]` : spec,
     ...(installed ? { specRaw: spec } : {}),
-    section, line: text.slice(0, offset).split('\n').length - 1,
+    section,
+    line: text.slice(0, offset).split('\n').length - 1,
   });
 }
 

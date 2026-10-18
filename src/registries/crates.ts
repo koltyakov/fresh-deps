@@ -30,25 +30,49 @@ export class CratesClient {
 
   async fetchVersions(name: string, source?: string): Promise<RegistryVersions> {
     if (source) {
-      if (!source.startsWith('sparse+https://')) return { error: 'Only HTTPS sparse Cargo registries are supported' };
+      if (!source.startsWith('sparse+https://'))
+        return { error: 'Only HTTPS sparse Cargo registries are supported' };
       const lower = name.toLowerCase();
-      const suffix = lower.length <= 2 ? `${lower.length}/${lower}` : lower.length === 3 ? `3/${lower[0]}/${lower}` : `${lower.slice(0, 2)}/${lower.slice(2, 4)}/${lower}`;
-      const text = await fetchText(`${source.slice(7).replace(/\/$/, '')}/${suffix}`, { timeoutMs: this.timeoutMs, headers: { accept: 'text/plain' } });
+      const suffix =
+        lower.length <= 2
+          ? `${lower.length}/${lower}`
+          : lower.length === 3
+            ? `3/${lower[0]}/${lower}`
+            : `${lower.slice(0, 2)}/${lower.slice(2, 4)}/${lower}`;
+      const text = await fetchText(`${source.slice(7).replace(/\/$/, '')}/${suffix}`, {
+        timeoutMs: this.timeoutMs,
+        headers: { accept: 'text/plain' },
+      });
       if (!text) return { error: 'not found' };
-      const versions = text.trim().split('\n').map((line) => { const item = JSON.parse(line); return { ...item, num: item.vers }; });
+      const versions = text
+        .trim()
+        .split('\n')
+        .map((line) => {
+          const item = JSON.parse(line);
+          return { ...item, num: item.vers };
+        });
       return versionsOf({ versions });
     }
-    const doc = await fetchJson<CratesResponse>(`${API}/${encodeURIComponent(name)}`, { timeoutMs: this.timeoutMs });
+    const doc = await fetchJson<CratesResponse>(`${API}/${encodeURIComponent(name)}`, {
+      timeoutMs: this.timeoutMs,
+    });
     return doc ? versionsOf(doc) : { error: 'not found' };
   }
 }
 
 /** Converts one crates.io response into the common version and metadata shape. */
 export function versionsOf(doc: CratesResponse): RegistryVersions {
-  const evidence = { published: (doc.versions ?? []).flatMap((release) => release.num && semver.valid(release.num, LOOSE) ? [release.num] : []),
-    allComplete: Array.isArray(doc.versions) && doc.versions.every((release) => typeof release.num === 'string') };
+  const evidence = {
+    published: (doc.versions ?? []).flatMap((release) =>
+      release.num && semver.valid(release.num, LOOSE) ? [release.num] : []
+    ),
+    allComplete:
+      Array.isArray(doc.versions) &&
+      doc.versions.every((release) => typeof release.num === 'string'),
+  };
   const releases = (doc.versions ?? []).filter(
-    (version): version is CrateVersion & { num: string } => !version.yanked && !!version.num && semver.valid(version.num, LOOSE) !== null,
+    (version): version is CrateVersion & { num: string } =>
+      !version.yanked && !!version.num && semver.valid(version.num, LOOSE) !== null
   );
   const all = releases.map((version) => version.num);
   const latest = semver.maxSatisfying(all, '*', LOOSE) ?? undefined;
@@ -65,5 +89,11 @@ export function versionsOf(doc: CratesResponse): RegistryVersions {
   if (release?.license) meta.license = release.license;
   if (release?.created_at) meta.latestPublishedAt = release.created_at;
   if (release?.rust_version) meta.runtimeRequirement = `Rust >=${release.rust_version}`;
-  return { latest, all, ...evidence, meta, requirements: Object.fromEntries(releases.map((item) => [item.num, [item.rust_version ?? '']])) };
+  return {
+    latest,
+    all,
+    ...evidence,
+    meta,
+    requirements: Object.fromEntries(releases.map((item) => [item.num, [item.rust_version ?? '']])),
+  };
 }

@@ -3,7 +3,7 @@ import assert from 'node:assert';
 import * as pep440 from '../src/pep440';
 import { classifyPep440 } from '../src/schemes';
 
-const sorted = (versions: string[]) => versions.slice().sort(pep440.compare);
+const sorted = (versions: string[]) => versions.toSorted(pep440.compare);
 
 test('parses every part of a PEP 440 version', () => {
   const version = pep440.parseVersion('1!2.3.4rc2.post5.dev6+ubuntu.1');
@@ -30,7 +30,7 @@ test('normalises the spellings the spec allows', () => {
 test('orders dev, pre, final and post releases the way the spec does', () => {
   assert.deepStrictEqual(
     sorted(['1.0', '1.0.post1', '1.0rc1', '1.0a1', '1.0.dev1', '1.0b1', '0.9']),
-    ['0.9', '1.0.dev1', '1.0a1', '1.0b1', '1.0rc1', '1.0', '1.0.post1'],
+    ['0.9', '1.0.dev1', '1.0a1', '1.0b1', '1.0rc1', '1.0', '1.0.post1']
   );
 });
 

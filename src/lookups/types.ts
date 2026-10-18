@@ -1,4 +1,5 @@
 import type { AuditResponse, DependencyRef, PackageMeta, RegistryVersions } from '../types';
+import type { PackageLink } from '../packageLinks';
 
 /** An ecosystem adapter supplies metadata without deciding update policy. */
 export interface Lookup {
@@ -20,7 +21,7 @@ export interface VersionPair {
 
 /** Optional metadata fetched only when a user hovers over a declaration. */
 export interface PackageDetails {
-  links?: import('../packageLinks').PackageLink[];
+  links?: PackageLink[];
   currentPublishedAt?: string;
   latestPublishedAt?: string;
   sameMajorPublishedAt?: string;

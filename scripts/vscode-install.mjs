@@ -48,6 +48,10 @@ await Promise.all(staleVsixFiles.map((file) => rm(join(projectRoot, file), { for
 
 await runCommand(...packageCommand);
 await access(vsixPath);
-await runCommand(vscodeCli, ['--install-extension', isWindows ? `"${vsixPath}"` : vsixPath, '--force']);
+await runCommand(vscodeCli, [
+  '--install-extension',
+  isWindows ? `"${vsixPath}"` : vsixPath,
+  '--force',
+]);
 
 console.log(`\nInstalled ${vsixName}. Reload the VSCode window to pick it up.`);

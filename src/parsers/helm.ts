@@ -7,9 +7,12 @@ export function repositoryUrl(value: string): string | undefined {
   if (/[\s${}<>]/.test(value)) return undefined;
   try {
     const url = new URL(value);
-    if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash) return undefined;
+    if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash)
+      return undefined;
     return url.href.replace(/\/$/, '');
-  } catch { return undefined; }
+  } catch {
+    return undefined;
+  }
 }
 
 export function parseHelm(text: string): DependencyRef[] {
@@ -23,9 +26,20 @@ export function parseHelm(text: string): DependencyRef[] {
     const spec = yamlString(node);
     const rawSource = yamlString(entry.get('repository', true)) ?? '';
     const source = rawSource.startsWith('oci://')
-      ? repositoryUrl(rawSource.replace(/^oci:/, 'https:'))?.replace(/^https:/, 'oci:') : repositoryUrl(rawSource);
+      ? repositoryUrl(rawSource.replace(/^oci:/, 'https:'))?.replace(/^https:/, 'oci:')
+      : repositoryUrl(rawSource);
     const alias = yamlString(entry.get('alias', true));
     return name && /^[\w.-]+$/.test(name) && spec && semverScheme.baseline(spec) && source
-      ? [{ name, spec, source, line: doc.line(node), section: 'dependencies', ...(alias ? { alias } : {}) }] : [];
+      ? [
+          {
+            name,
+            spec,
+            source,
+            line: doc.line(node),
+            section: 'dependencies',
+            ...(alias ? { alias } : {}),
+          },
+        ]
+      : [];
   });
 }

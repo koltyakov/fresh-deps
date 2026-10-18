@@ -19,12 +19,26 @@ const QUALIFIERS = new Map([
   ['sp', 1],
 ]);
 
-const ALIASES = new Map([['cr', 'rc'], ['ga', ''], ['final', ''], ['release', '']]);
-const SHORT_QUALIFIERS = new Map([['a', 'alpha'], ['b', 'beta'], ['m', 'milestone']]);
+const ALIASES = new Map([
+  ['cr', 'rc'],
+  ['ga', ''],
+  ['final', ''],
+  ['release', ''],
+]);
+const SHORT_QUALIFIERS = new Map([
+  ['a', 'alpha'],
+  ['b', 'beta'],
+  ['m', 'milestone'],
+]);
 
 export function isValid(version: string): boolean {
   const value = version.trim();
-  return value !== '' && !/[\s,[\](){}]/.test(value) && !value.includes('${') && !/^(latest|release)$/i.test(value);
+  return (
+    value !== '' &&
+    !/[\s,[\](){}]/.test(value) &&
+    !value.includes('${') &&
+    !/^(latest|release)$/i.test(value)
+  );
 }
 
 function partsOf(version: string): Part[] {
@@ -40,7 +54,7 @@ function partsOf(version: string): Part[] {
     lists.push(child);
     list = child;
   };
-  const item = (text: string): Part => digit ? BigInt(text) : (ALIASES.get(text) ?? text);
+  const item = (text: string): Part => (digit ? BigInt(text) : (ALIASES.get(text) ?? text));
 
   // Hyphens and digit/qualifier transitions introduce less significant lists.
   for (let i = 0; i < value.length; i++) {
@@ -72,7 +86,7 @@ function partsOf(version: string): Part[] {
     list.push(item(value.slice(start)));
   }
   // Normalize children first, including zeroes immediately before qualifier lists.
-  for (const parts of lists.reverse()) {
+  for (const parts of lists.toReversed()) {
     for (let i = parts.length - 1; i >= 0; i--) {
       const part = parts[i];
       if (part === 0n || part === '' || (Array.isArray(part) && !part.length)) parts.splice(i, 1);
@@ -113,7 +127,8 @@ function comparePart(left: Part | undefined, right: Part | undefined): number {
     return 0;
   }
   if (Array.isArray(right)) return typeof left === 'bigint' ? 1 : -1;
-  if (typeof left === 'bigint') return typeof right === 'string' ? 1 : left < right ? -1 : left > right ? 1 : 0;
+  if (typeof left === 'bigint')
+    return typeof right === 'string' ? 1 : left < right ? -1 : left > right ? 1 : 0;
   return typeof right === 'bigint' ? -1 : compareQualifier(left, right);
 }
 
@@ -123,9 +138,10 @@ export function compare(a: string, b: string): number {
 }
 
 export function isPrerelease(version: string): boolean {
-  const containsPrerelease = (part: Part): boolean => Array.isArray(part)
-    ? part.some(containsPrerelease)
-    : typeof part === 'string' && (QUALIFIERS.get(part) ?? 0) < 0;
+  const containsPrerelease = (part: Part): boolean =>
+    Array.isArray(part)
+      ? part.some(containsPrerelease)
+      : typeof part === 'string' && (QUALIFIERS.get(part) ?? 0) < 0;
   return containsPrerelease(partsOf(version));
 }
 
@@ -147,7 +163,12 @@ function parseRange(spec: string): Interval[] | undefined {
     const lower = match[2].trim() || undefined;
     const upper = match[3].trim() || undefined;
     if ((lower && !isValid(lower)) || (upper && !isValid(upper))) return undefined;
-    intervals.push({ lower, upper, includeLower: match[1] === '[', includeUpper: match[4] === ']' });
+    intervals.push({
+      lower,
+      upper,
+      includeLower: match[1] === '[',
+      includeUpper: match[4] === ']',
+    });
   }
   return intervals.length > 0 && value.slice(cursor).trim() === '' ? intervals : undefined;
 }
@@ -155,7 +176,7 @@ function parseRange(spec: string): Interval[] | undefined {
 export function baselineOf(spec: string): string | undefined {
   if (isValid(spec)) return spec.trim();
   const lowers = parseRange(spec)?.flatMap((range) => (range.lower ? [range.lower] : []));
-  return lowers?.sort(compare)[0];
+  return lowers?.toSorted(compare)[0];
 }
 
 export function isPinned(spec: string): boolean {
@@ -166,30 +187,41 @@ export function isRange(spec: string): boolean {
   return parseRange(spec) !== undefined;
 }
 
-export function satisfies(version: string, spec: string, opts: { includePrerelease: boolean }): boolean {
+export function satisfies(
+  version: string,
+  spec: string,
+  opts: { includePrerelease: boolean }
+): boolean {
   if (!isValid(version) || (!opts.includePrerelease && isPrerelease(version))) return false;
   if (isPinned(spec)) return compare(version, spec.trim()) === 0;
-  return parseRange(spec)?.some((range) => {
-    const lowerComparison = range.lower ? compare(version, range.lower) : 1;
-    const upperComparison = range.upper ? compare(version, range.upper) : -1;
-    return (lowerComparison > 0 || (range.includeLower && lowerComparison === 0))
-      && (upperComparison < 0 || (range.includeUpper && upperComparison === 0));
-  }) ?? false;
+  return (
+    parseRange(spec)?.some((range) => {
+      const lowerComparison = range.lower ? compare(version, range.lower) : 1;
+      const upperComparison = range.upper ? compare(version, range.upper) : -1;
+      return (
+        (lowerComparison > 0 || (range.includeLower && lowerComparison === 0)) &&
+        (upperComparison < 0 || (range.includeUpper && upperComparison === 0))
+      );
+    }) ?? false
+  );
 }
 
 export function max(versions: string[], opts: { includePrerelease: boolean }): string | undefined {
   return versions
     .filter((version) => isValid(version) && (opts.includePrerelease || !isPrerelease(version)))
-    .sort(compare)
+    .toSorted(compare)
     .at(-1);
 }
 
 export function maxSatisfying(
   versions: string[],
   spec: string,
-  opts: { includePrerelease: boolean },
+  opts: { includePrerelease: boolean }
 ): string | undefined {
-  return max(versions.filter((version) => satisfies(version, spec, opts)), opts);
+  return max(
+    versions.filter((version) => satisfies(version, spec, opts)),
+    opts
+  );
 }
 
 export function classify(current: string, latest: string): UpdateKind {

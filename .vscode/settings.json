@@ -1,0 +1,37 @@
+{
+  "editor.formatOnSave": true,
+  "editor.formatOnSaveMode": "file",
+  "editor.defaultFormatter": null,
+  "editor.tabSize": 2,
+  "editor.insertSpaces": true,
+  "editor.detectIndentation": false,
+  "oxc.fmt.configPath": "oxfmt.config.mts",
+  "freshDeps.packageRules": [
+    {
+      "ecosystem": "npm",
+      "name": "@types/vscode",
+      "ignoreUpdates": true
+    },
+    {
+      "ecosystem": "npm",
+      "name": "node",
+      "section": "volta",
+      "ignoreMajorUpdates": true
+    }
+  ],
+  "[javascript]": {
+    "editor.defaultFormatter": "oxc.oxc-vscode"
+  },
+  "[typescript]": {
+    "editor.defaultFormatter": "oxc.oxc-vscode"
+  },
+  "[json]": {
+    "editor.defaultFormatter": "oxc.oxc-vscode"
+  },
+  "[jsonc]": {
+    "editor.defaultFormatter": "oxc.oxc-vscode"
+  },
+  "files.eol": "\n",
+  "files.trimTrailingWhitespace": true,
+  "files.insertFinalNewline": true
+}

@@ -142,7 +142,10 @@ function preRank(version: Pep440Version): number {
   return version.post === undefined && version.dev !== undefined ? -1 : 1;
 }
 
-function compareLocal(a: (string | number)[] | undefined, b: (string | number)[] | undefined): number {
+function compareLocal(
+  a: (string | number)[] | undefined,
+  b: (string | number)[] | undefined
+): number {
   if (!a && !b) {
     return 0;
   }
@@ -292,7 +295,11 @@ export function baselineOf(spec: string): string | undefined {
   let floor: Pep440Version | undefined;
   for (const clause of clauses) {
     const candidate =
-      clause.op === '===' ? parseVersion(clause.version) : ['>=', '>', '~=', '=='].includes(clause.op) ? clause.parsed : undefined;
+      clause.op === '==='
+        ? parseVersion(clause.version)
+        : ['>=', '>', '~=', '=='].includes(clause.op)
+          ? clause.parsed
+          : undefined;
     if (candidate && (!floor || compareParsed(candidate, floor) > 0)) {
       floor = candidate;
     }
@@ -310,7 +317,10 @@ function sameBase(a: Pep440Version, b: Pep440Version): boolean {
 }
 
 function prefixEqual(version: Pep440Version, epoch: number, prefix: number[]): boolean {
-  return version.epoch === epoch && prefix.every((component, i) => (version.release[i] ?? 0) === component);
+  return (
+    version.epoch === epoch &&
+    prefix.every((component, i) => (version.release[i] ?? 0) === component)
+  );
 }
 
 function equal(version: Pep440Version, clause: Pep440Version): boolean {
@@ -320,7 +330,9 @@ function equal(version: Pep440Version, clause: Pep440Version): boolean {
 
 function matches(version: Pep440Version, clause: Clause): boolean {
   if (clause.op === '===') {
-    return version.text === (parseVersion(clause.version)?.text ?? clause.version.trim().toLowerCase());
+    return (
+      version.text === (parseVersion(clause.version)?.text ?? clause.version.trim().toLowerCase())
+    );
   }
 
   const spec = clause.parsed;
@@ -331,12 +343,19 @@ function matches(version: Pep440Version, clause: Clause): boolean {
 
   switch (clause.op) {
     case '==':
-      return clause.wildcard ? prefixEqual(version, spec.epoch, spec.release) : equal(version, spec);
+      return clause.wildcard
+        ? prefixEqual(version, spec.epoch, spec.release)
+        : equal(version, spec);
     case '!=':
-      return !(clause.wildcard ? prefixEqual(version, spec.epoch, spec.release) : equal(version, spec));
+      return !(clause.wildcard
+        ? prefixEqual(version, spec.epoch, spec.release)
+        : equal(version, spec));
     case '~=':
       // `~= X.Y.Z` is `>= X.Y.Z` combined with `== X.Y.*`.
-      return compareParsed(plain, spec) >= 0 && prefixEqual(version, spec.epoch, spec.release.slice(0, -1));
+      return (
+        compareParsed(plain, spec) >= 0 &&
+        prefixEqual(version, spec.epoch, spec.release.slice(0, -1))
+      );
     case '<=':
       return compareParsed(plain, spec) <= 0;
     case '>=':
@@ -344,7 +363,8 @@ function matches(version: Pep440Version, clause: Clause): boolean {
     case '<':
       // `< V` excludes prereleases of V itself, unless V is one.
       return (
-        compareParsed(plain, spec) < 0 && !(isPrereleaseParsed(version) && !isPrereleaseParsed(spec) && sameBase(version, spec))
+        compareParsed(plain, spec) < 0 &&
+        !(isPrereleaseParsed(version) && !isPrereleaseParsed(spec) && sameBase(version, spec))
       );
     case '>':
       // `> V` excludes post-releases and local builds of V itself.
@@ -384,7 +404,11 @@ function satisfiesClauses(version: string, clauses: Clause[], opts: MatchOptions
   return clauses.every((clause) => matches(parsed, clause));
 }
 
-export function maxSatisfying(versions: string[], spec: string, opts: MatchOptions): string | undefined {
+export function maxSatisfying(
+  versions: string[],
+  spec: string,
+  opts: MatchOptions
+): string | undefined {
   const clauses = parseSpecifierSet(spec);
   if (!clauses) {
     return undefined;
@@ -393,7 +417,9 @@ export function maxSatisfying(versions: string[], spec: string, opts: MatchOptio
 }
 
 export function max(versions: string[], opts: MatchOptions): string | undefined {
-  const candidates = opts.includePrerelease ? versions : versions.filter((version) => !isPrerelease(version));
+  const candidates = opts.includePrerelease
+    ? versions
+    : versions.filter((version) => !isPrerelease(version));
   return best(candidates.length ? candidates : versions);
 }
 

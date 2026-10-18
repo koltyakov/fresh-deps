@@ -20,7 +20,12 @@ test('setting the same cache duration preserves entries and in-flight work', asy
   const pending = cache.resolve('other', async () => ({ latest: '2.0.0' }));
   cache.setTtl(60_000);
   assert.equal(cache.get('pkg')?.latest, '1.0.0');
-  assert.equal(cache.resolve('other', async () => { throw new Error('Duplicate request'); }), pending);
+  assert.equal(
+    cache.resolve('other', async () => {
+      throw new Error('Duplicate request');
+    }),
+    pending
+  );
   assert.equal((await pending).latest, '2.0.0');
 });
 

@@ -16,7 +16,10 @@ export class NugetClient {
   readonly index: string;
   private packageBaseAddress?: Promise<string>;
 
-  constructor(indexOverride: string, private readonly timeoutMs: number) {
+  constructor(
+    indexOverride: string,
+    private readonly timeoutMs: number
+  ) {
     this.index = (indexOverride || DEFAULT_INDEX).replace(/\/+$/, '');
   }
 
@@ -30,7 +33,11 @@ export class NugetClient {
     if (!Array.isArray(body.versions)) return { error: 'Invalid NuGet version index' };
     const all = body.versions.filter(nugetScheme.isVersion);
     const latest = nugetScheme.max(all, { includePrerelease: false });
-    return { ...(latest ? { latest } : {}), all, allComplete: body.versions.every((version) => typeof version === 'string') };
+    return {
+      ...(latest ? { latest } : {}),
+      all,
+      allComplete: body.versions.every((version) => typeof version === 'string'),
+    };
   }
 
   private baseAddress(): Promise<string> {

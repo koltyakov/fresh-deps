@@ -2,7 +2,7 @@
   "compilerOptions": {
     "module": "commonjs",
     "target": "ES2022",
-    "lib": ["ES2022"],
+    "lib": ["ES2023"],
     // TypeScript 7 no longer pulls in every @types package automatically.
     "types": ["node", "vscode"],
     "outDir": "out",

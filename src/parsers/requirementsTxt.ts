@@ -13,7 +13,7 @@ interface LogicalLine {
 function logicalLines(lines: string[]): LogicalLine[] {
   const out: LogicalLine[] = [];
 
-  for (let i = 0; i < lines.length; ) {
+  for (let i = 0; i < lines.length;) {
     const starts: { at: number; line: number }[] = [];
     let text = '';
 
@@ -60,7 +60,9 @@ export function parseRequirementsTxt(text: string): DependencyRef[] {
 
   for (const logical of logicalLines(text.split(/\r?\n/))) {
     // Hash options belong to pip, not to the PEP 508 version specifier.
-    const code = stripComment(logical.text).replace(/\s+--hash(?:=|\s+)\S+/g, (option) => ' '.repeat(option.length));
+    const code = stripComment(logical.text).replace(/\s+--hash(?:=|\s+)\S+/g, (option) =>
+      ' '.repeat(option.length)
+    );
     if (code.trim() === '' || code.trim().startsWith('-')) {
       continue;
     }

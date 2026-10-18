@@ -34,9 +34,13 @@ export function parseCargoToml(text: string): DependencyRef[] {
       const siblings = entries.filter(
         (candidate) =>
           candidate.path.length === entry.path.length &&
-          candidate.path.slice(0, -1).every((part, index) => part === entry.path[index]),
+          candidate.path.slice(0, -1).every((part, index) => part === entry.path[index])
       );
-      const value: TomlValue = { kind: 'table', entries: siblings.map(stripFieldPrefix), line: entry.line };
+      const value: TomlValue = {
+        kind: 'table',
+        entries: siblings.map(stripFieldPrefix),
+        line: entry.line,
+      };
       const dep = dependencyOf(tail[0], value, entry.line, location.section);
       if (dep) {
         deps.push(dep);
@@ -64,7 +68,12 @@ function stripFieldPrefix(entry: TomlEntry): TomlEntry {
   return { ...entry, path: [entry.path[entry.path.length - 1]] };
 }
 
-function dependencyOf(key: string, value: TomlValue, line: number, section: string): DependencyRef | undefined {
+function dependencyOf(
+  key: string,
+  value: TomlValue,
+  line: number,
+  section: string
+): DependencyRef | undefined {
   let name = key;
   let version: string | undefined;
   let source: string | undefined;
@@ -72,7 +81,11 @@ function dependencyOf(key: string, value: TomlValue, line: number, section: stri
   if (value.kind === 'string') {
     version = value.text;
   } else if (value.kind === 'table') {
-    const fields = new Map(value.entries.filter((entry) => entry.path.length === 1).map((entry) => [entry.path[0], entry.value]));
+    const fields = new Map(
+      value.entries
+        .filter((entry) => entry.path.length === 1)
+        .map((entry) => [entry.path[0], entry.value])
+    );
     // These sources do not resolve through crates.io. `workspace = true` has no
     // local requirement to measure, and therefore naturally has no version field.
     if (fields.has('path') || fields.has('git')) {

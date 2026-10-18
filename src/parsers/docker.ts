@@ -3,18 +3,29 @@ import { dockerTag } from '../docker';
 import type { DependencyRef } from '../types';
 import { yamlDocument, yamlString } from './yaml';
 
-export function imageDependency(image: string, line: number, section: string): DependencyRef | undefined {
+export function imageDependency(
+  image: string,
+  line: number,
+  section: string
+): DependencyRef | undefined {
   const digest = /^(.+)@(sha256:[a-f\d]{64})$/.exec(image);
   if (digest) {
     const dep = imageDependency(digest[1], line, section);
     return dep ? { ...dep, revision: digest[2], specRaw: `${dep.spec}@${digest[2]}` } : undefined;
   }
   const external = /^([a-z\d.-]+(?::\d+)?)\/([a-z\d._/-]+):([^/@\s]+)$/.exec(image);
-  if (external && (external[1].includes('.') || external[1].includes(':') || external[1] === 'localhost')
-    && !['docker.io', 'index.docker.io'].includes(external[1]) && dockerTag(external[3])) {
+  if (
+    external &&
+    (external[1].includes('.') || external[1].includes(':') || external[1] === 'localhost') &&
+    !['docker.io', 'index.docker.io'].includes(external[1]) &&
+    dockerTag(external[3])
+  ) {
     return { name: external[2], spec: external[3], source: external[1], line, section };
   }
-  const match = /^(?:docker\.io\/|index\.docker\.io\/)?([a-z0-9]+(?:[._-][a-z0-9]+)*(?:\/[a-z0-9]+(?:[._-][a-z0-9]+)*)?):([^/@\s]+)$/.exec(image);
+  const match =
+    /^(?:docker\.io\/|index\.docker\.io\/)?([a-z0-9]+(?:[._-][a-z0-9]+)*(?:\/[a-z0-9]+(?:[._-][a-z0-9]+)*)?):([^/@\s]+)$/.exec(
+      image
+    );
   if (!match || !dockerTag(match[2])) return undefined;
   // An unqualified first component containing a dot names a registry, not a Hub namespace.
   if (match[1].includes('/') && match[1].split('/')[0].includes('.')) return undefined;
@@ -29,7 +40,10 @@ export function parseDockerfile(text: string): DependencyRef[] {
   const heredocs: string[] = [];
   for (let line = 0; line < lines.length; line++) {
     const raw = lines[line];
-    if (heredocs.length) { if (raw.trim() === heredocs[0]) heredocs.shift(); continue; }
+    if (heredocs.length) {
+      if (raw.trim() === heredocs[0]) heredocs.shift();
+      continue;
+    }
     if (/^\s*#/.test(raw)) continue;
     let instruction = raw;
     while (/[\\`]\s*$/.test(instruction) && line + 1 < lines.length) {
@@ -39,7 +53,9 @@ export function parseDockerfile(text: string): DependencyRef[] {
       heredocs.push(...[...instruction.matchAll(/<<-?['"]?(\w+)['"]?/g)].map((match) => match[1]));
       continue;
     }
-    const match = /^\s*FROM\s+(?:--platform=\S+\s+)?(\S+)(?:\s+AS\s+([\w.-]+))?\s*$/i.exec(instruction);
+    const match = /^\s*FROM\s+(?:--platform=\S+\s+)?(\S+)(?:\s+AS\s+([\w.-]+))?\s*$/i.exec(
+      instruction
+    );
     if (!match) continue;
     if (!stages.has(match[1].toLowerCase())) {
       const dep = imageDependency(match[1], line, 'FROM');

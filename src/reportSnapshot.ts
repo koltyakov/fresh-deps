@@ -159,7 +159,7 @@ export function createReportSnapshot(
         runtimeVersions: result?.runtimeVersions
           ? Object.fromEntries(
               Object.entries(result.runtimeVersions)
-                .sort()
+                .toSorted()
                 .map(([key, value]) => [key, clean(value)])
             )
           : undefined,
@@ -169,7 +169,7 @@ export function createReportSnapshot(
       const deps = new Map((result.dependencies ?? []).map((dep) => [declarationKey(dep), dep]));
       for (const entry of [...result.updates, ...(result.statuses ?? []), ...result.audits])
         deps.set(declarationKey(entry.dep), entry.dep);
-      for (const dep of [...deps.values()].sort(
+      for (const dep of [...deps.values()].toSorted(
         (a, b) =>
           a.line - b.line || a.section.localeCompare(b.section) || a.name.localeCompare(b.name)
       )) {
@@ -274,7 +274,7 @@ export function createReportSnapshot(
                     status: 'checked',
                     advisories: audit.result.advisories
                       .map((value) => advisory(value, clean))
-                      .sort((a, b) => a.id.localeCompare(b.id)),
+                      .toSorted((a, b) => a.id.localeCompare(b.id)),
                   }
                 : audit.result.status === 'failed'
                   ? { status: 'failed', error: clean(audit.result.error) }
@@ -308,7 +308,7 @@ export function createReportSnapshot(
       out.issues.sort();
       return out;
     })
-    .sort(
+    .toSorted(
       (a, b) => (a.workspace ?? '').localeCompare(b.workspace ?? '') || a.path.localeCompare(b.path)
     );
   const analyzed = normalized.filter((file) => file.ecosystem && !file.excluded);

@@ -1,17 +1,34 @@
 import type { DependencyRef } from '../types';
 
-interface Token { kind: 'word' | 'atom' | 'string' | 'punct' | 'newline'; value: string; line: number }
+interface Token {
+  kind: 'word' | 'atom' | 'string' | 'punct' | 'newline';
+  value: string;
+  line: number;
+}
 
 function tokens(text: string): Token[] {
   const result: Token[] = [];
   let i = 0;
   let line = 0;
-  const advance = () => { if (text[i] === '\n') line++; i++; };
+  const advance = () => {
+    if (text[i] === '\n') line++;
+    i++;
+  };
   while (i < text.length) {
     const char = text[i];
-    if (char === '\n') { result.push({ kind: 'newline', value: char, line }); advance(); continue; }
-    if (/\s/.test(char)) { advance(); continue; }
-    if (char === '#') { while (i < text.length && text[i] !== '\n') advance(); continue; }
+    if (char === '\n') {
+      result.push({ kind: 'newline', value: char, line });
+      advance();
+      continue;
+    }
+    if (/\s/.test(char)) {
+      advance();
+      continue;
+    }
+    if (char === '#') {
+      while (i < text.length && text[i] !== '\n') advance();
+      continue;
+    }
     if (text.startsWith('"""', i)) {
       i += 3;
       while (i < text.length && !text.startsWith('"""', i)) advance();
@@ -26,7 +43,8 @@ function tokens(text: string): Token[] {
         i = Math.min(text.length, i + 3);
       } else {
         const open = text[i];
-        const close = ({ '(': ')', '[': ']', '{': '}', '<': '>' } as Record<string, string>)[open] ?? open;
+        const close =
+          ({ '(': ')', '[': ']', '{': '}', '<': '>' } as Record<string, string>)[open] ?? open;
         advance();
         while (i < text.length && text[i] !== close) {
           if (text[i] === '\\' && i + 1 < text.length) advance();
@@ -43,7 +61,12 @@ function tokens(text: string): Token[] {
       let dynamic = false;
       advance();
       while (i < text.length && text[i] !== '"') {
-        if (text[i] === '\\' && i + 1 < text.length) { advance(); value += text[i]; advance(); continue; }
+        if (text[i] === '\\' && i + 1 < text.length) {
+          advance();
+          value += text[i];
+          advance();
+          continue;
+        }
         if (text[i] === '#' && text[i + 1] === '{') dynamic = true;
         value += text[i];
         advance();
@@ -83,7 +106,13 @@ function tokens(text: string): Token[] {
 function dependencyTuples(stream: Token[], start: number, end: number): DependencyRef[] {
   const deps: DependencyRef[] = [];
   for (let i = start; i < end; i++) {
-    if (stream[i].value !== '{' || stream[i + 1]?.kind !== 'atom' || stream[i + 2]?.value !== ',' || stream[i + 3]?.kind !== 'string') continue;
+    if (
+      stream[i].value !== '{' ||
+      stream[i + 1]?.kind !== 'atom' ||
+      stream[i + 2]?.value !== ',' ||
+      stream[i + 3]?.kind !== 'string'
+    )
+      continue;
     const local = stream[i + 1].value;
     const spec = stream[i + 3].value.trim();
     let depth = 1;
@@ -93,23 +122,47 @@ function dependencyTuples(stream: Token[], start: number, end: number): Dependen
       if (stream[close].value === '}') depth--;
     }
     const options = stream.slice(i + 4, close - 1);
-    const option = (name: string) => options.some((token, index) => token.kind === 'word' && token.value === name && options[index + 1]?.value === ':');
+    const option = (name: string) =>
+      options.some(
+        (token, index) =>
+          token.kind === 'word' && token.value === name && options[index + 1]?.value === ':'
+      );
     if (['git', 'github', 'path', 'in_umbrella'].some(option) || !spec || !/\d/.test(spec)) {
       i = close - 1;
       continue;
     }
     let name = local;
-    const hexAt = options.findIndex((token, index) => token.kind === 'word' && token.value === 'hex' && options[index + 1]?.value === ':');
+    const hexAt = options.findIndex(
+      (token, index) =>
+        token.kind === 'word' && token.value === 'hex' && options[index + 1]?.value === ':'
+    );
     if (hexAt >= 0 && options[hexAt + 2]?.kind === 'atom') name = options[hexAt + 2].value;
     const literalOption = (key: string) => {
-      const at = options.findIndex((token, index) => token.kind === 'word' && token.value === key && options[index + 1]?.value === ':');
+      const at = options.findIndex(
+        (token, index) =>
+          token.kind === 'word' && token.value === key && options[index + 1]?.value === ':'
+      );
       return at >= 0 && options[at + 2]?.kind === 'string' ? options[at + 2].value : undefined;
     };
     const organization = literalOption('organization');
     const repo = literalOption('repo');
-    const source = organization && /^[\w-]+$/.test(organization) ? `https://hex.pm/api/repos/${organization}` : repo ? `hexrepo:${repo}` : undefined;
-    deps.push({ name, spec, line: stream[i + 3].line, section: 'deps', ...(name !== local ? { alias: local } : {}),
-      ...(source ? { source } : {}), ...((option('repo') || option('organization')) && !source ? { skipReason: 'Computed Hex repository or organization' } : {}) });
+    const source =
+      organization && /^[\w-]+$/.test(organization)
+        ? `https://hex.pm/api/repos/${organization}`
+        : repo
+          ? `hexrepo:${repo}`
+          : undefined;
+    deps.push({
+      name,
+      spec,
+      line: stream[i + 3].line,
+      section: 'deps',
+      ...(name !== local ? { alias: local } : {}),
+      ...(source ? { source } : {}),
+      ...((option('repo') || option('organization')) && !source
+        ? { skipReason: 'Computed Hex repository or organization' }
+        : {}),
+    });
     i = close - 1;
   }
   return deps;
@@ -155,7 +208,8 @@ export function parseMixExs(text: string): DependencyRef[] {
       if (stream[listEnd].value === ']') listDepth--;
       listEnd++;
     }
-    if (listDepth !== 0 || stream.slice(listEnd, end - 1).some((token) => token.kind !== 'newline')) return [];
+    if (listDepth !== 0 || stream.slice(listEnd, end - 1).some((token) => token.kind !== 'newline'))
+      return [];
     return dependencyTuples(stream, list + 1, listEnd - 1);
   }
   return [];

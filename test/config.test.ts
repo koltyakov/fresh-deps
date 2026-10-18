@@ -4,9 +4,13 @@ import manifest from '../package.json';
 import { readSettingsFrom } from '../src/settings';
 import { configurationProperties, createSettings } from './settings';
 import type { Uri } from 'vscode';
+import type * as config from '../src/config';
 
 test('inline enablement is registered as a resource-scoped setting', () => {
-  const properties = Object.assign({}, ...manifest.contributes.configuration.map((group) => group.properties));
+  const properties = Object.assign(
+    {},
+    ...manifest.contributes.configuration.map((group) => group.properties)
+  );
   assert.equal(properties['freshDeps.enabled'].scope, 'resource');
 });
 
@@ -19,16 +23,24 @@ test('VS Code settings reads retain the requested resource scope and effective v
   const scopes: unknown[] = [];
   Module._load = function (id, ...args) {
     if (id !== 'vscode') return load.call(this, id, ...args);
-    return { workspace: { getConfiguration: (section: string, resource: unknown) => {
-      assert.equal(section, 'freshDeps');
-      scopes.push(resource);
-      return { get: (key: string) => key === 'npm.registry' && resource === scope
-        ? 'https://workspace.example' : configurationProperties[`freshDeps.${key}`]?.default };
-    } } };
+    return {
+      workspace: {
+        getConfiguration: (section: string, resource: unknown) => {
+          assert.equal(section, 'freshDeps');
+          scopes.push(resource);
+          return {
+            get: (key: string) =>
+              key === 'npm.registry' && resource === scope
+                ? 'https://workspace.example'
+                : configurationProperties[`freshDeps.${key}`]?.default,
+          };
+        },
+      },
+    };
   };
   const modulePath = require.resolve('../src/config');
   try {
-    const { readSettings } = require('../src/config') as typeof import('../src/config');
+    const { readSettings } = require('../src/config') as typeof config;
     assert.equal(readSettings(scope).npm.registry, 'https://workspace.example');
     assert.equal(readSettings().npm.registry, '');
     assert.deepEqual(scopes, [scope, null]);
@@ -39,14 +51,20 @@ test('VS Code settings reads retain the requested resource scope and effective v
 });
 
 test('the reader covers every registered setting and maps its default to the matching field', () => {
-  const entries = manifest.contributes.configuration.flatMap((group) => Object.entries(group.properties));
-  assert.equal(new Set(entries.map(([key]) => key)).size, entries.length, 'setting keys must be unique');
+  const entries = manifest.contributes.configuration.flatMap((group) =>
+    Object.entries(group.properties)
+  );
+  assert.equal(
+    new Set(entries.map(([key]) => key)).size,
+    entries.length,
+    'setting keys must be unique'
+  );
   const reads: string[] = [];
   const settings = readSettingsFrom(<T>(key: string) => {
     reads.push(`freshDeps.${key}`);
     return configurationProperties[`freshDeps.${key}`]?.default as T | undefined;
   });
-  assert.deepEqual(reads.sort(), entries.map(([key]) => key).sort());
+  assert.deepEqual(reads.toSorted(), entries.map(([key]) => key).toSorted());
 
   const actual: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(settings)) {
@@ -54,18 +72,31 @@ test('the reader covers every registered setting and maps its default to the mat
     else if (key === 'auditProvider') actual['freshDeps.audit.provider'] = value;
     else if (key === 'runtimeVersions') actual['freshDeps.runtimeVersions'] = value;
     else if (typeof value !== 'object' || Array.isArray(value)) actual[`freshDeps.${key}`] = value;
-    else for (const [option, setting] of Object.entries(value)) actual[`freshDeps.${key}.${option}`] = setting;
+    else
+      for (const [option, setting] of Object.entries(value))
+        actual[`freshDeps.${key}.${option}`] = setting;
   }
-  assert.deepEqual(actual, Object.fromEntries(entries.map(([key, property]) => [key, property.default])));
+  assert.deepEqual(
+    actual,
+    Object.fromEntries(entries.map(([key, property]) => [key, property.default]))
+  );
 });
 
 test('effective values preserve false, zero, empty strings and empty arrays', () => {
   const overrides: Record<string, unknown> = {
-    enabled: false, 'audit.enabled': true, cacheDurationMinutes: 0,
-    'npm.registry': '', 'npm.sections': [], 'go.includeIndirect': true,
+    enabled: false,
+    'audit.enabled': true,
+    cacheDurationMinutes: 0,
+    'npm.registry': '',
+    'npm.sections': [],
+    'go.includeIndirect': true,
   };
-  const settings = readSettingsFrom(<T>(key: string) =>
-    (Object.hasOwn(overrides, key) ? overrides[key] : configurationProperties[`freshDeps.${key}`]?.default) as T);
+  const settings = readSettingsFrom(
+    <T>(key: string) =>
+      (Object.hasOwn(overrides, key)
+        ? overrides[key]
+        : configurationProperties[`freshDeps.${key}`]?.default) as T
+  );
   assert.equal(settings.enabled, false);
   assert.equal(settings.auditEnabled, true);
   assert.equal(settings.cacheDurationMinutes, 0);
@@ -75,7 +106,10 @@ test('effective values preserve false, zero, empty strings and empty arrays', ()
 });
 
 test('a missing registered value names the setting instead of silently using another default', () => {
-  assert.throws(() => readSettingsFrom(() => undefined), /Missing registered setting: freshDeps.enabled/);
+  assert.throws(
+    () => readSettingsFrom(() => undefined),
+    /Missing registered setting: freshDeps.enabled/
+  );
 });
 
 test('test settings merge ecosystem overrides and own their nested arrays', () => {

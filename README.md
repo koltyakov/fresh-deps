@@ -97,6 +97,13 @@ Some declarations need additional handling:
 Incomplete metadata produces an explanation on hover rather than a missing-version warning.
 The status bar reports version issues and incomplete checks. These checks describe what the
 selected source lists or serves, rather than whether a version was ever published elsewhere.
+Status labels stay compact, with details in the tooltip. When no updates need attention, the
+status bar shows a double-check icon and `Fresh Deps`, including when update suggestions are suppressed.
+The tooltip lists ignored dependencies only when a newer version is confirmed, with current and
+available versions, the matching manifest section, and audit status. This includes ignored major
+updates even when a same-major update is still suggested. Audit warnings name affected dependencies
+and advisories, including ignored dependencies. Ignoring updates never hides audit warnings, and
+an available update is not evidence that its version fixes an advisory.
 
 These examples illustrate the annotations you see in the editor. The comments are visual hints,
 not text added to your manifest, and the versions are examples rather than a live registry listing.
@@ -560,12 +567,24 @@ Additional ecosystem settings:
 
 ## Development
 
+Use npm. Volta selects the pinned Node.js and npm versions from `package.json`.
+Without Volta, install those versions manually. CI uses the same pins.
+Direct dependencies use exact versions, and `.npmrc` keeps future installs exact.
+
 ```bash
-npm install
+npm ci
+npm run check   # typecheck source and tests
+npm run lint    # lint with automatic fixes
+npm run fmt     # format source, tests, and tooling
 npm test        # compile and run unit tests
 npm run watch   # then F5 in VS Code to launch the extension host
 npm run package # build a .vsix
 ```
+
+Before submitting changes, run `npm run check`, `npm run lint:check`,
+`npm run fmt:check`, and `npm test`. VS Code recommends the Oxc extension for
+formatting on save. Workspace package rules keep `@types/vscode` aligned with
+the minimum supported VS Code version and suppress Node major updates in Volta.
 
 To try the packaged build in your own editor, `npm run vscode:install` builds the `.vsix` and
 installs it with `code --install-extension --force`; reload the window afterwards. Set

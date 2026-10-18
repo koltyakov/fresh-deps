@@ -14,20 +14,33 @@ const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
 
 function delayedFetch(t: TestContext) {
   const calls: { url: string; signal: AbortSignal; resolve(response: Response): void }[] = [];
-  t.mock.method(globalThis, 'fetch', (url: string, options: RequestInit) => new Promise<Response>((resolve, reject) => {
-    const signal = options.signal!;
-    signal.throwIfAborted();
-    const abort = () => reject(signal.reason);
-    signal.addEventListener('abort', abort, { once: true });
-    calls.push({ url, signal, resolve: (response) => { signal.removeEventListener('abort', abort); resolve(response); } });
-  }));
+  t.mock.method(
+    globalThis,
+    'fetch',
+    (url: string, options: RequestInit) =>
+      new Promise<Response>((resolve, reject) => {
+        const signal = options.signal!;
+        signal.throwIfAborted();
+        const abort = () => reject(signal.reason);
+        signal.addEventListener('abort', abort, { once: true });
+        calls.push({
+          url,
+          signal,
+          resolve: (response) => {
+            signal.removeEventListener('abort', abort);
+            resolve(response);
+          },
+        });
+      })
+  );
   return calls;
 }
 
 test('shared HTTP requests survive one subscriber cancellation and abort after the last leaves', async (t) => {
   const calls = delayedFetch(t);
   const requests = new SharedRequests<unknown>();
-  const first = new AbortController(), second = new AbortController();
+  const first = new AbortController(),
+    second = new AbortController();
   const fetch = () => fetchJson('https://cancel.example/package', { timeoutMs: 10_000 });
   const a = requests.resolve('pkg', fetch, first.signal);
   const b = requests.resolve('pkg', fetch, second.signal);
@@ -65,10 +78,16 @@ test('pre-cancelled work never starts and explicit HTTP signals abort active req
   const calls = delayedFetch(t);
   const controller = new AbortController();
   controller.abort();
-  await assert.rejects(new SharedRequests().resolve('pkg', async () => assert.fail('Must not run'), controller.signal), { name: 'AbortError' });
+  await assert.rejects(
+    new SharedRequests().resolve('pkg', async () => assert.fail('Must not run'), controller.signal),
+    { name: 'AbortError' }
+  );
   assert.equal(calls.length, 0);
   const active = new AbortController();
-  const work = fetchJson('https://cancel.example/explicit', { timeoutMs: 10_000, signal: active.signal });
+  const work = fetchJson('https://cancel.example/explicit', {
+    timeoutMs: 10_000,
+    signal: active.signal,
+  });
   active.abort();
   await assert.rejects(work, { name: 'AbortError' });
   assert.equal(calls[0].signal.aborted, true);
@@ -78,10 +97,14 @@ test('cancelled audits abort HTTP work without caching a failed or unsupported a
   const calls = delayedFetch(t);
   const cache = new AuditCache();
   const controller = new AbortController();
-  const work = cache.resolve('pkg', async () => {
-    await fetchJson('https://cancel.example/audit', { timeoutMs: 10_000 });
-    return { status: 'checked', advisories: [] };
-  }, controller.signal);
+  const work = cache.resolve(
+    'pkg',
+    async () => {
+      await fetchJson('https://cancel.example/audit', { timeoutMs: 10_000 });
+      return { status: 'checked', advisories: [] };
+    },
+    controller.signal
+  );
   await flush();
   controller.abort();
   await assert.rejects(work, { name: 'AbortError' });
@@ -93,10 +116,16 @@ test('cancelled audits abort HTTP work without caching a failed or unsupported a
 test('cancelling one analysis preserves the request and cache for another editor', async (t) => {
   t.mock.method(npmrc, 'readNpmConfig', () => new Map());
   const calls = delayedFetch(t);
-  const first = new AbortController(), second = new AbortController();
-  const base = { fsPath: '/one/package.json', text: '{"dependencies":{"example":"1.0.0"}}',
+  const first = new AbortController(),
+    second = new AbortController();
+  const base = {
+    fsPath: '/one/package.json',
+    text: '{"dependencies":{"example":"1.0.0"}}',
     settings: createSettings({ npm: { registry: 'https://registry.npmjs.org' } }),
-    cache: new VersionCache(60_000), auditCache: new AuditCache(), allowNetwork: true };
+    cache: new VersionCache(60_000),
+    auditCache: new AuditCache(),
+    allowNetwork: true,
+  };
   const a = analyze({ ...base, signal: first.signal });
   const b = analyze({ ...base, fsPath: '/two/package.json', signal: second.signal });
   await flush();
@@ -117,9 +146,15 @@ test('cancelling the only analysis aborts HTTP and does not cache cancellation e
   const calls = delayedFetch(t);
   const controller = new AbortController();
   const cache = new VersionCache(60_000);
-  const work = analyze({ fsPath: '/project/package.json', text: '{"dependencies":{"example":"1.0.0"}}',
+  const work = analyze({
+    fsPath: '/project/package.json',
+    text: '{"dependencies":{"example":"1.0.0"}}',
     settings: createSettings({ npm: { registry: 'https://registry.npmjs.org' } }),
-    cache, auditCache: new AuditCache(), allowNetwork: true, signal: controller.signal });
+    cache,
+    auditCache: new AuditCache(),
+    allowNetwork: true,
+    signal: controller.signal,
+  });
   await flush();
   controller.abort();
   const result = await work;
@@ -132,9 +167,21 @@ test('cancelling the only analysis aborts HTTP and does not cache cancellation e
 test('OCI requests inherit cancellation, including bearer-token requests', async (t) => {
   const calls = delayedFetch(t);
   const controller = new AbortController();
-  const work = new SharedRequests().resolve('oci', () => new OciClient(10_000).tags('cancel.example', 'example'), controller.signal);
+  const work = new SharedRequests().resolve(
+    'oci',
+    () => new OciClient(10_000).tags('cancel.example', 'example'),
+    controller.signal
+  );
   await flush();
-  calls[0].resolve(new Response('', { status: 401, headers: { 'www-authenticate': 'Bearer realm="https://auth.cancel.example/token",scope="repository:example:pull"' } }));
+  calls[0].resolve(
+    new Response('', {
+      status: 401,
+      headers: {
+        'www-authenticate':
+          'Bearer realm="https://auth.cancel.example/token",scope="repository:example:pull"',
+      },
+    })
+  );
   await flush();
   assert.equal(calls.length, 2);
   controller.abort();
@@ -145,9 +192,18 @@ test('OCI requests inherit cancellation, including bearer-token requests', async
 test('GitHub tag sharing retains independent cancellation across callers', async (t) => {
   const calls = delayedFetch(t);
   const requests = new SharedRequests<string[] | undefined>();
-  const a = new AbortController(), b = new AbortController();
-  const first = requests.resolve('actions', () => githubTags('cancellation/shared-tags', 10_000), a.signal);
-  const second = requests.resolve('swift', () => githubTags('cancellation/shared-tags', 10_000), b.signal);
+  const a = new AbortController(),
+    b = new AbortController();
+  const first = requests.resolve(
+    'actions',
+    () => githubTags('cancellation/shared-tags', 10_000),
+    a.signal
+  );
+  const second = requests.resolve(
+    'swift',
+    () => githubTags('cancellation/shared-tags', 10_000),
+    b.signal
+  );
   await flush();
   a.abort();
   await assert.rejects(first, { name: 'AbortError' });

@@ -56,11 +56,30 @@ export class NpmClient {
     // before selecting the target and its descriptive metadata.
     const versions = await this.fetchAll(name);
     if (versions.error || versions.packageMissing) return versions;
-    const latest = semver.maxSatisfying([body.version, ...(versions.latest ? [versions.latest] : [])].filter((version) => semver.valid(version)), '*') ?? versions.latest ?? body.version;
-    const selected = latest === body.version ? body
-      : await fetchJson<VersionDocument>(`${this.registryFor(name)}/${encodeName(name)}/${encodeURIComponent(latest)}`, this.requestOptions(name));
-    return { ...versions, latest, ...(selected ? { meta: metaOf(selected) } : {}),
-      ...(selected?.engines?.node ? { requirements: { ...versions.requirements, [latest]: [selected.engines.node] } } : {}) };
+    const latest =
+      semver.maxSatisfying(
+        [body.version, ...(versions.latest ? [versions.latest] : [])].filter((version) =>
+          semver.valid(version)
+        ),
+        '*'
+      ) ??
+      versions.latest ??
+      body.version;
+    const selected =
+      latest === body.version
+        ? body
+        : await fetchJson<VersionDocument>(
+            `${this.registryFor(name)}/${encodeName(name)}/${encodeURIComponent(latest)}`,
+            this.requestOptions(name)
+          );
+    return {
+      ...versions,
+      latest,
+      ...(selected ? { meta: metaOf(selected) } : {}),
+      ...(selected?.engines?.node
+        ? { requirements: { ...versions.requirements, [latest]: [selected.engines.node] } }
+        : {}),
+    };
   }
 
   /** Full lookup: every published version, for finding the newest in-range one. */
@@ -79,13 +98,23 @@ export class NpmClient {
     }
     const all = Object.keys(body.versions ?? {});
     const tagged = body['dist-tags']?.latest;
-    const latest = semver.maxSatisfying([...all, ...(tagged ? [tagged] : [])].filter((version) => semver.valid(version)), '*') ?? tagged;
+    const latest =
+      semver.maxSatisfying(
+        [...all, ...(tagged ? [tagged] : [])].filter((version) => semver.valid(version)),
+        '*'
+      ) ?? tagged;
     return {
       ...(latest ? { latest } : {}),
       all,
-      allComplete: !!body.versions && typeof body.versions === 'object' && !Array.isArray(body.versions),
+      allComplete:
+        !!body.versions && typeof body.versions === 'object' && !Array.isArray(body.versions),
       source: this.registryFor(name),
-      requirements: Object.fromEntries(Object.entries(body.versions ?? {}).map(([version, doc]) => [version, [doc.engines?.node ?? '']])),
+      requirements: Object.fromEntries(
+        Object.entries(body.versions ?? {}).map(([version, doc]) => [
+          version,
+          [doc.engines?.node ?? ''],
+        ])
+      ),
     };
   }
 
@@ -115,12 +144,15 @@ export class NpmClient {
     const request = this.requestOptions(name);
     let body: unknown;
     try {
-      body = await fetchJson<unknown>(`${this.registryFor(name)}/-/npm/v1/security/advisories/bulk`, {
-        ...request,
-        method: 'POST',
-        body: JSON.stringify({ [name]: [version] }),
-        headers: { ...request.headers, 'content-type': 'application/json' },
-      });
+      body = await fetchJson<unknown>(
+        `${this.registryFor(name)}/-/npm/v1/security/advisories/bulk`,
+        {
+          ...request,
+          method: 'POST',
+          body: JSON.stringify({ [name]: [version] }),
+          headers: { ...request.headers, 'content-type': 'application/json' },
+        }
+      );
     } catch (error) {
       if (error instanceof HttpError && (error.status === 405 || error.status === 501)) {
         return { status: 'unsupported' };
@@ -139,17 +171,28 @@ export class NpmClient {
         throw new Error('Malformed npm audit response');
       }
       for (const entry of entries) {
-        if (!entry || typeof entry !== 'object' || Array.isArray(entry) ||
-            !((typeof entry.id === 'string' && entry.id.trim()) ||
-              (typeof entry.id === 'number' && Number.isSafeInteger(entry.id))) ||
-            typeof entry.title !== 'string' || !entry.title.trim() ||
-            typeof entry.vulnerable_versions !== 'string' || !entry.vulnerable_versions.trim() ||
-            semver.validRange(entry.vulnerable_versions, { includePrerelease: true }) === null ||
-            (entry.severity !== undefined && typeof entry.severity !== 'string') ||
-            (entry.url !== undefined && typeof entry.url !== 'string')) {
+        if (
+          !entry ||
+          typeof entry !== 'object' ||
+          Array.isArray(entry) ||
+          !(
+            (typeof entry.id === 'string' && entry.id.trim()) ||
+            (typeof entry.id === 'number' && Number.isSafeInteger(entry.id))
+          ) ||
+          typeof entry.title !== 'string' ||
+          !entry.title.trim() ||
+          typeof entry.vulnerable_versions !== 'string' ||
+          !entry.vulnerable_versions.trim() ||
+          semver.validRange(entry.vulnerable_versions, { includePrerelease: true }) === null ||
+          (entry.severity !== undefined && typeof entry.severity !== 'string') ||
+          (entry.url !== undefined && typeof entry.url !== 'string')
+        ) {
           throw new Error('Malformed npm audit advisory');
         }
-        if (packageName === name && semver.satisfies(version, entry.vulnerable_versions, { includePrerelease: true })) {
+        if (
+          packageName === name &&
+          semver.satisfies(version, entry.vulnerable_versions, { includePrerelease: true })
+        ) {
           advisories.push({
             id: String(entry.id),
             title: entry.title,

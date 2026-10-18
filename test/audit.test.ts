@@ -23,21 +23,49 @@ test('Deno npm imports share real OSV audit results with package.json without su
       queries.push(JSON.parse(options!.body as string));
       return Response.json({ vulns: [{ id: 'TEST-1', summary: 'Example vulnerability' }] });
     }
-    return Response.json(url.endsWith('/latest') ? { version: '1.0.0' }
-      : { versions: { '1.0.0': {} }, 'dist-tags': { latest: '1.0.0' } });
+    return Response.json(
+      url.endsWith('/latest')
+        ? { version: '1.0.0' }
+        : { versions: { '1.0.0': {} }, 'dist-tags': { latest: '1.0.0' } }
+    );
   });
-  const base = { settings: createSettings({ auditEnabled: true, auditProvider: 'osv', npm: { registry: 'https://registry.npmjs.org' } }),
-    cache: new VersionCache(60_000), auditCache: new AuditCache(), allowNetwork: true };
+  const base = {
+    settings: createSettings({
+      auditEnabled: true,
+      auditProvider: 'osv',
+      npm: { registry: 'https://registry.npmjs.org' },
+    }),
+    cache: new VersionCache(60_000),
+    auditCache: new AuditCache(),
+    allowNetwork: true,
+  };
   for (const [fsPath, text] of [
     ['/project/deno.json', '{"imports":{"pkg":"npm:example@1.0.0"}}'],
     ['/project/package.json', '{"dependencies":{"example":"1.0.0"}}'],
   ]) {
     const result = await analyze({ ...base, fsPath, text });
-    assert.deepEqual(result?.audits[0].result, { status: 'checked', advisories: [{ id: 'TEST-1', title: 'Example vulnerability', url: 'https://osv.dev/vulnerability/TEST-1' }] });
+    assert.deepEqual(result?.audits[0].result, {
+      status: 'checked',
+      advisories: [
+        {
+          id: 'TEST-1',
+          title: 'Example vulnerability',
+          url: 'https://osv.dev/vulnerability/TEST-1',
+        },
+      ],
+    });
   }
   assert.deepEqual(queries, [{ package: { ecosystem: 'npm', name: 'example' }, version: '1.0.0' }]);
-  const privateResult = await analyze({ ...base, fsPath: '/project/deno.json', text: '{"imports":{"pkg":"npm:private-package@1.0.0"}}',
-    settings: createSettings({ auditEnabled: true, auditProvider: 'osv', npm: { registry: 'https://private.example' } }) });
+  const privateResult = await analyze({
+    ...base,
+    fsPath: '/project/deno.json',
+    text: '{"imports":{"pkg":"npm:private-package@1.0.0"}}',
+    settings: createSettings({
+      auditEnabled: true,
+      auditProvider: 'osv',
+      npm: { registry: 'https://private.example' },
+    }),
+  });
   assert.equal(privateResult?.audits[0].result.status, 'unsupported');
   assert.equal(queries.length, 1);
 });
@@ -48,18 +76,27 @@ function setup(t: TestContext, spec = '1.0.0') {
     throw new Error('Unexpected network request');
   });
   t.after(() => assert.equal(network.mock.callCount(), 0));
-  const audit = t.mock.method(NpmClient.prototype, 'fetchAudit', async (): Promise<AuditResponse> => vulnerable);
-  const latest = t.mock.method(NpmClient.prototype, 'fetchLatest', async () => ({ latest: '1.0.0' }));
+  const audit = t.mock.method(
+    NpmClient.prototype,
+    'fetchAudit',
+    async (): Promise<AuditResponse> => vulnerable
+  );
+  const latest = t.mock.method(NpmClient.prototype, 'fetchLatest', async () => ({
+    latest: '1.0.0',
+  }));
   const all = t.mock.method(NpmClient.prototype, 'fetchAll', async () => ({
-    latest: '2.0.0', all: ['1.0.0', '1.5.0', '2.0.0'],
+    latest: '2.0.0',
+    all: ['1.0.0', '1.5.0', '2.0.0'],
   }));
   const request: AnalyzeRequest = {
     fsPath: '/audit/package.json',
     text: JSON.stringify({ dependencies: { pkg: spec } }, null, 2),
     settings: createSettings({
-      auditEnabled: true, requestTimeoutMs: 1000,
+      auditEnabled: true,
+      requestTimeoutMs: 1000,
       npm: {
-        enabled: true, registry: 'https://registry.example',
+        enabled: true,
+        registry: 'https://registry.example',
         sections: ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'],
       },
     }),
@@ -79,9 +116,15 @@ test('a vulnerable dependency at latest still produces an audit without an updat
   assert.equal(result.audits.length, 1);
   assert.deepEqual(result.audits[0], {
     dep: { name: 'pkg', spec: '1.0.0', section: 'dependencies', line: 2 },
-    version: '1.0.0', baseline: false, provider: 'registry', result: vulnerable,
+    version: '1.0.0',
+    baseline: false,
+    provider: 'registry',
+    result: vulnerable,
   });
-  assert.deepEqual(audit.mock.calls.map((call) => call.arguments), [['pkg', '1.0.0']]);
+  assert.deepEqual(
+    audit.mock.calls.map((call) => call.arguments),
+    [['pkg', '1.0.0']]
+  );
   assert.equal(latest.mock.callCount(), 1);
   assert.equal(all.mock.callCount(), 0);
   assert.equal(result.failures.size, 0);
@@ -97,16 +140,24 @@ test('range audits label the declared baseline, not the latest or satisfying ver
   assert.equal(result.audits[0].baseline, true);
   assert.equal(result.audits[0].version, '1.0.0');
   assert.deepEqual(result.audits[0].result, vulnerable);
-  assert.deepEqual(audit.mock.calls.map((call) => call.arguments), [['pkg', '1.0.0']]);
+  assert.deepEqual(
+    audit.mock.calls.map((call) => call.arguments),
+    [['pkg', '1.0.0']]
+  );
   assert.equal(result.updates.length, 1);
   assert.equal(result.updates[0].latest, '2.0.0');
   assert.equal(result.updates[0].satisfying, '1.5.0');
-  assert.deepEqual(all.mock.calls.map((call) => call.arguments), [['pkg']]);
+  assert.deepEqual(
+    all.mock.calls.map((call) => call.arguments),
+    [['pkg']]
+  );
 });
 
 test('an audit failure preserves the version update and is separate from lookup failures', async (t) => {
   const { request, audit, latest } = setup(t);
-  audit.mock.mockImplementation(async () => { throw new Error('audit unavailable'); });
+  audit.mock.mockImplementation(async () => {
+    throw new Error('audit unavailable');
+  });
   latest.mock.mockImplementation(async () => ({ latest: '2.0.0' }));
   const result = await analyze(request);
   assert.ok(result);
@@ -186,12 +237,19 @@ test('cache-only analysis leaves missing audits pending and reuses fetched resul
 
 test('duplicate package declarations share an in-flight audit but retain both results', async (t) => {
   const { request, audit } = setup(t);
-  request.text = JSON.stringify({
-    dependencies: { pkg: '1.0.0' }, devDependencies: { pkg: '^1.0.0' },
-  }, null, 2);
+  request.text = JSON.stringify(
+    {
+      dependencies: { pkg: '1.0.0' },
+      devDependencies: { pkg: '^1.0.0' },
+    },
+    null,
+    2
+  );
   request.cache.set(versionKey, { latest: '1.0.0' });
   let finish!: (result: AuditResponse) => void;
-  const response = new Promise<AuditResponse>((resolve) => { finish = resolve; });
+  const response = new Promise<AuditResponse>((resolve) => {
+    finish = resolve;
+  });
   audit.mock.mockImplementation(() => response);
   const analysis = analyze(request);
   await Promise.resolve();
@@ -200,14 +258,21 @@ test('duplicate package declarations share an in-flight audit but retain both re
   const result = await analysis;
   assert.ok(result);
   assert.equal(result.audits.length, 2);
-  assert.deepEqual(result.audits.map((entry) => entry.dep.section).sort(), ['dependencies', 'devDependencies']);
-  assert.deepEqual(result.audits.map((entry) => entry.baseline).sort(), [false, true]);
+  assert.deepEqual(result.audits.map((entry) => entry.dep.section).toSorted(), [
+    'dependencies',
+    'devDependencies',
+  ]);
+  assert.deepEqual(result.audits.map((entry) => entry.baseline).toSorted(), [false, true]);
   for (const entry of result.audits) assert.deepEqual(entry.result, vulnerable);
   assert.equal(audit.mock.callCount(), 1);
   assert.equal(result.incomplete, false);
 });
 
-for (const [label, response] of [['clean', clean], ['vulnerable', vulnerable], ['unsupported', { status: 'unsupported' }]] satisfies [string, AuditResponse][]) {
+for (const [label, response] of [
+  ['clean', clean],
+  ['vulnerable', vulnerable],
+  ['unsupported', { status: 'unsupported' }],
+] satisfies [string, AuditResponse][]) {
   test(`audit cache expires ${label} results at the requested TTL`, async (t) => {
     let now = 1000;
     t.mock.method(Date, 'now', () => now);
@@ -233,12 +298,18 @@ for (const ttl of [30_000, 120_000]) {
     const cache = new AuditCache();
     const failure: AuditResponse = { status: 'failed', error: 'offline' };
     await cache.resolve('returned', async () => failure);
-    await cache.resolve('rejected', async () => { throw new Error('offline'); });
-    await cache.resolve('thrown', () => { throw 'offline'; });
+    await cache.resolve('rejected', async () => {
+      throw new Error('offline');
+    });
+    await cache.resolve('thrown', () => {
+      throw 'offline';
+    });
     now += Math.min(ttl, 60_000) - 1;
-    for (const key of ['returned', 'rejected', 'thrown']) assert.deepEqual(cache.get(key, ttl), failure);
+    for (const key of ['returned', 'rejected', 'thrown'])
+      assert.deepEqual(cache.get(key, ttl), failure);
     now += 1;
-    for (const key of ['returned', 'rejected', 'thrown']) assert.equal(cache.get(key, ttl), undefined);
+    for (const key of ['returned', 'rejected', 'thrown'])
+      assert.equal(cache.get(key, ttl), undefined);
   });
 }
 
@@ -246,7 +317,9 @@ test('clearing the audit cache removes entries and prevents in-flight work from 
   const cache = new AuditCache();
   await cache.resolve('cached', async () => clean);
   let finish!: (result: AuditResponse) => void;
-  const response = new Promise<AuditResponse>((resolve) => { finish = resolve; });
+  const response = new Promise<AuditResponse>((resolve) => {
+    finish = resolve;
+  });
   const pending = cache.resolve('pkg', () => response);
   await Promise.resolve();
   cache.clear();
@@ -260,8 +333,12 @@ test('an old in-flight audit cannot overwrite or remove a replacement after clea
   const cache = new AuditCache();
   let finishOld!: (result: AuditResponse) => void;
   let finishNew!: (result: AuditResponse) => void;
-  const oldResponse = new Promise<AuditResponse>((resolve) => { finishOld = resolve; });
-  const newResponse = new Promise<AuditResponse>((resolve) => { finishNew = resolve; });
+  const oldResponse = new Promise<AuditResponse>((resolve) => {
+    finishOld = resolve;
+  });
+  const newResponse = new Promise<AuditResponse>((resolve) => {
+    finishNew = resolve;
+  });
   const old = cache.resolve('pkg', () => oldResponse);
   await Promise.resolve();
   cache.clear();

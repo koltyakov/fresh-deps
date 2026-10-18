@@ -6,9 +6,17 @@ import { join, relative, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createSettings } from './settings';
 import { NpmClient } from '../src/registries/npm';
+import type * as reportCommand from '../src/reportCommand';
 
-const Module = require('node:module') as { _load: (id: string, parent: NodeModule | null | undefined, isMain?: boolean) => unknown };
-const uri = (fsPath: string) => ({ scheme: 'file', fsPath, path: fsPath, toString: () => pathToFileURL(fsPath).toString() });
+const Module = require('node:module') as {
+  _load: (id: string, parent: NodeModule | null | undefined, isMain?: boolean) => unknown;
+};
+const uri = (fsPath: string) => ({
+  scheme: 'file',
+  fsPath,
+  path: fsPath,
+  toString: () => pathToFileURL(fsPath).toString(),
+});
 type Uri = ReturnType<typeof uri>;
 const folders: { name: string; uri: Uri }[] = [];
 let command: () => Promise<void>;
@@ -23,43 +31,83 @@ const previewUris: Uri[] = [];
 let provider: { provideTextDocumentContent(uri: Uri): string };
 let closeDocument: (document: { uri: Uri }) => void;
 let disposed = 0;
-const settings = createSettings({ enabled: false, auditEnabled: true, showSatisfyingUpdates: false });
-const content = JSON.stringify({ dependencies: { example: '^1.0.0' }, devDependencies: { current: '1.0.0' } }, null, 2);
+const settings = createSettings({
+  enabled: false,
+  auditEnabled: true,
+  showSatisfyingUpdates: false,
+});
+const content = JSON.stringify(
+  { dependencies: { example: '^1.0.0' }, devDependencies: { current: '1.0.0' } },
+  null,
+  2
+);
 const vscode = {
   commands: {
     registerCommand: (name: string, callback: () => Promise<void>) => {
       if (name === 'freshDeps.report') command = callback;
-      else { assert.equal(name, 'freshDeps.reportJson'); jsonCommand = callback; }
+      else {
+        assert.equal(name, 'freshDeps.reportJson');
+        jsonCommand = callback;
+      }
       return { dispose() {} };
     },
-    executeCommand: async (name: string, value: Uri) => { previews.push(name); previewUris.push(value); },
+    executeCommand: async (name: string, value: Uri) => {
+      previews.push(name);
+      previewUris.push(value);
+    },
   },
   Uri: {
     joinPath: (base: Uri, name: string) => uri(join(base.fsPath, name)),
-    from: ({ scheme, path }: { scheme: string; path: string }) => ({ scheme, path, fsPath: path, toString: () => `${scheme}:${path}` }),
+    from: ({ scheme, path }: { scheme: string; path: string }) => ({
+      scheme,
+      path,
+      fsPath: path,
+      toString: () => `${scheme}:${path}`,
+    }),
   },
-  languages: { setTextDocumentLanguage: async (_document: unknown, language: string) => { assert.ok(['markdown', 'json'].includes(language)); } },
+  languages: {
+    setTextDocumentLanguage: async (_document: unknown, language: string) => {
+      assert.ok(['markdown', 'json'].includes(language));
+    },
+  },
   FileType: { File: 1, Directory: 2, SymbolicLink: 64 },
   ProgressLocation: { Notification: 15 },
   workspace: {
     registerTextDocumentContentProvider: (scheme: string, value: typeof provider) => {
-      assert.equal(scheme, 'fresh-deps-report'); provider = value;
-      return { dispose: () => { disposed++; } };
+      assert.equal(scheme, 'fresh-deps-report');
+      provider = value;
+      return {
+        dispose: () => {
+          disposed++;
+        },
+      };
     },
     onDidCloseTextDocument: (callback: typeof closeDocument) => {
       closeDocument = callback;
-      return { dispose: () => { disposed++; } };
+      return {
+        dispose: () => {
+          disposed++;
+        },
+      };
     },
     workspaceFolders: folders,
-    fs: { readDirectory: async (directory: Uri) => {
-      scans.push(directory.fsPath);
-      return (await readdir(directory.fsPath, { withFileTypes: true })).map((entry) =>
-        [entry.name, entry.isSymbolicLink() ? 64 : entry.isDirectory() ? 2 : 1]);
-    } },
+    fs: {
+      readDirectory: async (directory: Uri) => {
+        scans.push(directory.fsPath);
+        return (await readdir(directory.fsPath, { withFileTypes: true })).map((entry) => [
+          entry.name,
+          entry.isSymbolicLink() ? 64 : entry.isDirectory() ? 2 : 1,
+        ]);
+      },
+    },
     asRelativePath: (value: Uri, includeWorkspaceFolder: boolean) => {
       assert.equal(includeWorkspaceFolder, false);
-      const folder = folders.filter((entry) => value.fsPath === entry.uri.fsPath || value.fsPath.startsWith(entry.uri.fsPath + sep))
-        .sort((a, b) => b.uri.fsPath.length - a.uri.fsPath.length)[0];
+      const folder = folders
+        .filter(
+          (entry) =>
+            value.fsPath === entry.uri.fsPath || value.fsPath.startsWith(entry.uri.fsPath + sep)
+        )
+        .toSorted((a, b) => b.uri.fsPath.length - a.uri.fsPath.length)[0];
       return folder ? relative(folder.uri.fsPath, value.fsPath).split(sep).join('/') : value.fsPath;
     },
     openTextDocument: async (value: Uri | { content: string }) => {
@@ -73,13 +121,32 @@ const vscode = {
     },
   },
   window: {
-    withProgress: async (_options: unknown, work: (progress: unknown, token: unknown) => Promise<unknown>) =>
-      work({ report() {} }, { get isCancellationRequested() { return cancelled; }, onCancellationRequested: (callback: () => void) => {
-        cancelReport = callback;
-        return { dispose: () => { cancelReport = () => {}; } };
-      } }),
-    showTextDocument: async () => { assert.doesNotThrow(() => JSON.parse(opened)); },
-    showErrorMessage: async (message: string) => { assert.fail(message); },
+    withProgress: async (
+      _options: unknown,
+      work: (progress: unknown, token: unknown) => Promise<unknown>
+    ) =>
+      work(
+        { report() {} },
+        {
+          get isCancellationRequested() {
+            return cancelled;
+          },
+          onCancellationRequested: (callback: () => void) => {
+            cancelReport = callback;
+            return {
+              dispose: () => {
+                cancelReport = () => {};
+              },
+            };
+          },
+        }
+      ),
+    showTextDocument: async () => {
+      assert.doesNotThrow(() => JSON.parse(opened));
+    },
+    showErrorMessage: async (message: string) => {
+      assert.fail(message);
+    },
   },
 };
 const load = Module._load;
@@ -88,13 +155,23 @@ Module._load = function (id, ...args) {
   if (id === './config') return { readSettings: () => settings };
   return load.call(this, id, ...args);
 };
-const { registerReportCommand } = require('../src/reportCommand') as typeof import('../src/reportCommand');
+const { registerReportCommand } = require('../src/reportCommand') as typeof reportCommand;
 Module._load = load;
 
 test('recursively scans real nested manifests and renders actual analysis, including current and audited dependencies', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'fresh-deps-report-'));
   t.after(() => rm(root, { recursive: true, force: true }));
-  for (const name of ['one', 'one/apps/web', 'one/.hidden', 'two', 'one/node_modules/pkg', 'one/apps/web/node_modules/pkg', 'one/.venv/lib', 'one/dist', 'one/.yarn/cache/pkg']) {
+  for (const name of [
+    'one',
+    'one/apps/web',
+    'one/.hidden',
+    'two',
+    'one/node_modules/pkg',
+    'one/apps/web/node_modules/pkg',
+    'one/.venv/lib',
+    'one/dist',
+    'one/.yarn/cache/pkg',
+  ]) {
     await mkdir(join(root, name), { recursive: true });
     await writeFile(join(root, name, 'package.json'), content);
   }
@@ -105,20 +182,39 @@ test('recursively scans real nested manifests and renders actual analysis, inclu
   const fetched: string[] = [];
   t.mock.method(NpmClient.prototype, 'fetchLatest', async (name: string) => {
     fetched.push(name);
-    return { latest: name === 'example' ? '2.0.0' : '1.0.0', all: ['1.0.0', '1.5.2', '2.0.0'], allComplete: true };
+    return {
+      latest: name === 'example' ? '2.0.0' : '1.0.0',
+      all: ['1.0.0', '1.5.2', '2.0.0'],
+      allComplete: true,
+    };
   });
-  t.mock.method(NpmClient.prototype, 'fetchAll', async () => ({ latest: '2.0.0', all: ['1.0.0', '1.5.2', '2.0.0'], allComplete: true }));
-  t.mock.method(NpmClient.prototype, 'fetchAudit', async (name: string) => ({ status: 'checked', advisories:
-    name === 'current' ? [{ id: 'TEST-1', title: 'Test advisory', severity: 'high' }] : [] }));
+  t.mock.method(NpmClient.prototype, 'fetchAll', async () => ({
+    latest: '2.0.0',
+    all: ['1.0.0', '1.5.2', '2.0.0'],
+    allComplete: true,
+  }));
+  t.mock.method(NpmClient.prototype, 'fetchAudit', async (name: string) => ({
+    status: 'checked',
+    advisories:
+      name === 'current' ? [{ id: 'TEST-1', title: 'Test advisory', severity: 'high' }] : [],
+  }));
   const registration = registerReportCommand();
-  t.after(() => { registration.dispose(); assert.equal(disposed, 2); });
+  t.after(() => {
+    registration.dispose();
+    assert.equal(disposed, 2);
+  });
   const first = command();
   assert.equal(command(), first);
   await first;
   assert.match(opened, /Manifests analyzed \| 4/);
   assert.match(opened, /Declarations found \| 8/);
   assert.match(opened, /\| Type \| Name \| Version \| Minor\/patch \| Major \| Audit warning \|/);
-  for (const name of ['one/package.json', 'one/apps/web/package.json', 'one/.hidden/package.json', 'two/package.json']) {
+  for (const name of [
+    'one/package.json',
+    'one/apps/web/package.json',
+    'one/.hidden/package.json',
+    'two/package.json',
+  ]) {
     assert.ok(opened.includes(join(root, name)), name);
   }
   assert.ok(opened.includes('### [package.json]('));
@@ -126,10 +222,17 @@ test('recursively scans real nested manifests and renders actual analysis, inclu
   assert.ok(opened.includes('"web/package.json:3"'));
   assert.ok(!opened.includes(`### [${root}`));
   assert.match(opened, /\| \^1.0.0 \| 1.5.2 \| 2.0.0 \| - \|/);
-  assert.match(opened, /\| devDependencies \| \[current\].*\| 1.0.0 \| - \| - \| high: TEST-1 Test advisory \|/);
+  assert.match(
+    opened,
+    /\| devDependencies \| \[current\].*\| 1.0.0 \| - \| - \| high: TEST-1 Test advisory \|/
+  );
   assert.equal(new Set(scans).size, scans.length, 'overlapping workspace folders are visited once');
   assert.ok(scans.every((path) => !/node_modules|\.venv|\/dist|\.yarn\/cache|\/cycle/.test(path)));
-  assert.deepEqual(fetched.sort(), ['current', 'example'], 'registry results are shared across files');
+  assert.deepEqual(
+    fetched.toSorted(),
+    ['current', 'example'],
+    'registry results are shared across files'
+  );
   assert.deepEqual(previews, ['markdown.showPreview']);
   assert.equal(previewUris[0].scheme, 'fresh-deps-report');
   assert.ok(previewUris[0].path.endsWith('/Outdated Dependencies Report.md'));
@@ -151,13 +254,20 @@ test('cancelling a report aborts its active registry request without opening a p
   settings.auditEnabled = false;
   cancelled = false;
   let started!: () => void;
-  const ready = new Promise<void>((resolve) => { started = resolve; });
+  const ready = new Promise<void>((resolve) => {
+    started = resolve;
+  });
   let signal: AbortSignal | undefined;
-  t.mock.method(globalThis, 'fetch', (_url: string, options: RequestInit) => new Promise<Response>((_resolve, reject) => {
-    signal = options.signal!;
-    signal.addEventListener('abort', () => reject(signal!.reason), { once: true });
-    started();
-  }));
+  t.mock.method(
+    globalThis,
+    'fetch',
+    (_url: string, options: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        signal = options.signal!;
+        signal.addEventListener('abort', () => reject(signal!.reason), { once: true });
+        started();
+      })
+  );
   const registration = registerReportCommand();
   t.after(() => registration.dispose());
   const before = previews.length;
@@ -182,9 +292,16 @@ test('JSON command opens a named read-only report and skips excluded subtrees be
   cancelled = false;
   const before = scans.length;
   const previewsBefore = previews.length;
-  t.mock.method(NpmClient.prototype, 'fetchLatest', async () => ({ latest: '2.0.0', all: ['1.0.0', '2.0.0'], allComplete: true }));
+  t.mock.method(NpmClient.prototype, 'fetchLatest', async () => ({
+    latest: '2.0.0',
+    all: ['1.0.0', '2.0.0'],
+    allComplete: true,
+  }));
   const registration = registerReportCommand();
-  t.after(() => { registration.dispose(); settings.exclude = []; });
+  t.after(() => {
+    registration.dispose();
+    settings.exclude = [];
+  });
   const operation = jsonCommand();
   assert.equal(jsonCommand(), operation);
   await operation;
@@ -192,8 +309,15 @@ test('JSON command opens a named read-only report and skips excluded subtrees be
   assert.equal(report.schemaVersion, 1);
   assert.equal(report.summary.manifestsAnalyzed, 1);
   assert.equal(report.summary.excludedDirectories, 1);
-  assert.equal(report.files.find((file: { path: string }) => file.path === 'fixtures').directory, true);
+  assert.equal(
+    report.files.find((file: { path: string }) => file.path === 'fixtures').directory,
+    true
+  );
   assert.ok(!scans.slice(before).includes(join(root, 'fixtures')));
-  assert.equal(previews.length, previewsBefore, 'JSON uses a read-only editor, not Markdown preview');
+  assert.equal(
+    previews.length,
+    previewsBefore,
+    'JSON uses a read-only editor, not Markdown preview'
+  );
   assert.doesNotMatch(opened, new RegExp(root));
 });

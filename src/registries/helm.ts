@@ -17,9 +17,20 @@ export function helmVersions(text: string, name: string): RegistryVersions {
     if (!isMap(entry)) return [];
     const version = yamlString(entry.get('version', true));
     const removed = entry.get('removed', true);
-    return version && semverScheme.isVersion(version) && !(isScalar(removed) && removed.value === true) ? [version] : [];
+    return version &&
+      semverScheme.isVersion(version) &&
+      !(isScalar(removed) && removed.value === true)
+      ? [version]
+      : [];
   });
-  return { all, published, allComplete: releases.items.every((entry) => isMap(entry) && !!yamlString(entry.get('version', true))), latest: semverScheme.max(all, { includePrerelease: false }) };
+  return {
+    all,
+    published,
+    allComplete: releases.items.every(
+      (entry) => isMap(entry) && !!yamlString(entry.get('version', true))
+    ),
+    latest: semverScheme.max(all, { includePrerelease: false }),
+  };
 }
 
 export class HelmClient {
@@ -28,14 +39,26 @@ export class HelmClient {
   async fetchVersions(name: string, source: string): Promise<RegistryVersions> {
     if (source.startsWith('oci://')) {
       const url = new URL(source);
-      const tags = await new OciClient(this.timeoutMs).tags(url.host, `${url.pathname.replace(/^\//, '')}/${name}`.replace(/^\//, ''));
+      const tags = await new OciClient(this.timeoutMs).tags(
+        url.host,
+        `${url.pathname.replace(/^\//, '')}/${name}`.replace(/^\//, '')
+      );
       if (!tags) return { error: 'not found' };
-      const all = tags.map((tag) => tag.replace(/_/g, '+')).filter((tag) => semverScheme.isVersion(tag));
-      return { all, allComplete: true, latest: semverScheme.max(all, { includePrerelease: false }) };
+      const all = tags
+        .map((tag) => tag.replace(/_/g, '+'))
+        .filter((tag) => semverScheme.isVersion(tag));
+      return {
+        all,
+        allComplete: true,
+        latest: semverScheme.max(all, { includePrerelease: false }),
+      };
     }
     let index = this.indexes.get(source);
     if (!index) {
-      index = fetchText(`${source}/index.yaml`, { timeoutMs: this.timeoutMs, headers: { accept: 'application/yaml, text/yaml, text/plain' } });
+      index = fetchText(`${source}/index.yaml`, {
+        timeoutMs: this.timeoutMs,
+        headers: { accept: 'application/yaml, text/yaml, text/plain' },
+      });
       this.indexes.set(source, index);
     }
     const text = await index;

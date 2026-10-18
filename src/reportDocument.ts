@@ -1,9 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import * as vscode from 'vscode';
 
-
 /** Named, read-only reports that close without a save prompt. */
-export class ReportDocumentProvider implements vscode.TextDocumentContentProvider, vscode.Disposable {
+export class ReportDocumentProvider
+  implements vscode.TextDocumentContentProvider, vscode.Disposable
+{
   private readonly contents = new Map<string, string>();
   private readonly disposables: vscode.Disposable[];
   private disposed = false;
@@ -21,9 +22,16 @@ export class ReportDocumentProvider implements vscode.TextDocumentContentProvide
     return this.contents.get(uri.toString()) ?? '';
   }
 
-  async open(content: string, format: 'markdown' | 'json' = 'markdown', title = 'Outdated Dependencies Report'): Promise<void> {
+  async open(
+    content: string,
+    format: 'markdown' | 'json' = 'markdown',
+    title = 'Outdated Dependencies Report'
+  ): Promise<void> {
     if (this.disposed) return;
-    const uri = vscode.Uri.from({ scheme: this.scheme, path: `/${randomUUID()}/${title}.${format === 'json' ? 'json' : 'md'}` });
+    const uri = vscode.Uri.from({
+      scheme: this.scheme,
+      path: `/${randomUUID()}/${title}.${format === 'json' ? 'json' : 'md'}`,
+    });
     this.contents.set(uri.toString(), content);
     try {
       const document = await vscode.workspace.openTextDocument(uri);

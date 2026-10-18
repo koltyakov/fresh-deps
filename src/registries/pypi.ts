@@ -4,7 +4,8 @@ import { readPipConfig, resolveIndexUrl, splitCredentials } from '../pipconf';
 import type { AuditResponse, PackageMeta, RegistryVersions, SecurityAdvisory } from '../types';
 
 /** PEP 691 JSON, which carries the version list PEP 700 added. */
-const SIMPLE_JSON = 'application/vnd.pypi.simple.v1+json, application/vnd.pypi.simple.v1+html;q=0.5, text/html;q=0.2';
+const SIMPLE_JSON =
+  'application/vnd.pypi.simple.v1+json, application/vnd.pypi.simple.v1+html;q=0.5, text/html;q=0.2';
 
 const ARCHIVE_RE = /\.(?:tar\.gz|tar\.bz2|tar\.xz|tgz|zip)$/i;
 
@@ -40,23 +41,50 @@ export class PyPiClient {
   }
 
   private async project(url: string): Promise<SimpleProject | undefined> {
-    const response = await request(url, { timeoutMs: this.options.timeoutMs, headers: this.headers }, SIMPLE_JSON);
+    const response = await request(
+      url,
+      { timeoutMs: this.options.timeoutMs, headers: this.headers },
+      SIMPLE_JSON
+    );
     if (!response) return undefined;
     if (/html/i.test(response.headers.get('content-type') ?? '')) {
       const html = (await response.text()).replace(/<!--[\s\S]*?-->/g, '');
-      const decode = (text: string) => text.replace(/&(?:amp|quot|apos|lt|gt|#39);/g,
-        (entity) => ({ '&amp;': '&', '&quot;': '"', '&apos;': "'", '&#39;': "'", '&lt;': '<', '&gt;': '>' })[entity]!);
+      const decode = (text: string) =>
+        text.replace(
+          /&(?:amp|quot|apos|lt|gt|#39);/g,
+          (entity) =>
+            ({
+              '&amp;': '&',
+              '&quot;': '"',
+              '&apos;': "'",
+              '&#39;': "'",
+              '&lt;': '<',
+              '&gt;': '>',
+            })[entity]!
+        );
       const files: SimpleFile[] = [];
       for (const anchor of html.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a\s*>/gi)) {
-        const attrs = new Map([...anchor[1].matchAll(/([\w-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g)].map((m) => [m[1].toLowerCase(), decode(m[2] ?? m[3])]));
+        const attrs = new Map(
+          [...anchor[1].matchAll(/([\w-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g)].map((m) => [
+            m[1].toLowerCase(),
+            decode(m[2] ?? m[3]),
+          ])
+        );
         const filename = decode(anchor[2].replace(/<[^>]*>/g, '').trim());
         if (!attrs.has('href') || !versionFromFilename(filename)) continue;
-        files.push({ filename, ...(attrs.has('data-requires-python') ? { 'requires-python': attrs.get('data-requires-python') } : {}),
-          ...(/\bdata-yanked(?:\s|=|$)/i.test(anchor[1]) ? { yanked: attrs.get('data-yanked') || true } : {}) });
+        files.push({
+          filename,
+          ...(attrs.has('data-requires-python')
+            ? { 'requires-python': attrs.get('data-requires-python') }
+            : {}),
+          ...(/\bdata-yanked(?:\s|=|$)/i.test(anchor[1])
+            ? { yanked: attrs.get('data-yanked') || true }
+            : {}),
+        });
       }
       return { files };
     }
-    return await response.json() as SimpleProject;
+    return (await response.json()) as SimpleProject;
   }
 
   /**
@@ -72,9 +100,15 @@ export class PyPiClient {
 
     const files = body.files ?? [];
     const withdrawn = yankedVersions(files);
-    const evidence = { published: [...new Set([...(body.versions ?? []), ...derivedVersions(files)])].filter((version) => pep440.parseVersion(version) !== undefined),
-      allComplete: Array.isArray(body.versions) ? body.versions.every((version) => typeof version === 'string')
-        : Array.isArray(body.files) && body.files.every((file) => typeof file.filename === 'string') };
+    const evidence = {
+      published: [...new Set([...(body.versions ?? []), ...derivedVersions(files)])].filter(
+        (version) => pep440.parseVersion(version) !== undefined
+      ),
+      allComplete: Array.isArray(body.versions)
+        ? body.versions.every((version) => typeof version === 'string')
+        : Array.isArray(body.files) &&
+          body.files.every((file) => typeof file.filename === 'string'),
+    };
     const published = (body.versions ?? derivedVersions(files)).filter((version) => {
       const parsed = pep440.parseVersion(version);
       return parsed !== undefined && !withdrawn.has(parsed.text);
@@ -92,7 +126,8 @@ export class PyPiClient {
     for (const file of files) {
       const raw = file.filename && versionFromFilename(file.filename);
       const version = raw && pep440.parseVersion(raw)?.text;
-      if (version && file.yanked !== true && typeof file.yanked !== 'string') (requirements[version] ??= []).push(file['requires-python'] ?? '');
+      if (version && file.yanked !== true && typeof file.yanked !== 'string')
+        (requirements[version] ??= []).push(file['requires-python'] ?? '');
     }
     return {
       ...(latest ? { latest } : {}),
@@ -143,20 +178,32 @@ export class PyPiClient {
     if (body === undefined) {
       return { status: 'unsupported' };
     }
-    if (!body || typeof body !== 'object' || Array.isArray(body) ||
-        !('vulnerabilities' in body) || !Array.isArray(body.vulnerabilities)) {
+    if (
+      !body ||
+      typeof body !== 'object' ||
+      Array.isArray(body) ||
+      !('vulnerabilities' in body) ||
+      !Array.isArray(body.vulnerabilities)
+    ) {
       throw new Error('Malformed PyPI audit response');
     }
     const advisories: SecurityAdvisory[] = [];
     for (const entry of body.vulnerabilities) {
-      if (!entry || typeof entry !== 'object' || Array.isArray(entry) ||
-          typeof entry.id !== 'string' || !entry.id.trim() ||
-          (entry.summary != null && typeof entry.summary !== 'string') ||
-          (entry.details != null && typeof entry.details !== 'string') ||
-          (entry.link !== undefined && typeof entry.link !== 'string') ||
-          (entry.withdrawn != null && (typeof entry.withdrawn !== 'string' || !entry.withdrawn.trim())) ||
-          (entry.fixed_in !== undefined && (!Array.isArray(entry.fixed_in) ||
-            !entry.fixed_in.every((value: unknown) => typeof value === 'string' && value.trim())))) {
+      if (
+        !entry ||
+        typeof entry !== 'object' ||
+        Array.isArray(entry) ||
+        typeof entry.id !== 'string' ||
+        !entry.id.trim() ||
+        (entry.summary != null && typeof entry.summary !== 'string') ||
+        (entry.details != null && typeof entry.details !== 'string') ||
+        (entry.link !== undefined && typeof entry.link !== 'string') ||
+        (entry.withdrawn != null &&
+          (typeof entry.withdrawn !== 'string' || !entry.withdrawn.trim())) ||
+        (entry.fixed_in !== undefined &&
+          (!Array.isArray(entry.fixed_in) ||
+            !entry.fixed_in.every((value: unknown) => typeof value === 'string' && value.trim())))
+      ) {
         throw new Error('Malformed PyPI audit advisory');
       }
       if (entry.withdrawn != null) {
@@ -225,8 +272,12 @@ export function metaOf(info: NonNullable<ProjectJson['info']>): PackageMeta {
     meta.publisher = info.author;
   }
   const urls = info.project_urls ?? {};
-  const documentation = Object.entries(urls).find(([key]) => /^(?:documentation|docs)$/i.test(key))?.[1];
-  const changelog = Object.entries(urls).find(([key]) => /^(?:change[ -]?log|release[ _-]?notes)$/i.test(key))?.[1];
+  const documentation = Object.entries(urls).find(([key]) =>
+    /^(?:documentation|docs)$/i.test(key)
+  )?.[1];
+  const changelog = Object.entries(urls).find(([key]) =>
+    /^(?:change[ -]?log|release[ _-]?notes)$/i.test(key)
+  )?.[1];
   if (documentation) meta.documentation = documentation;
   if (changelog) meta.changelog = changelog;
   const homepage = info.home_page || urls.Homepage || urls.Documentation;
@@ -260,7 +311,10 @@ export function uploadTimes(files: SimpleFile[]): Map<string, string> {
 
 /** PEP 503 name normalisation, which is how the index spells its URLs. */
 export function normalizeName(name: string): string {
-  return name.trim().toLowerCase().replace(/[-_.]+/g, '-');
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/[-_.]+/g, '-');
 }
 
 /**

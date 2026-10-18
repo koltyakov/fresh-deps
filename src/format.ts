@@ -40,7 +40,11 @@ export function publishedOn(iso: string | undefined, now = Date.now()): string |
   if (Number.isNaN(at.getTime())) {
     return undefined;
   }
-  const absolute = at.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+  const absolute = at.toLocaleDateString(undefined, {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
   const relative = relativeTime(iso, now);
   return relative ? `${absolute} (${relative})` : absolute;
 }
@@ -63,5 +67,8 @@ export function formatSize(bytes: number): string {
  * so that URLs in a description still come out as URLs.
  */
 export function escapeMarkdown(text: string): string {
-  return text.replace(/[\\`*_[\]|$<>]/g, '\\$&').replace(/\s+/g, ' ').trim();
+  return text
+    .replace(/[\\`*_[\]|$<>]/g, '\\$&')
+    .replace(/\s+/g, ' ')
+    .trim();
 }

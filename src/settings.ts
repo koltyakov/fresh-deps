@@ -9,7 +9,12 @@ type EcosystemSettings = Record<Ecosystem, { enabled: boolean }> & {
   java: { repository: string };
   gradle: { repositories: string[] };
   terraform: { defaultRegistry: string };
-  scala: { repositories: string[]; scalaBinaryVersion: string; sbtBinaryVersion: string; platformSuffix: string };
+  scala: {
+    repositories: string[];
+    scalaBinaryVersion: string;
+    sbtBinaryVersion: string;
+    platformSuffix: string;
+  };
   conda: { subdir: string };
   clojure: { repositories: string[] };
 };
@@ -75,7 +80,10 @@ export function readSettingsFrom(read: <T>(key: string) => T | undefined): Setti
     dart: { enabled: get('dart.enabled') },
     gradle: { enabled: get('gradle.enabled'), repositories: get('gradle.repositories') },
     ruby: { enabled: get('ruby.enabled') },
-    terraform: { enabled: get('terraform.enabled'), defaultRegistry: get('terraform.defaultRegistry') },
+    terraform: {
+      enabled: get('terraform.enabled'),
+      defaultRegistry: get('terraform.defaultRegistry'),
+    },
     elixir: { enabled: get('elixir.enabled') },
     deno: { enabled: get('deno.enabled') },
     githubActions: { enabled: get('githubActions.enabled') },

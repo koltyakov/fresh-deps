@@ -12,7 +12,7 @@ import { parseConda } from './parsers/conda';
 import { parseClojure, parseLeiningen } from './parsers/clojure';
 import { parseDotnetPins } from './parsers/dotnetPins';
 import { parseYarnCatalog } from './parsers/yarnCatalog';
-import { AuditCache } from './audit';
+import type { AuditCache } from './audit';
 import type { VersionCache } from './cache';
 import type { Settings } from './config';
 import { parseCargoToml } from './parsers/cargoToml';
@@ -88,6 +88,8 @@ export interface AnalyzeResult {
   /** Parsed declarations, including those with no update or a skipped lookup. */
   dependencies?: DependencyRef[];
   updates: DependencyUpdate[];
+  /** Confirmed updates hidden by package rules, retained for status details only. */
+  suppressedUpdates?: (DependencyUpdate & { reason: 'updates' | 'major' })[];
   statuses?: DependencyStatus[];
   audits: DependencyAudit[];
   /** Dependencies whose lookup failed, by name. */
@@ -203,6 +205,7 @@ export async function analyze(request: AnalyzeRequest): Promise<AnalyzeResult | 
   const result: AnalyzeResult = {
     ecosystem,
     updates: [],
+    suppressedUpdates: [],
     audits: [],
     failures: new Map(),
     incomplete: false,
@@ -468,6 +471,15 @@ export async function analyze(request: AnalyzeRequest): Promise<AnalyzeResult | 
       };
     }
     const update = policy.ignoreUpdates ? undefined : computeUpdate(dep, versions, opts);
+    if (policy.ignoreUpdates || policy.ignoreMajorUpdates) {
+      const suppressed = computeUpdate(dep, versions, { ...opts, ignoreMajorUpdates: false });
+      if (suppressed && (policy.ignoreUpdates || suppressed.latest !== update?.latest))
+        result.suppressedUpdates!.push({
+          ...suppressed,
+          source,
+          reason: policy.ignoreUpdates ? 'updates' : 'major',
+        });
+    }
     if (update) {
       update.source = source;
       addCompatibility(
@@ -487,6 +499,7 @@ export async function analyze(request: AnalyzeRequest): Promise<AnalyzeResult | 
   });
 
   result.updates.sort((a, b) => a.dep.line - b.dep.line);
+  result.suppressedUpdates?.sort((a, b) => a.dep.line - b.dep.line);
   result.statuses?.sort((a, b) => a.dep.line - b.dep.line);
   result.policies?.sort((a, b) => a.line - b.line || a.name.localeCompare(b.name));
   return result;

@@ -17,7 +17,10 @@ function parse(content: string, into: Map<string, string>): void {
       continue;
     }
     if (line.startsWith('[')) {
-      section = line.slice(1, line.indexOf(']') === -1 ? line.length : line.indexOf(']')).trim().toLowerCase();
+      section = line
+        .slice(1, line.indexOf(']') === -1 ? line.length : line.indexOf(']'))
+        .trim()
+        .toLowerCase();
       continue;
     }
     const separator = line.search(/[=:]/);
@@ -52,7 +55,9 @@ function configFiles(): string[] {
   if (process.platform === 'darwin') {
     files.push(path.join(home, 'Library', 'Application Support', 'pip', 'pip.conf'));
   }
-  files.push(path.join(process.env.XDG_CONFIG_HOME || path.join(home, '.config'), 'pip', 'pip.conf'));
+  files.push(
+    path.join(process.env.XDG_CONFIG_HOME || path.join(home, '.config'), 'pip', 'pip.conf')
+  );
   files.push(path.join(home, '.pip', 'pip.conf'));
   return files;
 }
@@ -107,5 +112,8 @@ export function splitCredentials(indexUrl: string): { url: string; auth?: string
   const credentials = `${decodeURIComponent(parsed.username)}:${decodeURIComponent(parsed.password)}`;
   parsed.username = '';
   parsed.password = '';
-  return { url: parsed.toString().replace(/\/+$/, ''), auth: `Basic ${Buffer.from(credentials).toString('base64')}` };
+  return {
+    url: parsed.toString().replace(/\/+$/, ''),
+    auth: `Basic ${Buffer.from(credentials).toString('base64')}`,
+  };
 }

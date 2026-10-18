@@ -7,7 +7,10 @@ const DEFAULT_REPOSITORY = 'https://repo.maven.apache.org/maven2';
 export class MavenClient {
   readonly repository: string;
 
-  constructor(repositoryOverride: string, private readonly timeoutMs: number) {
+  constructor(
+    repositoryOverride: string,
+    private readonly timeoutMs: number
+  ) {
     this.repository = (repositoryOverride || DEFAULT_REPOSITORY).replace(/\/+$/, '');
   }
 
@@ -22,8 +25,12 @@ export class MavenClient {
 }
 
 function decodeXml(value: string): string {
-  return value.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'").replace(/&amp;/g, '&');
+  return value
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, '&');
 }
 
 export function versionsFromMetadata(xml: string): RegistryVersions {
@@ -32,9 +39,12 @@ export function versionsFromMetadata(xml: string): RegistryVersions {
     .filter(mavenVersion.isValid);
   const declaredRelease = xml.match(/<release>\s*([^<]+?)\s*<\/release>/)?.[1];
   const release = declaredRelease ? decodeXml(declaredRelease.trim()) : undefined;
-  const latest = release && mavenVersion.isValid(release) && !mavenVersion.isPrerelease(release)
-    ? release
-    : mavenVersion.max(all, { includePrerelease: false });
+  const latest =
+    release && mavenVersion.isValid(release) && !mavenVersion.isPrerelease(release)
+      ? release
+      : mavenVersion.max(all, { includePrerelease: false });
   const allComplete = /<versions\s*>[\s\S]*<\/versions>/.test(xml) || /<versions\s*\/>/.test(xml);
-  return latest || all.length || allComplete ? { ...(latest ? { latest } : {}), all, allComplete } : { error: 'no comparable versions found' };
+  return latest || all.length || allComplete
+    ? { ...(latest ? { latest } : {}), all, allComplete }
+    : { error: 'no comparable versions found' };
 }

@@ -16,7 +16,11 @@ export class VersionCache {
   generation = 0;
 
   /** Share requests across declarations and editors without sharing comparison policy. */
-  resolve(key: string, fetch: () => Promise<RegistryVersions>, signal?: AbortSignal): Promise<RegistryVersions> {
+  resolve(
+    key: string,
+    fetch: () => Promise<RegistryVersions>,
+    signal?: AbortSignal
+  ): Promise<RegistryVersions> {
     return this.pending.resolve(key, fetch, signal);
   }
 
@@ -40,7 +44,8 @@ export class VersionCache {
   }
 
   set(key: string, value: RegistryVersions): void {
-    const ttl = value.error || value.packageMissing ? Math.min(ERROR_TTL_MS, this.ttlMs) : this.ttlMs;
+    const ttl =
+      value.error || value.packageMissing ? Math.min(ERROR_TTL_MS, this.ttlMs) : this.ttlMs;
     const at = Date.now();
     this.entries.set(key, { value, at, expires: at + ttl });
   }
@@ -54,7 +59,9 @@ export class VersionCache {
   /** Serialisable snapshot, used to keep resolved versions across window reloads. */
   serialize(): [string, Entry][] {
     const now = Date.now();
-    return [...this.entries].filter(([, entry]) => entry.expires > now && !entry.value.error && !entry.value.packageMissing);
+    return [...this.entries].filter(
+      ([, entry]) => entry.expires > now && !entry.value.error && !entry.value.packageMissing
+    );
   }
 
   restore(data: [string, Entry][] | undefined): void {

@@ -7,7 +7,10 @@ import { escapeModulePath, majorLayout, resolveProxy } from '../src/registries/g
 import { readNpmConfig, authHeaderFor } from '../src/npmrc';
 
 test('escapeModulePath escapes uppercase letters for the module proxy', () => {
-  assert.strictEqual(escapeModulePath('github.com/Masterminds/semver'), 'github.com/!masterminds/semver');
+  assert.strictEqual(
+    escapeModulePath('github.com/Masterminds/semver'),
+    'github.com/!masterminds/semver'
+  );
   assert.strictEqual(escapeModulePath('golang.org/x/sync'), 'golang.org/x/sync');
 });
 
@@ -36,8 +39,14 @@ test('npmrc: nearest file wins and ${VAR} is expanded', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'fresh-deps-'));
   const nested = path.join(root, 'packages', 'app');
   fs.mkdirSync(nested, { recursive: true });
-  fs.writeFileSync(path.join(root, '.npmrc'), 'registry=https://outer.example/\n@acme:registry=https://acme.example/\n');
-  fs.writeFileSync(path.join(nested, '.npmrc'), 'registry=https://inner.example/\n//inner.example/:_authToken=${DEMO_TOKEN}\n');
+  fs.writeFileSync(
+    path.join(root, '.npmrc'),
+    'registry=https://outer.example/\n@acme:registry=https://acme.example/\n'
+  );
+  fs.writeFileSync(
+    path.join(nested, '.npmrc'),
+    'registry=https://inner.example/\n//inner.example/:_authToken=${DEMO_TOKEN}\n'
+  );
 
   process.env.DEMO_TOKEN = 'secret-value';
   const config = readNpmConfig(nested);

@@ -7,7 +7,9 @@ interface NugetVersion {
 }
 
 export function parseNugetVersion(raw: string): NugetVersion | undefined {
-  const match = raw.trim().match(/^[vV]?(\d+(?:\.\d+){0,3})(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/);
+  const match = raw
+    .trim()
+    .match(/^[vV]?(\d+(?:\.\d+){0,3})(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/);
   if (!match) return undefined;
   const release = match[1].split('.').map(Number);
   while (release.length < 4) release.push(0);
@@ -55,18 +57,23 @@ function parseRange(raw: string): NugetRange | undefined {
   }
   const floating = spec.match(/^(\d+(?:\.\d+)*)\.\*$/);
   if (floating) {
-    return { minInclusive: true, maxInclusive: false, exact: false, floating: floating[1].split('.') };
+    return {
+      minInclusive: true,
+      maxInclusive: false,
+      exact: false,
+      floating: floating[1].split('.'),
+    };
   }
   const interval = spec.match(/^([[(])\s*([^,\]]*)\s*(?:,\s*([^\])]*)\s*)?([\])])$/);
   if (!interval) return undefined;
   const min = interval[2] || undefined;
   const hasComma = interval[3] !== undefined;
   if (!hasComma && (interval[1] !== '[' || interval[4] !== ']' || !min)) return undefined;
-  const max = hasComma ? interval[3] || undefined : min;
-  if ((min && !parseNugetVersion(min)) || (max && !parseNugetVersion(max))) return undefined;
+  const upper = hasComma ? interval[3] || undefined : min;
+  if ((min && !parseNugetVersion(min)) || (upper && !parseNugetVersion(upper))) return undefined;
   return {
     min,
-    max,
+    max: upper,
     minInclusive: interval[1] === '[',
     maxInclusive: interval[4] === ']',
     exact: !hasComma && !!min,
@@ -113,7 +120,7 @@ function max(versions: string[], includePrerelease: boolean, spec?: string): str
     .filter((version) => parseNugetVersion(version))
     .filter((version) => includePrerelease || !parseNugetVersion(version)?.prerelease.length)
     .filter((version) => !spec || satisfies(version, spec))
-    .sort(compareNuget)
+    .toSorted(compareNuget)
     .at(-1);
 }
 

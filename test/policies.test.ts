@@ -126,6 +126,9 @@ for (const newer of ['24.22.1', '24.23.0', undefined]) {
     assert.equal(volta?.latest, newer);
     assert.equal(volta?.sameMajor, undefined);
     assert.equal(volta?.satisfying, undefined);
+    const ignoredMajor = result.suppressedUpdates?.find((update) => update.dep.section === 'volta');
+    assert.equal(ignoredMajor?.latest, '26.0.0');
+    assert.equal(ignoredMajor?.reason, 'major');
     assert.equal(
       result.updates.find((update) => update.dep.section === 'dependencies')?.latest,
       '26.0.0'
@@ -160,6 +163,7 @@ for (const newer of ['24.22.1', '24.23.0', undefined]) {
     );
     const cached = await analyze({ ...request, allowNetwork: false });
     assert.deepEqual(cached?.updates, result.updates);
+    assert.deepEqual(cached?.suppressedUpdates, result.suppressedUpdates);
     const unrestricted = await analyze({
       ...request,
       allowNetwork: false,
@@ -229,6 +233,8 @@ for (const fixture of [
     assert.equal(result?.incomplete, false);
     assert.equal(result?.updates[0]?.latest, '1.5.0');
     assert.equal(result?.updates[0]?.kind, 'minor');
+    assert.equal(result?.suppressedUpdates?.[0]?.latest, '2.0.0');
+    assert.equal(result?.suppressedUpdates?.[0]?.reason, 'major');
   });
 }
 
@@ -295,7 +301,76 @@ test('suppression retains availability and security evidence without update sugg
   assert.equal(result?.audits[0].result.status, 'checked');
   assert.equal(result?.audits[0].result.advisories[0].id, 'TEST');
   assert.equal(result?.policies?.[0].ignoreUpdates, true);
+  assert.equal(result?.suppressedUpdates?.[0]?.dep.name, 'example');
+  assert.equal(result?.suppressedUpdates?.[0]?.current, '1.0.0');
+  assert.equal(result?.suppressedUpdates?.[0]?.latest, '2.0.0');
+  assert.equal(result?.suppressedUpdates?.[0]?.reason, 'updates');
 });
+
+test('ignored update details include only present declarations with confirmed newer versions', async (t) => {
+  t.mock.method(globalThis, 'fetch', () => assert.fail('Cached details made a request'));
+  const settings = createSettings({
+    npm: { registry: 'https://registry.npmjs.org' },
+    packageRules: [{ name: 'ignored-*', ignoreUpdates: true }],
+  });
+  const cache = new VersionCache(60_000);
+  for (const name of ['ignored-old', 'ignored-current'])
+    cache.set(`npm|${settings.npm.registry}|${name}`, {
+      latest: '2.0.0',
+      all: ['1.0.0', '2.0.0'],
+      allComplete: true,
+    });
+  cache.set(`npm|${settings.npm.registry}|ignored-failed`, { error: 'offline' });
+  const result = await analyze({
+    fsPath: '/repo/package.json',
+    text: JSON.stringify({
+      dependencies: {
+        'ignored-old': '1.0.0',
+        'ignored-current': '2.0.0',
+        'ignored-failed': '1.0.0',
+        'ignored-unknown': '1.0.0',
+      },
+      devDependencies: { renamed: 'npm:ignored-old@2.0.0' },
+    }),
+    settings,
+    cache,
+    auditCache: new AuditCache(),
+    allowNetwork: false,
+  });
+  assert.equal(result?.updates.length, 0);
+  assert.equal(result?.suppressedUpdates?.length, 1);
+  assert.equal(result?.suppressedUpdates?.[0]?.dep.name, 'ignored-old');
+  assert.equal(result?.suppressedUpdates?.[0]?.dep.section, 'dependencies');
+  assert.equal(result?.suppressedUpdates?.[0]?.dep.alias, undefined);
+  assert.equal(result?.incomplete, true);
+});
+
+for (const latest of ['1.0.0', '1.5.0', '2.0.0-beta.1', '2.0.0']) {
+  test(`major-only ignore details respect current, same-major and prerelease policy for ${latest}`, async (t) => {
+    t.mock.method(globalThis, 'fetch', () => assert.fail('Cached details made a request'));
+    const cache = new VersionCache(60_000);
+    cache.set('npm|https://registry.npmjs.org|library', {
+      latest,
+      all: ['1.0.0', latest],
+      allComplete: true,
+    });
+    const result = await analyze({
+      fsPath: '/repo/package.json',
+      text: '{"dependencies":{"library":"1.0.0"}}',
+      settings: createSettings({
+        npm: { registry: 'https://registry.npmjs.org' },
+        prereleasePolicy: 'never',
+        packageRules: [{ name: 'library', ignoreMajorUpdates: true }],
+      }),
+      cache,
+      auditCache: new AuditCache(),
+      allowNetwork: false,
+    });
+    assert.equal(result?.suppressedUpdates?.length, latest === '2.0.0' ? 1 : 0);
+    assert.equal(result?.updates.length, latest === '1.5.0' ? 1 : 0);
+    assert.equal(result?.incomplete, false);
+  });
+}
 
 test('excluded manifests never look up versions or audits', async (t) => {
   t.mock.method(globalThis, 'fetch', () => assert.fail('Excluded file made a request'));

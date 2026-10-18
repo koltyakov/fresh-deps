@@ -8,7 +8,10 @@ import { normalizeName, versionFromFilename, yankedVersions } from '../src/regis
 import { resolveIndexUrl, splitCredentials, type PipConfig } from '../src/pipconf';
 
 test('pip command-specific indexes override global indexes without bypassing explicit settings or environment', (t) => {
-  const previous = { PIP_INDEX_URL: process.env.PIP_INDEX_URL, UV_INDEX_URL: process.env.UV_INDEX_URL };
+  const previous = {
+    PIP_INDEX_URL: process.env.PIP_INDEX_URL,
+    UV_INDEX_URL: process.env.UV_INDEX_URL,
+  };
   t.after(() => {
     for (const [key, value] of Object.entries(previous)) {
       if (value === undefined) delete process.env[key];
@@ -17,11 +20,17 @@ test('pip command-specific indexes override global indexes without bypassing exp
   });
   delete process.env.PIP_INDEX_URL;
   delete process.env.UV_INDEX_URL;
-  const config = new Map([['global.index-url', 'https://pypi.org/simple'], ['install.index-url', 'https://private.example/simple']]);
+  const config = new Map([
+    ['global.index-url', 'https://pypi.org/simple'],
+    ['install.index-url', 'https://private.example/simple'],
+  ]);
   assert.equal(resolveIndexUrl(undefined, config), 'https://private.example/simple');
   process.env.PIP_INDEX_URL = 'https://environment.example/simple';
   assert.equal(resolveIndexUrl(undefined, config), 'https://environment.example/simple');
-  assert.equal(resolveIndexUrl('https://explicit.example/simple', config), 'https://explicit.example/simple');
+  assert.equal(
+    resolveIndexUrl('https://explicit.example/simple', config),
+    'https://explicit.example/simple'
+  );
 });
 import type { DependencyRef } from '../src/types';
 
@@ -33,7 +42,10 @@ test('pep508: splits name, extras, specifier and marker', () => {
     spec: '>=2.28,<3',
     specOffset: 8,
   });
-  assert.strictEqual(parseRequirement('celery[redis] >= 5.3 ; python_version >= "3.9"')?.spec, '>= 5.3');
+  assert.strictEqual(
+    parseRequirement('celery[redis] >= 5.3 ; python_version >= "3.9"')?.spec,
+    '>= 5.3'
+  );
   assert.strictEqual(parseRequirement('  django (>=4.2)  ')?.spec, '>=4.2');
   // A direct reference names no registry version.
   assert.strictEqual(parseRequirement('mylib @ https://example.com/mylib.whl'), undefined);
@@ -184,7 +196,10 @@ test('pypi: normalises names the way the simple index spells them', () => {
 
 test('pypi: recovers a version from a distribution filename', () => {
   assert.strictEqual(versionFromFilename('requests-2.31.0-py3-none-any.whl'), '2.31.0');
-  assert.strictEqual(versionFromFilename('numpy-1.26.4-cp312-cp312-macosx_11_0_arm64.whl'), '1.26.4');
+  assert.strictEqual(
+    versionFromFilename('numpy-1.26.4-cp312-cp312-macosx_11_0_arm64.whl'),
+    '1.26.4'
+  );
   assert.strictEqual(versionFromFilename('zope.interface-5.4.0.tar.gz'), '5.4.0');
   assert.strictEqual(versionFromFilename('README.md'), undefined);
 });
@@ -200,7 +215,9 @@ test('pypi: a release is withdrawn only when all of its files are yanked', () =>
 });
 
 test('pip config: setting beats environment beats config file beats PyPI', () => {
-  const config: PipConfig = { get: (key) => (key === 'global.index-url' ? 'https://from-file.example/simple' : undefined) };
+  const config: PipConfig = {
+    get: (key) => (key === 'global.index-url' ? 'https://from-file.example/simple' : undefined),
+  };
   const empty = { get: () => undefined };
 
   delete process.env.PIP_INDEX_URL;
@@ -210,7 +227,10 @@ test('pip config: setting beats environment beats config file beats PyPI', () =>
 
   process.env.PIP_INDEX_URL = 'https://from-env.example/simple/';
   assert.strictEqual(resolveIndexUrl('', config), 'https://from-env.example/simple');
-  assert.strictEqual(resolveIndexUrl('https://override.example/simple', config), 'https://override.example/simple');
+  assert.strictEqual(
+    resolveIndexUrl('https://override.example/simple', config),
+    'https://override.example/simple'
+  );
   delete process.env.PIP_INDEX_URL;
 });
 

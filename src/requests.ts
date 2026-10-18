@@ -27,18 +27,30 @@ interface Pending<T> {
 export class SharedRequests<T> {
   private readonly pending = new Map<string, Pending<T>>();
 
-  resolve(key: string, fetch: (signal: AbortSignal) => Promise<T>, signal = currentRequestSignal()): Promise<T> {
+  resolve(
+    key: string,
+    fetch: (signal: AbortSignal) => Promise<T>,
+    signal = currentRequestSignal()
+  ): Promise<T> {
     if (signal?.aborted) return Promise.reject(signal.reason);
     let entry = this.pending.get(key);
     if (!entry) {
-      const work: Pending<T> = { controller: new AbortController(), promise: undefined!, subscribers: 0, uncancellable: false, settled: false };
-      work.promise = Promise.resolve().then(() => {
-        work.controller.signal.throwIfAborted();
-        return signals.run(work.controller.signal, () => fetch(work.controller.signal));
-      }).finally(() => {
-        work.settled = true;
-        if (this.pending.get(key) === work) this.pending.delete(key);
-      });
+      const work: Pending<T> = {
+        controller: new AbortController(),
+        promise: undefined!,
+        subscribers: 0,
+        uncancellable: false,
+        settled: false,
+      };
+      work.promise = Promise.resolve()
+        .then(() => {
+          work.controller.signal.throwIfAborted();
+          return signals.run(work.controller.signal, () => fetch(work.controller.signal));
+        })
+        .finally(() => {
+          work.settled = true;
+          if (this.pending.get(key) === work) this.pending.delete(key);
+        });
       this.pending.set(key, work);
       entry = work;
     }
@@ -67,8 +79,12 @@ export class SharedRequests<T> {
       };
       signal.addEventListener('abort', abort, { once: true });
       work.promise.then(
-        (value) => { if (cleanup()) resolve(value); },
-        (error) => { if (cleanup()) reject(error); },
+        (value) => {
+          if (cleanup()) resolve(value);
+        },
+        (error) => {
+          if (cleanup()) reject(error);
+        }
       );
     });
   }

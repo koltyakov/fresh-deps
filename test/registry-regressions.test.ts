@@ -18,8 +18,15 @@ test.beforeEach((t) => {
   });
 });
 
-function goEnvironment(t: TestContext, privatePatterns: string | undefined, noProxyPatterns: string | undefined) {
-  for (const [key, value] of Object.entries({ GOPRIVATE: privatePatterns, GONOPROXY: noProxyPatterns })) {
+function goEnvironment(
+  t: TestContext,
+  privatePatterns: string | undefined,
+  noProxyPatterns: string | undefined
+) {
+  for (const [key, value] of Object.entries({
+    GOPRIVATE: privatePatterns,
+    GONOPROXY: noProxyPatterns,
+  })) {
     const previous = process.env[key];
     if (value === undefined) delete process.env[key];
     else process.env[key] = value;
@@ -30,9 +37,12 @@ function goEnvironment(t: TestContext, privatePatterns: string | undefined, noPr
   }
 }
 
-const goClient = () => new GoClient({
-  proxyOverride: 'https://proxy.example', checkMajorVersions: true, timeoutMs: 1000,
-});
+const goClient = () =>
+  new GoClient({
+    proxyOverride: 'https://proxy.example',
+    checkMajorVersions: true,
+    timeoutMs: 1000,
+  });
 
 test('Go retains the current module release when a newer major path exists', async (t) => {
   goEnvironment(t, undefined, 'none');
@@ -42,8 +52,11 @@ test('Go retains the current module release when a newer major path exists', asy
     return new Response('', { status: 404 });
   });
   const versions = await goClient().fetchLatest('example.com/module');
-  const update = computeUpdate({ name: 'example.com/module', spec: 'v1.2.0', section: 'require', line: 0 }, versions,
-    { scheme: schemeFor('go'), includePrerelease: false, showSatisfyingUpdates: true });
+  const update = computeUpdate(
+    { name: 'example.com/module', spec: 'v1.2.0', section: 'require', line: 0 },
+    versions,
+    { scheme: schemeFor('go'), includePrerelease: false, showSatisfyingUpdates: true }
+  );
   assert.equal(update?.sameMajor, 'v1.9.0');
   assert.equal(update?.latestRaw, 'v2.3.0');
   assert.equal(update?.alternatePath, 'example.com/module/v2');
@@ -61,7 +74,11 @@ for (const failure of ['timeout', 'server error', 'missing'] as const) {
     const versions = await goClient().fetchLatest('example.com/module');
     assert.equal(versions.error, undefined);
     assert.equal(versions.latestRaw, 'v1.9.0');
-    const options = { scheme: schemeFor('go'), includePrerelease: false, showSatisfyingUpdates: true };
+    const options = {
+      scheme: schemeFor('go'),
+      includePrerelease: false,
+      showSatisfyingUpdates: true,
+    };
     const dep = { name: 'example.com/module', spec: 'v1.9.0', section: 'require', line: 0 };
     assert.equal(computeUpdate(dep, versions, options), undefined);
     assert.equal(computeUpdate({ ...dep, spec: 'v1.8.0' }, versions, options)?.latestRaw, 'v1.9.0');
@@ -120,7 +137,10 @@ for (const noProxy of [undefined, '']) {
   test(`Go blocks all private module requests with GONOPROXY ${String(noProxy)}`, async (t) => {
     goEnvironment(t, 'corp.example/*', noProxy);
     const client = goClient();
-    assert.match((await client.fetchLatest('corp.example/team/module')).error!, /skipped.*GOPRIVATE/);
+    assert.match(
+      (await client.fetchLatest('corp.example/team/module')).error!,
+      /skipped.*GOPRIVATE/
+    );
     assert.equal(await client.fetchPublishDate('corp.example/team/module', '1.0.0'), undefined);
     assert.equal(network.mock.callCount(), 0);
   });
@@ -133,7 +153,8 @@ test('Go GONOPROXY overrides GOPRIVATE rather than adding to it', async (t) => {
     calls.push(url);
     assert.ok(url.startsWith('https://proxy.example/private.example/module/'));
     return url.endsWith('/module/@latest')
-      ? Response.json({ Version: 'v1.0.0' }) : new Response('', { status: 404 });
+      ? Response.json({ Version: 'v1.0.0' })
+      : new Response('', { status: 404 });
   });
   const client = goClient();
   assert.equal((await client.fetchLatest('private.example/module')).latest, '1.0.0');
@@ -153,7 +174,10 @@ test('Go GONOPROXY=none permits private latest, major and date requests', async 
   });
   const client = goClient();
   assert.equal((await client.fetchLatest('private.example/module')).latest, '1.0.0');
-  assert.equal(await client.fetchPublishDate('private.example/module', '1.0.0'), '2026-01-01T00:00:00Z');
+  assert.equal(
+    await client.fetchPublishDate('private.example/module', '1.0.0'),
+    '2026-01-01T00:00:00Z'
+  );
   assert.equal(calls.length, 4);
 });
 
@@ -187,7 +211,10 @@ test('npm auth keeps the scheme and longest registry prefix', () => {
     ['//registry.example/team/special/:_auth', 'ignored-basic'],
   ]);
   assert.equal(npmrc.authHeaderFor(config, 'https://registry.example/team'), 'Basic dXNlcjpwYXNz');
-  assert.equal(npmrc.authHeaderFor(config, 'https://registry.example/team/special'), 'Bearer scoped-token');
+  assert.equal(
+    npmrc.authHeaderFor(config, 'https://registry.example/team/special'),
+    'Bearer scoped-token'
+  );
   assert.equal(npmrc.authHeaderFor(config, 'https://registry.example/other'), 'Bearer host-token');
   assert.equal(npmrc.authHeaderFor(config, 'https://other.example/team'), undefined);
   assert.equal(npmrc.authHeaderFor(config, 'not a URL'), undefined);
@@ -198,13 +225,29 @@ for (const [key, value, header] of [
   ['_authToken', 'test-token', 'Bearer test-token'],
 ]) {
   test(`npm sends ${key} correctly on latest, full and publish-date requests`, async (t) => {
-    t.mock.method(npmrc, 'readNpmConfig', () => new Map([[`//registry.example/team/:${key}`, value]]));
-    const fetch = t.mock.method(globalThis, 'fetch', async (url: string, options: RequestInit & { headers: Record<string, string> }) => {
-      assert.ok(url.startsWith('https://registry.example/team/package'));
-      assert.equal(options.headers.authorization, header);
-      return Response.json({ version: '1.0.0', versions: { '1.0.0': {} }, time: { '1.0.0': '2026-01-01' } });
+    t.mock.method(
+      npmrc,
+      'readNpmConfig',
+      () => new Map([[`//registry.example/team/:${key}`, value]])
+    );
+    const fetch = t.mock.method(
+      globalThis,
+      'fetch',
+      async (url: string, options: RequestInit & { headers: Record<string, string> }) => {
+        assert.ok(url.startsWith('https://registry.example/team/package'));
+        assert.equal(options.headers.authorization, header);
+        return Response.json({
+          version: '1.0.0',
+          versions: { '1.0.0': {} },
+          time: { '1.0.0': '2026-01-01' },
+        });
+      }
+    );
+    const client = new NpmClient({
+      cwd: '/',
+      registryOverride: 'https://registry.example/team',
+      timeoutMs: 1000,
     });
-    const client = new NpmClient({ cwd: '/', registryOverride: 'https://registry.example/team', timeoutMs: 1000 });
     await client.fetchLatest('package');
     await client.fetchAll('package');
     await client.fetchPublishDates('package', ['1.0.0']);
@@ -214,18 +257,23 @@ for (const [key, value, header] of [
 
 for (const withVersions of [false, true]) {
   test(`PyPI excludes empty-string yanks with versions list ${withVersions}`, async (t) => {
-    t.mock.method(globalThis, 'fetch', async () => Response.json({
-      ...(withVersions ? { versions: ['1.0', '2.0', '3.0', '4.0'] } : {}),
-      files: [
-        { filename: 'pkg-1.0.tar.gz', yanked: false },
-        { filename: 'pkg-2.0.tar.gz', yanked: '' },
-        { filename: 'pkg-3.0.tar.gz', yanked: '' },
-        { filename: 'pkg-3.0-py3-none-any.whl' },
-        { filename: 'pkg-4.0.tar.gz', yanked: true },
-        { filename: 'pkg-4.0-py3-none-any.whl', yanked: 'broken' },
-      ],
-    }));
-    const client = new PyPiClient({ indexOverride: 'https://index.example/simple', timeoutMs: 1000 });
+    t.mock.method(globalThis, 'fetch', async () =>
+      Response.json({
+        ...(withVersions ? { versions: ['1.0', '2.0', '3.0', '4.0'] } : {}),
+        files: [
+          { filename: 'pkg-1.0.tar.gz', yanked: false },
+          { filename: 'pkg-2.0.tar.gz', yanked: '' },
+          { filename: 'pkg-3.0.tar.gz', yanked: '' },
+          { filename: 'pkg-3.0-py3-none-any.whl' },
+          { filename: 'pkg-4.0.tar.gz', yanked: true },
+          { filename: 'pkg-4.0-py3-none-any.whl', yanked: 'broken' },
+        ],
+      })
+    );
+    const client = new PyPiClient({
+      indexOverride: 'https://index.example/simple',
+      timeoutMs: 1000,
+    });
     const result = await client.fetchVersions('pkg');
     assert.deepEqual(result.all, ['1.0', '3.0']);
     assert.equal(result.latest, '3.0');
@@ -238,17 +286,24 @@ for (const ecosystem of ['java', 'dotnet'] as const) {
     t.mock.method(globalThis, 'fetch', async (url: string) => {
       if (ecosystem === 'java') {
         assert.ok(url.endsWith('/maven-metadata.xml'));
-        return new Response(`<metadata><versions>${versions.map((v) => `<version>${v}</version>`).join('')}</versions></metadata>`);
+        return new Response(
+          `<metadata><versions>${versions.map((v) => `<version>${v}</version>`).join('')}</versions></metadata>`
+        );
       }
       if (url === 'https://nuget.example/v3/index.json') {
-        return Response.json({ resources: [{ '@type': 'PackageBaseAddress/3.0.0', '@id': 'https://nuget.example/flat/' }] });
+        return Response.json({
+          resources: [
+            { '@type': 'PackageBaseAddress/3.0.0', '@id': 'https://nuget.example/flat/' },
+          ],
+        });
       }
       assert.equal(url, 'https://nuget.example/flat/pkg/index.json');
       return Response.json({ versions });
     });
-    const client = ecosystem === 'java'
-      ? new MavenClient('https://maven.example', 1000)
-      : new NugetClient('https://nuget.example/v3/index.json', 1000);
+    const client =
+      ecosystem === 'java'
+        ? new MavenClient('https://maven.example', 1000)
+        : new NugetClient('https://nuget.example/v3/index.json', 1000);
     const result = await client.fetchVersions(ecosystem === 'java' ? 'org.example:pkg' : 'Pkg');
     assert.deepEqual(result.all, versions);
     assert.equal(result.latest, undefined);

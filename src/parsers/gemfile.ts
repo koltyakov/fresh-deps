@@ -1,7 +1,11 @@
 import type { DependencyRef } from '../types';
 import { repositoryUrl } from './helm';
 
-interface Token { kind: 'word' | 'string' | 'punct' | 'newline'; value: string; line: number }
+interface Token {
+  kind: 'word' | 'string' | 'punct' | 'newline';
+  value: string;
+  line: number;
+}
 
 function tokens(text: string): Token[] {
   const result: Token[] = [];
@@ -9,9 +13,20 @@ function tokens(text: string): Token[] {
   let line = 0;
   while (i < text.length) {
     const char = text[i];
-    if (char === '\n') { result.push({ kind: 'newline', value: char, line }); line++; i++; continue; }
-    if (/\s/.test(char)) { i++; continue; }
-    if (char === '#') { while (i < text.length && text[i] !== '\n') i++; continue; }
+    if (char === '\n') {
+      result.push({ kind: 'newline', value: char, line });
+      line++;
+      i++;
+      continue;
+    }
+    if (/\s/.test(char)) {
+      i++;
+      continue;
+    }
+    if (char === '#') {
+      while (i < text.length && text[i] !== '\n') i++;
+      continue;
+    }
     if (char === '"' || char === "'") {
       const quote = char;
       const start = line;
@@ -19,7 +34,11 @@ function tokens(text: string): Token[] {
       let dynamic = false;
       i++;
       while (i < text.length && text[i] !== quote) {
-        if (text[i] === '\\' && i + 1 < text.length) { value += text[i + 1]; i += 2; continue; }
+        if (text[i] === '\\' && i + 1 < text.length) {
+          value += text[i + 1];
+          i += 2;
+          continue;
+        }
         if (quote === '"' && text[i] === '#' && text[i + 1] === '{') dynamic = true;
         if (text[i] === '\n') line++;
         value += text[i++];
@@ -41,7 +60,9 @@ function tokens(text: string): Token[] {
 }
 
 export function parseGemfile(text: string): DependencyRef[] {
-  const customGitSources = new Set([...text.matchAll(/\bgit_source\s*\(\s*:([A-Za-z_][A-Za-z0-9_]*)/g)].map((match) => match[1]));
+  const customGitSources = new Set(
+    [...text.matchAll(/\bgit_source\s*\(\s*:([A-Za-z_][A-Za-z0-9_]*)/g)].map((match) => match[1])
+  );
   const sources = new Map<number, string>();
   const stack: string[] = [];
   let source = 'https://rubygems.org';
@@ -49,32 +70,58 @@ export function parseGemfile(text: string): DependencyRef[] {
   let pending: string | undefined;
   for (let i = 0; i < stream.length; i++) {
     const token = stream[i];
-    if (token.kind === 'word' && ['source', 'git', 'path'].includes(token.value)
-      && (!stream[i - 1] || stream[i - 1].kind === 'newline')) {
+    if (
+      token.kind === 'word' &&
+      ['source', 'git', 'path'].includes(token.value) &&
+      (!stream[i - 1] || stream[i - 1].kind === 'newline')
+    ) {
       const literal = stream[i + 1]?.value === '(' ? stream[i + 2] : stream[i + 1];
-      const selected = token.value === 'source' && literal?.kind === 'string' ? repositoryUrl(literal.value) : undefined;
+      const selected =
+        token.value === 'source' && literal?.kind === 'string'
+          ? repositoryUrl(literal.value)
+          : undefined;
       const end = stream.findIndex((next, at) => at > i && next.kind === 'newline');
-      const block = stream.slice(i, end < 0 ? undefined : end).some((next) => next.kind === 'word' && next.value === 'do');
+      const block = stream
+        .slice(i, end < 0 ? undefined : end)
+        .some((next) => next.kind === 'word' && next.value === 'do');
       if (block) pending = selected ?? 'unsupported';
       else source = selected ?? 'unsupported';
     }
-    if (token.kind === 'word' && token.value === 'do') { stack.push(source); source = pending ?? source; pending = undefined; }
+    if (token.kind === 'word' && token.value === 'do') {
+      stack.push(source);
+      source = pending ?? source;
+      pending = undefined;
+    }
     if (token.kind === 'word' && token.value === 'end' && stack.length) source = stack.pop()!;
     sources.set(token.line, source);
   }
   return parseRubyDependencies(text, new Set(['gem']), customGitSources).map((dep) => {
-    const source = sources.get(dep.line) ?? 'https://rubygems.org';
-    return source === 'unsupported' ? { ...dep, skipReason: 'Ruby dependency source is dynamic, Git, or a local path' }
-      : source === 'https://rubygems.org' ? dep : { ...dep, source };
+    const selectedSource = sources.get(dep.line) ?? 'https://rubygems.org';
+    return selectedSource === 'unsupported'
+      ? { ...dep, skipReason: 'Ruby dependency source is dynamic, Git, or a local path' }
+      : selectedSource === 'https://rubygems.org'
+        ? dep
+        : { ...dep, source: selectedSource };
   });
 }
 
 export function parseGemspec(text: string, source: string | undefined): DependencyRef[] {
-  return parseRubyDependencies(text, new Set(['add_dependency', 'add_runtime_dependency', 'add_development_dependency']), new Set())
-    .map((dep) => source ? { ...dep, source } : { ...dep, skipReason: 'No unambiguous Gemfile source for gemspec dependency' });
+  return parseRubyDependencies(
+    text,
+    new Set(['add_dependency', 'add_runtime_dependency', 'add_development_dependency']),
+    new Set()
+  ).map((dep) =>
+    source
+      ? { ...dep, source }
+      : { ...dep, skipReason: 'No unambiguous Gemfile source for gemspec dependency' }
+  );
 }
 
-function parseRubyDependencies(text: string, calls: Set<string>, customGitSources: Set<string>): DependencyRef[] {
+function parseRubyDependencies(
+  text: string,
+  calls: Set<string>,
+  customGitSources: Set<string>
+): DependencyRef[] {
   const stream = tokens(text);
   const deps: DependencyRef[] = [];
   for (let i = 0; i < stream.length; i++) {
@@ -92,11 +139,32 @@ function parseRubyDependencies(text: string, calls: Set<string>, customGitSource
         if (depth < 0) break;
       }
       if (token.kind === 'newline' && depth <= 0) break;
-      if (token.kind === 'word' && ['git', 'github', 'path', 'source'].includes(token.value)
-        && stream[j + 1]?.value === ':') unsafe = true;
-      if (token.kind === 'word' && stream[j + 1]?.value === ':'
-        && !['require', 'group', 'groups', 'platform', 'platforms', 'install_if', 'force_ruby_platform'].includes(token.value)) unsafe = true;
-      if (token.kind === 'word' && customGitSources.has(token.value) && stream[j + 1]?.value === ':') unsafe = true;
+      if (
+        token.kind === 'word' &&
+        ['git', 'github', 'path', 'source'].includes(token.value) &&
+        stream[j + 1]?.value === ':'
+      )
+        unsafe = true;
+      if (
+        token.kind === 'word' &&
+        stream[j + 1]?.value === ':' &&
+        ![
+          'require',
+          'group',
+          'groups',
+          'platform',
+          'platforms',
+          'install_if',
+          'force_ruby_platform',
+        ].includes(token.value)
+      )
+        unsafe = true;
+      if (
+        token.kind === 'word' &&
+        customGitSources.has(token.value) &&
+        stream[j + 1]?.value === ':'
+      )
+        unsafe = true;
       if (token.value === '*' && stream[j + 1]?.value === '*') unsafe = true;
       if (token.kind === 'word' && stream[j + 1]?.value === ':') option = true;
       if (token.kind === 'string' && !option) values.push(token);
@@ -106,7 +174,10 @@ function parseRubyDependencies(text: string, calls: Set<string>, customGitSource
     const name = values[0].value;
     const requirements = values.slice(1).map((token) => token.value);
     const spec = requirements.join(', ');
-    if (/^[A-Za-z0-9_.-]+$/.test(name) && requirements.every((value) => /^(?:~>|>=|<=|!=|=|>|<)?\s*\d/.test(value))) {
+    if (
+      /^[A-Za-z0-9_.-]+$/.test(name) &&
+      requirements.every((value) => /^(?:~>|>=|<=|!=|=|>|<)?\s*\d/.test(value))
+    ) {
       deps.push({ name, spec, line: values[1].line, section: 'gems' });
     }
   }

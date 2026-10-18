@@ -30,7 +30,7 @@ test('package.json: reads the configured sections', () => {
     [
       ['lodash', '^4.17.20', 'dependencies', 4],
       ['typescript', '~5.4.0', 'devDependencies', 7],
-    ],
+    ]
   );
 });
 
@@ -54,10 +54,13 @@ test('package.json: skips specs that do not resolve to a registry version', () =
       },
     },
     null,
-    2,
+    2
   );
   const deps = parsePackageJson(text, SECTIONS);
-  assert.deepStrictEqual(deps.map((d) => d.name), ['real']);
+  assert.deepStrictEqual(
+    deps.map((d) => d.name),
+    ['real']
+  );
 });
 
 test('package.json: unwraps npm: aliases', () => {
@@ -91,7 +94,10 @@ test('package.json: tolerates comments and ignores nested objects', () => {
     '}',
   ].join('\n');
   const deps = parsePackageJson(text, SECTIONS);
-  assert.deepStrictEqual(deps.map((d) => d.name), ['lodash', 'nested']);
+  assert.deepStrictEqual(
+    deps.map((d) => d.name),
+    ['lodash', 'nested']
+  );
 });
 
 test('package.json: reads Volta pins with comments and multi-line values', () => {
@@ -122,9 +128,15 @@ test('package.json: reads Volta pins with comments and multi-line values', () =>
 });
 
 test('package.json: skips non-version Volta values and never treats extends as a package', () => {
-  const text = JSON.stringify({ volta: {
-    node: 'latest', npm: null, yarn: false, pnpm: 'file:../pnpm', extends: '1.2.3',
-  } });
+  const text = JSON.stringify({
+    volta: {
+      node: 'latest',
+      npm: null,
+      yarn: false,
+      pnpm: 'file:../pnpm',
+      extends: '1.2.3',
+    },
+  });
   assert.deepStrictEqual(parsePackageJson(text, SECTIONS), []);
 });
 
@@ -149,7 +161,7 @@ test('go.mod: reads block and single-line requires', () => {
       ['go', '>=1.22.0', 2],
       ['github.com/spf13/cobra', 'v1.8.0', 4],
       ['github.com/stretchr/testify', 'v1.9.0', 7],
-    ],
+    ]
   );
 });
 
@@ -162,7 +174,9 @@ test('go.mod: includes indirect modules on request', () => {
 
 test('go.mod: reports the line a requirement sits on', () => {
   const line = '\tgithub.com/stretchr/testify v1.9.0 // indirect';
-  const [dep] = parseGoMod(`module example.com/demo\n\nrequire (\n${line}\n)`, { includeIndirect: true });
+  const [dep] = parseGoMod(`module example.com/demo\n\nrequire (\n${line}\n)`, {
+    includeIndirect: true,
+  });
   assert.strictEqual(dep.line, 3);
   assert.strictEqual(dep.spec, 'v1.9.0');
 });
@@ -184,7 +198,10 @@ test('go.mod: skips replaced modules and other directives', () => {
   ].join('\n');
 
   const deps = parseGoMod(text, { includeIndirect: false });
-  assert.deepStrictEqual(deps.map((d) => d.name), ['github.com/c/d']);
+  assert.deepStrictEqual(
+    deps.map((d) => d.name),
+    ['github.com/c/d']
+  );
 });
 
 test('Cargo.toml: reads standard, workspace and target dependency tables', () => {
@@ -199,7 +216,7 @@ test('Cargo.toml: reads standard, workspace and target dependency tables', () =>
     '[workspace.dependencies]',
     'anyhow = "~1.0.75"',
     '',
-    '[target.\'cfg(unix)\'.build-dependencies]',
+    "[target.'cfg(unix)'.build-dependencies]",
     'cc = ">= 1.0, < 2"',
   ].join('\n');
 
@@ -211,7 +228,7 @@ test('Cargo.toml: reads standard, workspace and target dependency tables', () =>
       ['pretty_assertions', '1.4', 'dev-dependencies', 5],
       ['anyhow', '~1.0.75', 'workspace.dependencies', 8],
       ['cc', '>= 1.0, < 2', 'target.cfg(unix).build-dependencies', 11],
-    ],
+    ]
   );
 });
 
@@ -226,10 +243,13 @@ test('Cargo.toml: handles renamed and expanded dependencies', () => {
   ].join('\n');
 
   const deps = parseCargoToml(text);
-  assert.deepStrictEqual(deps.map((d) => [d.name, d.spec, d.alias, d.line]), [
-    ['serde_json', '1.0', 'json', 1],
-    ['regex', '1.10', undefined, 4],
-  ]);
+  assert.deepStrictEqual(
+    deps.map((d) => [d.name, d.spec, d.alias, d.line]),
+    [
+      ['serde_json', '1.0', 'json', 1],
+      ['regex', '1.10', undefined, 4],
+    ]
+  );
 });
 
 test('Cargo.toml: skips dependencies that do not resolve through crates.io', () => {
@@ -242,6 +262,9 @@ test('Cargo.toml: skips dependencies that do not resolve through crates.io', () 
     'anything = "*"',
     'real = "1"',
   ].join('\n');
-  assert.deepStrictEqual(parseCargoToml(text).map((d) => d.name), ['private', 'real']);
+  assert.deepStrictEqual(
+    parseCargoToml(text).map((d) => d.name),
+    ['private', 'real']
+  );
   assert.equal(parseCargoToml(text)[0].source, 'cargo:company');
 });

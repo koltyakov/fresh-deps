@@ -149,7 +149,13 @@ export function parsePyProject(text: string, options: PyProjectOptions): Depende
       if (c === 'dependencies' || c === 'dev-dependencies') {
         fromPoetry(d, entry.value, `tool.poetry.${c}`);
       }
-    } else if (a === 'tool' && b === 'poetry' && c === 'group' && e === 'dependencies' && entry.path.length === 6) {
+    } else if (
+      a === 'tool' &&
+      b === 'poetry' &&
+      c === 'group' &&
+      e === 'dependencies' &&
+      entry.path.length === 6
+    ) {
       fromPoetry(f, entry.value, `tool.poetry.group.${d}.dependencies`);
     }
   }

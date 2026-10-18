@@ -258,7 +258,7 @@ test('normalizePythonSpec keeps only specifiers with a floor to measure from', (
 });
 
 test('computeUpdate compares Python declarations by PEP 440 rules', () => {
-  const dep = (spec: string): DependencyRef => ({
+  const pythonDep = (spec: string): DependencyRef => ({
     name: 'requests',
     spec,
     line: 0,
@@ -266,7 +266,7 @@ test('computeUpdate compares Python declarations by PEP 440 rules', () => {
   });
 
   const inRange = computeUpdate(
-    dep('>=2.28'),
+    pythonDep('>=2.28'),
     { latest: '2.32.3', all: ['2.28.0', '2.32.3'] },
     PY_OPTS
   );
@@ -276,7 +276,7 @@ test('computeUpdate compares Python declarations by PEP 440 rules', () => {
   assert.strictEqual(inRange.inRange, true);
 
   const capped = computeUpdate(
-    dep('>=2.28,<3'),
+    pythonDep('>=2.28,<3'),
     { latest: '3.1.0', all: ['2.28.0', '2.32.3', '3.1.0'] },
     PY_OPTS
   );
@@ -287,19 +287,23 @@ test('computeUpdate compares Python declarations by PEP 440 rules', () => {
 });
 
 test('computeUpdate treats a Python post-release as a patch move', () => {
-  const dep = { name: 'pkg', spec: '==1.0', line: 0, section: 'requirements' };
-  const update = computeUpdate(dep, { latest: '1.0.post1', all: ['1.0', '1.0.post1'] }, PY_OPTS);
+  const declaration = { name: 'pkg', spec: '==1.0', line: 0, section: 'requirements' };
+  const update = computeUpdate(
+    declaration,
+    { latest: '1.0.post1', all: ['1.0', '1.0.post1'] },
+    PY_OPTS
+  );
   assert.ok(update);
   assert.strictEqual(update.latest, '1.0.post1');
   assert.strictEqual(update.kind, 'patch');
 });
 
 test('computeUpdate hides Python prereleases unless asked', () => {
-  const dep = { name: 'pkg', spec: '>=1.0', line: 0, section: 'requirements' };
+  const declaration = { name: 'pkg', spec: '>=1.0', line: 0, section: 'requirements' };
   const versions = { latest: '1.0', all: ['1.0', '2.0b1'] };
-  assert.strictEqual(computeUpdate(dep, versions, PY_OPTS), undefined);
+  assert.strictEqual(computeUpdate(declaration, versions, PY_OPTS), undefined);
   assert.strictEqual(
-    computeUpdate(dep, versions, { ...PY_OPTS, includePrerelease: true })?.latest,
+    computeUpdate(declaration, versions, { ...PY_OPTS, includePrerelease: true })?.latest,
     '2.0b1'
   );
 });

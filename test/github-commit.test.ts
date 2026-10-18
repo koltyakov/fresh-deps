@@ -11,12 +11,16 @@ const current = 'a'.repeat(40);
 const latest = 'b'.repeat(40);
 const base = 'https://api.github.com/repos/owner/repo';
 const settings = createSettings({ auditEnabled: true, runtimeVersions: { npm: '22.0.0' } });
-const text = (sha = current) => JSON.stringify({ dependencies: { plugin: `github:owner/repo#${sha}` } });
+const text = (sha = current) =>
+  JSON.stringify({ dependencies: { plugin: `github:owner/repo#${sha}` } });
 
 test('GitHub pins retain their repository, declaration and SHA in dependency sections and overrides', () => {
   const sections = ['dependencies', 'devDependencies', 'overrides', 'resolutions'];
   for (const section of sections) {
-    const [dep] = parsePackageJson(JSON.stringify({ [section]: { plugin: `github:owner/repo#${current.toUpperCase()}` } }), sections);
+    const [dep] = parsePackageJson(
+      JSON.stringify({ [section]: { plugin: `github:owner/repo#${current.toUpperCase()}` } }),
+      sections
+    );
     assert.equal(dep.name, 'plugin');
     assert.equal(dep.spec, current);
     assert.equal(dep.githubRepository, 'owner/repo');
@@ -36,8 +40,14 @@ test('GitHub ancestor updates use the default branch, remain cached, and bypass 
     assert.equal(url, `${base}/compare/${current}...${latest}`);
     return Response.json({ status: 'ahead', base_commit: { sha: current } });
   });
-  const request: AnalyzeRequest = { fsPath: '/project/package.json', text: text(), settings,
-    cache: new VersionCache(60_000), auditCache: new AuditCache(), allowNetwork: false };
+  const request: AnalyzeRequest = {
+    fsPath: '/project/package.json',
+    text: text(),
+    settings,
+    cache: new VersionCache(60_000),
+    auditCache: new AuditCache(),
+    allowNetwork: false,
+  };
   assert.equal((await analyze(request))?.incomplete, true);
   assert.equal(calls.length, 0);
   const result = await analyze({ ...request, allowNetwork: true });
@@ -59,11 +69,23 @@ test('GitHub ancestor updates use the default branch, remain cached, and bypass 
 
 for (const status of ['behind', 'diverged', 'identical']) {
   test(`GitHub ${status} comparisons do not suggest an update`, async (t) => {
-    t.mock.method(globalThis, 'fetch', async (url: string) => Response.json(
-      url === base ? { default_branch: 'main' } : url.includes('/commits/') ? { sha: latest }
-        : { status, base_commit: { sha: current } }));
-    const result = await analyze({ fsPath: '/project/package.json', text: text(), settings,
-      cache: new VersionCache(60_000), auditCache: new AuditCache(), allowNetwork: true });
+    t.mock.method(globalThis, 'fetch', async (url: string) =>
+      Response.json(
+        url === base
+          ? { default_branch: 'main' }
+          : url.includes('/commits/')
+            ? { sha: latest }
+            : { status, base_commit: { sha: current } }
+      )
+    );
+    const result = await analyze({
+      fsPath: '/project/package.json',
+      text: text(),
+      settings,
+      cache: new VersionCache(60_000),
+      auditCache: new AuditCache(),
+      allowNetwork: true,
+    });
     assert.equal(result?.updates.length, 0);
     assert.equal(result?.statuses?.[0].status, 'available');
     assert.equal(result?.incomplete, false);
@@ -86,26 +108,51 @@ test('GitHub pins at the tip need no comparison, including abbreviated and upper
 });
 
 test('GitHub abbreviated ancestors resolve to full target SHAs', async (t) => {
-  t.mock.method(globalThis, 'fetch', async (url: string) => Response.json(
-    url === base ? { default_branch: 'main' } : url.includes('/commits/') ? { sha: latest }
-      : { status: 'ahead', base_commit: { sha: current } }));
-  assert.equal((await githubCommitVersions('owner/repo', current.slice(0, 7), 1000)).latest, latest);
+  t.mock.method(globalThis, 'fetch', async (url: string) =>
+    Response.json(
+      url === base
+        ? { default_branch: 'main' }
+        : url.includes('/commits/')
+          ? { sha: latest }
+          : { status: 'ahead', base_commit: { sha: current } }
+    )
+  );
+  assert.equal(
+    (await githubCommitVersions('owner/repo', current.slice(0, 7), 1000)).latest,
+    latest
+  );
 });
 
 test('GitHub missing or unrelated commits do not produce an update', async (t) => {
-  t.mock.method(globalThis, 'fetch', async (url: string) => url.includes('/compare/')
-    ? new Response('', { status: 404 })
-    : Response.json(url === base ? { default_branch: 'main' } : { sha: latest }));
+  t.mock.method(globalThis, 'fetch', async (url: string) =>
+    url.includes('/compare/')
+      ? new Response('', { status: 404 })
+      : Response.json(url === base ? { default_branch: 'main' } : { sha: latest })
+  );
   const result = await githubCommitVersions('owner/repo', current, 1000);
   assert.equal(result.latest, undefined);
   assert.match(result.error!, /Unable to compare/);
 });
 
 test('GitHub malformed or mismatched comparisons cannot authorize an update', async (t) => {
-  for (const comparison of [{}, { status: 'ahead' }, { status: 'ahead', base_commit: { sha: latest } }]) {
-    const mock = t.mock.method(globalThis, 'fetch', async (url: string) => Response.json(
-      url === base ? { default_branch: 'main' } : url.includes('/commits/') ? { sha: latest } : comparison));
-    await assert.rejects(githubCommitVersions('owner/repo', current, 1000), /Invalid GitHub commit comparison/);
+  for (const comparison of [
+    {},
+    { status: 'ahead' },
+    { status: 'ahead', base_commit: { sha: latest } },
+  ]) {
+    const mock = t.mock.method(globalThis, 'fetch', async (url: string) =>
+      Response.json(
+        url === base
+          ? { default_branch: 'main' }
+          : url.includes('/commits/')
+            ? { sha: latest }
+            : comparison
+      )
+    );
+    await assert.rejects(
+      githubCommitVersions('owner/repo', current, 1000),
+      /Invalid GitHub commit comparison/
+    );
     mock.mock.restore();
   }
 });

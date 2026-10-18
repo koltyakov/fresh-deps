@@ -4,9 +4,13 @@ import type { RegistryVersions } from '../types';
 
 const GALAXY = 'https://galaxy.ansible.com';
 interface GalaxyPage {
-  meta?: { count?: number }; count?: number;
-  links?: { next?: string | null }; next?: string | null; next_link?: string | null;
-  data?: { version?: string; requires_ansible?: string }[]; results?: { name?: string; version?: string }[];
+  meta?: { count?: number };
+  count?: number;
+  links?: { next?: string | null };
+  next?: string | null;
+  next_link?: string | null;
+  data?: { version?: string; requires_ansible?: string }[];
+  results?: { name?: string; version?: string }[];
 }
 
 export class AnsibleClient {
@@ -17,9 +21,15 @@ export class AnsibleClient {
     const [namespace, pkg] = name.split('.');
     let url: string;
     if (roles) {
-      const result = await fetchJson<{ results?: { id?: number; name?: string; username?: string }[] }>(
-        `${base}/api/v1/roles/?owner__username=${encodeURIComponent(namespace)}&name=${encodeURIComponent(pkg)}`, { timeoutMs: this.timeoutMs });
-      const role = result?.results?.find((item) => item.name === pkg && item.username === namespace);
+      const result = await fetchJson<{
+        results?: { id?: number; name?: string; username?: string }[];
+      }>(
+        `${base}/api/v1/roles/?owner__username=${encodeURIComponent(namespace)}&name=${encodeURIComponent(pkg)}`,
+        { timeoutMs: this.timeoutMs }
+      );
+      const role = result?.results?.find(
+        (item) => item.name === pkg && item.username === namespace
+      );
       if (!role || !Number.isSafeInteger(role.id) || role.id! <= 0) return { error: 'not found' };
       url = `${base}/api/v1/roles/${role.id}/versions/?page_size=100`;
     } else {
@@ -45,15 +55,28 @@ export class AnsibleClient {
         const constraint = (entry as { requires_ansible?: string })?.requires_ansible;
         if (version && typeof constraint === 'string') requirements[version] = [constraint];
       }
-      const next = roles ? data.next_link ?? data.next : data.links?.next;
+      const next = roles ? (data.next_link ?? data.next) : data.links?.next;
       if (!next) {
         const count = roles ? data.count : data.meta?.count;
-        if (typeof count === 'number' && received < count) return { error: 'incomplete Galaxy version listing' };
-        return { all: [...new Set(all)], allComplete, source: base, latest: semverScheme.max(all, { includePrerelease: false }), ...(Object.keys(requirements).length ? { requirements } : {}) };
+        if (typeof count === 'number' && received < count)
+          return { error: 'incomplete Galaxy version listing' };
+        return {
+          all: [...new Set(all)],
+          allComplete,
+          source: base,
+          latest: semverScheme.max(all, { includePrerelease: false }),
+          ...(Object.keys(requirements).length ? { requirements } : {}),
+        };
       }
       if (typeof next !== 'string') return { error: 'invalid Galaxy pagination link' };
       const target = new URL(next, url);
-      if (target.origin !== new URL(base).origin || target.username || target.password || !target.pathname.startsWith(`${new URL(base).pathname.replace(/\/$/, '')}/api/`)) return { error: 'invalid Galaxy pagination link' };
+      if (
+        target.origin !== new URL(base).origin ||
+        target.username ||
+        target.password ||
+        !target.pathname.startsWith(`${new URL(base).pathname.replace(/\/$/, '')}/api/`)
+      )
+        return { error: 'invalid Galaxy pagination link' };
       url = target.href;
     }
     return { error: 'Galaxy version listing exceeded 100 pages' };

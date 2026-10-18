@@ -1,6 +1,12 @@
 import * as vscode from 'vscode';
 import { display } from './format';
-import type { DependencyAudit, DependencyStatus, DependencyUpdate, Ecosystem, UpdateKind } from './types';
+import type {
+  DependencyAudit,
+  DependencyStatus,
+  DependencyUpdate,
+  Ecosystem,
+  UpdateKind,
+} from './types';
 import { isVersionIssue, statusLabel } from './availability';
 
 type HintKind = UpdateKind | 'audit' | 'info';
@@ -58,26 +64,53 @@ const ANNOTATION = {
  */
 function decorationFor(kind: HintKind): vscode.TextEditorDecorationType {
   return vscode.window.createTextEditorDecorationType({
-    before: { ...ANNOTATION, width: '0', color: new vscode.ThemeColor('freshDeps.commentForeground') },
-    after: { ...ANNOTATION, color: new vscode.ThemeColor(kind === 'audit' ? 'editorWarning.foreground' : kind === 'info' ? 'editorInfo.foreground' : `freshDeps.${kind}Foreground`) },
+    before: {
+      ...ANNOTATION,
+      width: '0',
+      color: new vscode.ThemeColor('freshDeps.commentForeground'),
+    },
+    after: {
+      ...ANNOTATION,
+      color: new vscode.ThemeColor(
+        kind === 'audit'
+          ? 'editorWarning.foreground'
+          : kind === 'info'
+            ? 'editorInfo.foreground'
+            : `freshDeps.${kind}Foreground`
+      ),
+    },
     rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed,
   });
 }
 
 export class DecorationRenderer implements vscode.Disposable {
   private readonly unchangedType = vscode.window.createTextEditorDecorationType({
-    before: { ...ANNOTATION, width: '0', color: new vscode.ThemeColor('freshDeps.commentForeground') },
+    before: {
+      ...ANNOTATION,
+      width: '0',
+      color: new vscode.ThemeColor('freshDeps.commentForeground'),
+    },
     rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed,
   });
   private readonly types = new Map<HintKind, vscode.TextEditorDecorationType>(
-    KINDS.map((kind) => [kind, decorationFor(kind)]),
+    KINDS.map((kind) => [kind, decorationFor(kind)])
   );
 
-  render(editor: vscode.TextEditor, updates: DependencyUpdate[], ecosystem: Ecosystem, audits: DependencyAudit[], statuses: DependencyStatus[] = []): void {
+  render(
+    editor: vscode.TextEditor,
+    updates: DependencyUpdate[],
+    ecosystem: Ecosystem,
+    audits: DependencyAudit[],
+    statuses: DependencyStatus[] = []
+  ): void {
     const byKind = new Map<HintKind, vscode.DecorationOptions[]>(KINDS.map((kind) => [kind, []]));
     const unchanged: vscode.DecorationOptions[] = [];
-    const hints = updates.map((update) => ({ dep: update.dep, kind: update.kind as HintKind,
-      text: version(update, ecosystem), unchanged: unchangedMatrixEntries(update) }));
+    const hints = updates.map((update) => ({
+      dep: update.dep,
+      kind: update.kind as HintKind,
+      text: version(update, ecosystem),
+      unchanged: unchangedMatrixEntries(update),
+    }));
     for (const audit of audits) {
       if (audit.result.status !== 'checked' || audit.result.advisories.length === 0) continue;
       const count = audit.result.advisories.length;
@@ -111,26 +144,40 @@ export class DecorationRenderer implements vscode.Disposable {
       const text = lineTextAt(editor, update.dep.line);
       const width = visualWidth(text, tabSize);
       lineWidth.set(update.dep.line, width);
-      if (!update.dep.githubRepository) columnOf.set(update.dep.section, Math.max(columnOf.get(update.dep.section) ?? 0, width));
+      if (!update.dep.githubRepository)
+        columnOf.set(update.dep.section, Math.max(columnOf.get(update.dep.section) ?? 0, width));
     }
 
     for (const update of hints) {
       // Anchored at the end of the line so the hint trails the whole declaration -
       // past the closing comma or an existing comment - and reads as one.
       const line = editor.document.lineAt(Math.min(update.dep.line, editor.document.lineCount - 1));
-      const padding = update.dep.githubRepository ? 0 : (columnOf.get(update.dep.section) ?? 0) - (lineWidth.get(update.dep.line) ?? 0);
+      const padding = update.dep.githubRepository
+        ? 0
+        : (columnOf.get(update.dep.section) ?? 0) - (lineWidth.get(update.dep.line) ?? 0);
       const file = editor.document.uri.fsPath;
-      const token = file.endsWith('pnpm-workspace.yaml') || file.endsWith('.yarnrc.yml') ? '#'
-        : ecosystem === 'dotnet' && /(?:^|[/\\])(?:dotnet-tools|global)\.json$/.test(file) ? '//'
-        : ecosystem === 'gradle' && /\.gradle(?:\.kts)?$/.test(file) ? '//' : COMMENT_TOKEN[ecosystem];
+      const token =
+        file.endsWith('pnpm-workspace.yaml') || file.endsWith('.yarnrc.yml')
+          ? '#'
+          : ecosystem === 'dotnet' && /(?:^|[/\\])(?:dotnet-tools|global)\.json$/.test(file)
+            ? '//'
+            : ecosystem === 'gradle' && /\.gradle(?:\.kts)?$/.test(file)
+              ? '//'
+              : COMMENT_TOKEN[ecosystem];
       let text = update.text;
       for (const entry of update.unchanged) {
         // Reserve the text's width in the main hint; draw the gray entry over that space.
-        text = text.slice(0, entry.offset) + '\u00a0'.repeat(entry.text.length) + text.slice(entry.offset + entry.text.length);
+        text =
+          text.slice(0, entry.offset) +
+          '\u00a0'.repeat(entry.text.length) +
+          text.slice(entry.offset + entry.text.length);
         const offset = padding + token.length + 2 + entry.offset;
-        unchanged.push({ range: new vscode.Range(line.range.end, line.range.end), renderOptions: {
-          before: { contentText: entry.text, margin: `0 -${offset}ch 0 ${offset}ch` },
-        } });
+        unchanged.push({
+          range: new vscode.Range(line.range.end, line.range.end),
+          renderOptions: {
+            before: { contentText: entry.text, margin: `0 -${offset}ch 0 ${offset}ch` },
+          },
+        });
       }
       byKind.get(update.kind)?.push({
         range: new vscode.Range(line.range.end, line.range.end),
@@ -183,7 +230,8 @@ function visualWidth(text: string, tabSize: number): number {
 }
 
 function unchangedMatrixEntries(update: DependencyUpdate): { text: string; offset: number }[] {
-  if (!update.matrixUpdate || !update.dep.matrixVersions!.some((spec) => spec.includes('.'))) return [];
+  if (!update.matrixUpdate || !update.dep.matrixVersions!.some((spec) => spec.includes('.')))
+    return [];
   let offset = 3; // "↑ ["
   return update.matrixUpdate.versions.flatMap((text, i) => {
     const entry = { text, offset };
@@ -197,11 +245,15 @@ function version(update: DependencyUpdate, ecosystem: Ecosystem): string {
   if (update.matrixUpdate) {
     const { versions, newer } = update.matrixUpdate;
     const pinned = update.dep.matrixVersions!.some((spec) => spec.includes('.'));
-    return pinned ? `\u2191 [${versions.join(', ')}]${newer ? ` \u2192 ${newer}` : ''}` : `\u2191 ${newer}`;
+    return pinned
+      ? `\u2191 [${versions.join(', ')}]${newer ? ` \u2192 ${newer}` : ''}`
+      : `\u2191 ${newer}`;
   }
-  const show = (value: string) => update.dep.runtime ? value : display(value, update.dep.ecosystem ?? ecosystem);
-  const latest = show(update.latestRaw ?? update.latest)
-    + (update.alternatePath ? ` (${majorSuffix(update.alternatePath)})` : '');
+  const show = (value: string) =>
+    update.dep.runtime ? value : display(value, update.dep.ecosystem ?? ecosystem);
+  const latest =
+    show(update.latestRaw ?? update.latest) +
+    (update.alternatePath ? ` (${majorSuffix(update.alternatePath)})` : '');
   const intermediate = update.sameMajor ?? update.satisfying;
   if (intermediate) {
     return `\u2191 ${show(intermediate)} \u2192 ${latest}`;

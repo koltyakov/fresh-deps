@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import type { CancellationToken, Position, TextDocument } from 'vscode';
 import type { AnalyzeResult } from '../src/analyzer';
 import type { Settings } from '../src/config';
-import type { DetailsResolver } from '../src/details';
+import type * as details from '../src/details';
+import type * as hover from '../src/hover';
 import type { DependencyAudit, DependencyUpdate, Ecosystem } from '../src/types';
 import { NpmClient } from '../src/registries/npm';
 import { createSettings } from './settings';
@@ -16,28 +17,41 @@ const Module = require('node:module') as {
 
 class MarkdownString {
   value = '';
-  appendMarkdown(text: string) { this.value += text; }
-  appendText(text: string) { this.value += text.replace(/[\\`*_{}\[\]()<>!]/g, '\\$&'); }
+  appendMarkdown(text: string) {
+    this.value += text;
+  }
+  appendText(text: string) {
+    this.value += text.replace(/[\\`*_{}[\]()<>!]/g, '\\$&');
+  }
 }
 class Range {
   args: number[];
-  constructor(...args: number[]) { this.args = args; }
+  constructor(...args: number[]) {
+    this.args = args;
+  }
 }
 class Hover {
-  constructor(public contents: MarkdownString[], public range: Range) {}
+  constructor(
+    public contents: MarkdownString[],
+    public range: Range
+  ) {}
 }
 
 const load = Module._load;
 Module._load = function (id, ...args) {
   return id === 'vscode' ? { MarkdownString, Range, Hover } : load.call(this, id, ...args);
 };
-const { DependencyHoverProvider, DetailsResolver: Resolver } = require('../src/details') as typeof import('../src/details');
-const { buildAuditHover, buildHover, buildStatusHover } = require('../src/hover') as typeof import('../src/hover');
+const { DependencyHoverProvider, DetailsResolver: Resolver } =
+  require('../src/details') as typeof details;
+const { buildAuditHover, buildHover, buildStatusHover } = require('../src/hover') as typeof hover;
 Module._load = load;
 
 const update: DependencyUpdate = {
   dep: { name: '@types/vscode', spec: '1.120.0', line: 0, section: 'devDependencies' },
-  current: '1.120.0', latest: '1.136.0', kind: 'minor', inRange: false,
+  current: '1.120.0',
+  latest: '1.136.0',
+  kind: 'minor',
+  inRange: false,
 };
 const dates = {
   currentPublishedAt: '2026-05-13T12:00:00Z',
@@ -48,7 +62,13 @@ test('Go comparison links require verified tags and an unambiguous public module
   t.mock.method(GoClient.prototype, 'fetchPublishDate', async () => '2026-01-01');
   const tags = t.mock.method(github, 'githubTags', async () => ['v1.0.0', 'v2.0.0']);
   const resolver = new Resolver();
-  const candidate: DependencyUpdate = { ...update, source: 'https://proxy.golang.org', dep: { ...update.dep, name: 'github.com/org/repo', spec: 'v1.0.0' }, current: '1.0.0', latest: '2.0.0' };
+  const candidate: DependencyUpdate = {
+    ...update,
+    source: 'https://proxy.golang.org',
+    dep: { ...update.dep, name: 'github.com/org/repo', spec: 'v1.0.0' },
+    current: '1.0.0',
+    latest: '2.0.0',
+  };
   const settings = createSettings({ go: { proxy: 'https://proxy.golang.org' } });
   const details = await resolver.resolve('/repo/go.mod', 'go', candidate, settings);
   assert.equal(details.links?.[0].url, 'https://github.com/org/repo/compare/v1.0.0...v2.0.0');
@@ -56,19 +76,44 @@ test('Go comparison links require verified tags and an unambiguous public module
   assert.equal(tags.mock.callCount(), 1);
   resolver.clear();
   tags.mock.mockImplementation(async () => ['v2.0.0']);
-  assert.equal((await resolver.resolve('/repo/go.mod', 'go', candidate, settings)).links, undefined);
+  assert.equal(
+    (await resolver.resolve('/repo/go.mod', 'go', candidate, settings)).links,
+    undefined
+  );
   resolver.clear();
-  tags.mock.mockImplementation(async () => { throw new Error('Rate limited'); });
-  assert.equal((await resolver.resolve('/repo/go.mod', 'go', candidate, settings)).currentPublishedAt, '2026-01-01');
+  tags.mock.mockImplementation(async () => {
+    throw new Error('Rate limited');
+  });
+  assert.equal(
+    (await resolver.resolve('/repo/go.mod', 'go', candidate, settings)).currentPublishedAt,
+    '2026-01-01'
+  );
   const before = tags.mock.callCount();
-  await resolver.resolve('/repo/go.mod', 'go', { ...candidate, source: 'https://private.example/proxy' }, settings);
-  await resolver.resolve('/repo/go.mod', 'go', { ...candidate, dep: { ...candidate.dep, name: 'github.com/org/repo/submodule' } }, settings);
+  await resolver.resolve(
+    '/repo/go.mod',
+    'go',
+    { ...candidate, source: 'https://private.example/proxy' },
+    settings
+  );
+  await resolver.resolve(
+    '/repo/go.mod',
+    'go',
+    { ...candidate, dep: { ...candidate.dep, name: 'github.com/org/repo/submodule' } },
+    settings
+  );
   assert.equal(tags.mock.callCount(), before);
 });
 
 test('clearing lazy details cannot be undone by an older in-flight answer', async (t) => {
   let finish!: (value: Map<string, string>) => void;
-  const fetch = t.mock.method(NpmClient.prototype, 'fetchPublishDates', () => new Promise<Map<string, string>>((resolve) => { finish = resolve; }));
+  const fetch = t.mock.method(
+    NpmClient.prototype,
+    'fetchPublishDates',
+    () =>
+      new Promise<Map<string, string>>((resolve) => {
+        finish = resolve;
+      })
+  );
   const resolver = new Resolver();
   const settings = createSettings();
   const old = resolver.resolve('/repo/package.json', 'npm', update, settings);
@@ -83,16 +128,35 @@ test('clearing lazy details cannot be undone by an older in-flight answer', asyn
 
 test('source and advisory links never include registry credentials or sensitive parameters', () => {
   const source = 'https://user:secret@charts.example/index?token=secret';
-  const value = buildHover({ ...update, dep: { ...update.dep, name: 'chart', source } }, 'helm').value;
+  const value = buildHover(
+    { ...update, dep: { ...update.dep, name: 'chart', source } },
+    'helm'
+  ).value;
   assert.doesNotMatch(value, /user:secret|token=secret/);
   assert.match(value, /https:\/\/charts.example/);
 });
 
 test('GitHub commit hover shows the default branch and comparison instead of npm range advice', () => {
-  const current = 'a'.repeat(40), latest = 'b'.repeat(40);
-  const value = buildHover({ dep: { name: 'plugin', spec: current, specRaw: `github:owner/repo#${current}`,
-    githubRepository: 'owner/repo', line: 0, section: 'dependencies' }, current, latest,
-    githubDefaultBranch: 'main', kind: 'patch', inRange: false }, 'npm').value;
+  const current = 'a'.repeat(40),
+    latest = 'b'.repeat(40);
+  const value = buildHover(
+    {
+      dep: {
+        name: 'plugin',
+        spec: current,
+        specRaw: `github:owner/repo#${current}`,
+        githubRepository: 'owner/repo',
+        line: 0,
+        section: 'dependencies',
+      },
+      current,
+      latest,
+      githubDefaultBranch: 'main',
+      kind: 'patch',
+      inRange: false,
+    },
+    'npm'
+  ).value;
   assert.match(value, /commit update available/);
   assert.match(value, /Default branch \| main/);
   assert.ok(value.includes(latest));
@@ -101,8 +165,13 @@ test('GitHub commit hover shows the default branch and comparison instead of npm
 });
 
 test('availability hovers identify the declaration, registry, and comparison target as plain text', () => {
-  const md = buildStatusHover({ dep: update.dep, status: 'ahead', source: 'https://registry.example', latest: '1.0.0',
-    message: 'Published <release> [link](command:unsafe)' });
+  const md = buildStatusHover({
+    dep: update.dep,
+    status: 'ahead',
+    source: 'https://registry.example',
+    latest: '1.0.0',
+    message: 'Published <release> [link](command:unsafe)',
+  });
   assert.match(md.value, /Ahead of latest/);
   assert.match(md.value, /Declared: 1.120.0/);
   assert.match(md.value, /Registry: https:\/\/registry.example/);
@@ -111,25 +180,44 @@ test('availability hovers identify the declaration, registry, and comparison tar
 });
 
 test('hover distinguishes same-major updates from allowed range updates', () => {
-  const value = buildHover({ ...update, latest: '2.0.0', kind: 'major', sameMajor: '1.150.0', satisfying: '1.120.1' }, 'npm',
-    { ...dates, sameMajorPublishedAt: '2026-08-01T12:00:00Z' }).value;
-  assert.match(value, /\| Declared \|[^\n]+\n\| Newest within major \| `1\.150\.0` · published [^\n]+2026[^\n]*\n\| Latest \|/);
+  const value = buildHover(
+    { ...update, latest: '2.0.0', kind: 'major', sameMajor: '1.150.0', satisfying: '1.120.1' },
+    'npm',
+    { ...dates, sameMajorPublishedAt: '2026-08-01T12:00:00Z' }
+  ).value;
+  assert.match(
+    value,
+    /\| Declared \|[^\n]+\n\| Newest within major \| `1\.150\.0` · published [^\n]+2026[^\n]*\n\| Latest \|/
+  );
   assert.match(value, /Newest in range \| `1\.120\.1`/);
-  const pinned = buildHover({ ...update, latest: '2.0.0', kind: 'major', sameMajor: '1.150.0' }, 'npm').value;
+  const pinned = buildHover(
+    { ...update, latest: '2.0.0', kind: 'major', sameMajor: '1.150.0' },
+    'npm'
+  ).value;
   assert.match(pinned, /range needs to be widened/);
   assert.match(pinned, /Newest within major \| `1\.150\.0` \|/);
 });
 
 test('hover details request the same-major date and cache by all displayed versions', async (t) => {
   const calls: string[][] = [];
-  t.mock.method(NpmClient.prototype, 'fetchPublishDates', async (_name: string, versions: string[]) => {
-    calls.push(versions);
-    return new Map(versions.map((version) => [version, '2026-08-01T12:00:00Z']));
-  });
+  t.mock.method(
+    NpmClient.prototype,
+    'fetchPublishDates',
+    async (_name: string, versions: string[]) => {
+      calls.push(versions);
+      return new Map(versions.map((version) => [version, '2026-08-01T12:00:00Z']));
+    }
+  );
   const resolver = new Resolver();
   const settings = createSettings({ npm: { registry: 'https://registry.example' } });
-  const candidate: DependencyUpdate = { ...update, latest: '2.0.0', kind: 'major', sameMajor: '1.150.0' };
-  const resolve = (value: DependencyUpdate) => resolver.resolve('/project/package.json', 'npm', value, settings);
+  const candidate: DependencyUpdate = {
+    ...update,
+    latest: '2.0.0',
+    kind: 'major',
+    sameMajor: '1.150.0',
+  };
+  const resolve = (value: DependencyUpdate) =>
+    resolver.resolve('/project/package.json', 'npm', value, settings);
   const [first, concurrent] = await Promise.all([resolve(candidate), resolve(candidate)]);
   assert.equal(first.sameMajorPublishedAt, '2026-08-01T12:00:00Z');
   assert.deepEqual(first, concurrent);
@@ -143,32 +231,89 @@ test('new ecosystems link to their package listings', () => {
   for (const [ecosystem, name, section, url] of [
     ['php', 'vendor/pkg', 'require', 'https://packagist.org/packages/vendor/pkg'],
     ['dart', 'http', 'dependencies', 'https://pub.dev/packages/http/versions/1.136.0'],
-    ['gradle', 'org.example:org.example.gradle.plugin', 'plugins', 'https://plugins.gradle.org/plugin/org.example/1.136.0'],
+    [
+      'gradle',
+      'org.example:org.example.gradle.plugin',
+      'plugins',
+      'https://plugins.gradle.org/plugin/org.example/1.136.0',
+    ],
     ['ruby', 'rails', 'gems', 'https://rubygems.org/gems/rails/versions/1.136.0'],
-    ['terraform', 'hashicorp/aws', 'required_providers', 'https://registry.terraform.io/providers/hashicorp/aws/1.136.0/docs'],
-    ['terraform', 'tflint:terraform-linters/tflint-ruleset-azurerm', 'plugins', 'https://github.com/terraform-linters/tflint-ruleset-azurerm/releases'],
+    [
+      'terraform',
+      'hashicorp/aws',
+      'required_providers',
+      'https://registry.terraform.io/providers/hashicorp/aws/1.136.0/docs',
+    ],
+    [
+      'terraform',
+      'tflint:terraform-linters/tflint-ruleset-azurerm',
+      'plugins',
+      'https://github.com/terraform-linters/tflint-ruleset-azurerm/releases',
+    ],
     ['elixir', 'phoenix', 'deps', 'https://hex.pm/packages/phoenix/1.136.0'],
     ['deno', 'jsr:@std/assert', 'imports', 'https://jsr.io/@std/assert@1.136.0'],
     ['deno', 'npm:react', 'imports', 'https://www.npmjs.com/package/react/v/1.136.0'],
-    ['githubActions', 'actions/checkout', 'jobs.build', 'https://github.com/actions/checkout/tree/1.136.0'],
+    [
+      'githubActions',
+      'actions/checkout',
+      'jobs.build',
+      'https://github.com/actions/checkout/tree/1.136.0',
+    ],
     ['docker', 'library/node', 'FROM', 'https://hub.docker.com/r/library/node/tags'],
     ['swift', 'apple/example', 'dependencies', 'https://github.com/apple/example/tree/1.136.0'],
     ['conan', 'fmt', 'requires', 'https://conan.io/center/recipes/fmt'],
-    ['ansible', 'ansible.posix', 'collections', 'https://galaxy.ansible.com/ui/repo/published/ansible/posix/'],
-    ['ansible', 'geerlingguy.docker', 'roles', 'https://galaxy.ansible.com/ui/standalone/roles/geerlingguy/docker/'],
+    [
+      'ansible',
+      'ansible.posix',
+      'collections',
+      'https://galaxy.ansible.com/ui/repo/published/ansible/posix/',
+    ],
+    [
+      'ansible',
+      'geerlingguy.docker',
+      'roles',
+      'https://galaxy.ansible.com/ui/standalone/roles/geerlingguy/docker/',
+    ],
     ['bazel', 'rules_cc', 'bazel_dep', 'https://registry.bazel.build/modules/rules_cc'],
     ['vcpkg', 'fmt', 'dependencies', 'https://vcpkg.io/en/package/fmt'],
-    ['scala', 'org.example:core', 'libraryDependencies', 'https://mvnrepository.com/artifact/org.example/core/1.136.0'],
-    ['clojure', 'org.clojure:clojure', 'deps', 'https://mvnrepository.com/artifact/org.clojure/clojure/1.136.0'],
-    ['terraform', 'module:registry.terraform.io/a/b/c', 'modules', 'https://registry.terraform.io/modules/a/b/c/1.136.0'],
+    [
+      'scala',
+      'org.example:core',
+      'libraryDependencies',
+      'https://mvnrepository.com/artifact/org.example/core/1.136.0',
+    ],
+    [
+      'clojure',
+      'org.clojure:clojure',
+      'deps',
+      'https://mvnrepository.com/artifact/org.clojure/clojure/1.136.0',
+    ],
+    [
+      'terraform',
+      'module:registry.terraform.io/a/b/c',
+      'modules',
+      'https://registry.terraform.io/modules/a/b/c/1.136.0',
+    ],
     ['dotnet', 'dotnet-sdk', 'sdk', 'https://dotnet.microsoft.com/download/dotnet'],
   ] as const) {
-    assert.ok(buildHover({ ...update, dep: { ...update.dep, name, section } }, ecosystem).value.includes(url));
+    assert.ok(
+      buildHover({ ...update, dep: { ...update.dep, name, section } }, ecosystem).value.includes(
+        url
+      )
+    );
   }
-  assert.ok(buildHover({ ...update, dep: { ...update.dep, name: 'redis', source: 'https://charts.example' } }, 'helm')
-    .value.includes('https://charts.example/index.yaml'));
-  assert.ok(buildHover({ ...update, dep: { ...update.dep, name: 'numpy', source: 'conda-forge' } }, 'conda')
-    .value.includes('https://anaconda.org/conda-forge/numpy'));
+  assert.ok(
+    buildHover(
+      { ...update, dep: { ...update.dep, name: 'redis', source: 'https://charts.example' } },
+      'helm'
+    ).value.includes('https://charts.example/index.yaml')
+  );
+  assert.ok(
+    buildHover(
+      { ...update, dep: { ...update.dep, name: 'numpy', source: 'conda-forge' } },
+      'conda'
+    ).value.includes('https://anaconda.org/conda-forge/numpy')
+  );
 });
 
 test('vcpkg and Bazel hovers explain registry availability without claiming resolution', () => {
@@ -193,32 +338,63 @@ test('project link falls back to the repository from resolved details', () => {
   assert.ok(hover.value.includes(`| Project | [${repository}](${repository}) |`));
   assert.ok(!hover.value.includes('[Repository]'));
   assert.ok(!buildHover(update, 'npm').value.includes('| Project |'));
-  assert.ok(!buildHover(update, 'npm', { meta: { homepage: 'javascript:alert(1)' } }).value.includes('| Project |'));
+  assert.ok(
+    !buildHover(update, 'npm', { meta: { homepage: 'javascript:alert(1)' } }).value.includes(
+      '| Project |'
+    )
+  );
 });
 
 test('declaration and inline hint both resolve publication dates', async () => {
   const text = '  "@types/vscode": "1.120.0",';
   const document = {
     uri: { fsPath: '/project/package.json' },
-    lineAt: () => ({ text, firstNonWhitespaceCharacterIndex: 2, range: { end: { character: text.length } } }),
+    lineAt: () => ({
+      text,
+      firstNonWhitespaceCharacterIndex: 2,
+      range: { end: { character: text.length } },
+    }),
   } as unknown as TextDocument;
   let calls = 0;
   const result = { ecosystem: 'npm', updates: [update], audits: [] } as unknown as AnalyzeResult;
   const provider = new DependencyHoverProvider(
     () => result,
-    () => ({} as Settings),
-    { resolve: async () => { calls++; return dates; } } as unknown as DetailsResolver,
+    () => ({}) as Settings,
+    {
+      resolve: async () => {
+        calls++;
+        return dates;
+      },
+    } as unknown as details.DetailsResolver
   );
   for (const character of [5, text.length]) {
-    const hover = await provider.provideHover(document, { line: 0, character } as Position, { isCancellationRequested: false } as CancellationToken) as unknown as Hover;
+    const hover = (await provider.provideHover(
+      document,
+      { line: 0, character } as Position,
+      { isCancellationRequested: false } as CancellationToken
+    )) as unknown as Hover;
     assert.match(hover.contents[0].value, /Declared \| `1\.120\.0` .*published/);
     assert.match(hover.contents[0].value, /Latest \| `1\.136\.0` .*published/);
     assert.match(hover.contents[0].value, /2026/);
   }
   assert.equal(calls, 2);
-  assert.equal(await provider.provideHover(document, { line: 0, character: 0 } as Position, {} as CancellationToken), undefined);
+  assert.equal(
+    await provider.provideHover(
+      document,
+      { line: 0, character: 0 } as Position,
+      {} as CancellationToken
+    ),
+    undefined
+  );
   assert.equal(calls, 2);
-  assert.equal(await provider.provideHover(document, { line: 0, character: 5 } as Position, { isCancellationRequested: true } as CancellationToken), undefined);
+  assert.equal(
+    await provider.provideHover(
+      document,
+      { line: 0, character: 5 } as Position,
+      { isCancellationRequested: true } as CancellationToken
+    ),
+    undefined
+  );
 });
 
 test('ranges date the current baseline without dating the declared range', () => {
@@ -231,13 +407,32 @@ test('Deno multiline import aliases retain hovers on the specifier line', async 
   let text = '    "jsr:@std/assert@1.0.0",';
   const document = {
     uri: { fsPath: '/project/deno.json' },
-    lineAt: () => ({ text, firstNonWhitespaceCharacterIndex: 4, range: { end: { character: text.length } } }),
+    lineAt: () => ({
+      text,
+      firstNonWhitespaceCharacterIndex: 4,
+      range: { end: { character: text.length } },
+    }),
   } as unknown as TextDocument;
-  const result = { ecosystem: 'deno', updates: [{ ...update, dep: { name: 'jsr:@std/assert', spec: '1.0.0', alias: 'check', line: 0, section: 'imports' } }], audits: [] } as unknown as AnalyzeResult;
+  const result = {
+    ecosystem: 'deno',
+    updates: [
+      {
+        ...update,
+        dep: {
+          name: 'jsr:@std/assert',
+          spec: '1.0.0',
+          alias: 'check',
+          line: 0,
+          section: 'imports',
+        },
+      },
+    ],
+    audits: [],
+  } as unknown as AnalyzeResult;
   const provider = new DependencyHoverProvider(
     () => result,
-    () => ({} as Settings),
-    { resolve: async () => ({}) } as unknown as DetailsResolver,
+    () => ({}) as Settings,
+    { resolve: async () => ({}) } as unknown as details.DetailsResolver
   );
   const position = { line: 0, character: 5 } as Position;
   const token = { isCancellationRequested: false } as CancellationToken;
@@ -253,13 +448,42 @@ for (const [ecosystem, name, text] of [
   ['npm', 'pkg', '  "9.0.0",'],
 ] as [Ecosystem, string, string][]) {
   test(`${ecosystem} availability-only hovers work on normalized names and multiline version fields`, async () => {
-    const document = { uri: { fsPath: '/project/manifest' },
-      lineAt: () => ({ text, firstNonWhitespaceCharacterIndex: 0, range: { end: { character: text.length } } }) } as unknown as TextDocument;
-    const result: AnalyzeResult = { ecosystem, updates: [], audits: [], failures: new Map(), incomplete: false,
-      statuses: [{ dep: { name, spec: '9.0.0', line: 0, section: 'dependencies' }, status: 'version-missing', message: 'The source does not list this version.' }] };
-    const provider = new DependencyHoverProvider(() => result, () => ({} as Settings),
-      { resolve: async () => { throw new Error('Availability-only hovers must not fetch update details'); } } as unknown as DetailsResolver);
-    const hover = await provider.provideHover(document, { line: 0, character: text.length } as Position, {} as CancellationToken) as unknown as Hover;
+    const document = {
+      uri: { fsPath: '/project/manifest' },
+      lineAt: () => ({
+        text,
+        firstNonWhitespaceCharacterIndex: 0,
+        range: { end: { character: text.length } },
+      }),
+    } as unknown as TextDocument;
+    const result: AnalyzeResult = {
+      ecosystem,
+      updates: [],
+      audits: [],
+      failures: new Map(),
+      incomplete: false,
+      statuses: [
+        {
+          dep: { name, spec: '9.0.0', line: 0, section: 'dependencies' },
+          status: 'version-missing',
+          message: 'The source does not list this version.',
+        },
+      ],
+    };
+    const provider = new DependencyHoverProvider(
+      () => result,
+      () => ({}) as Settings,
+      {
+        resolve: async () => {
+          throw new Error('Availability-only hovers must not fetch update details');
+        },
+      } as unknown as details.DetailsResolver
+    );
+    const hover = (await provider.provideHover(
+      document,
+      { line: 0, character: text.length } as Position,
+      {} as CancellationToken
+    )) as unknown as Hover;
     assert.match(hover.contents[0].value, /Version not found/);
   });
 }
@@ -275,11 +499,21 @@ test('unavailable or invalid publication dates leave version rows usable', () =>
 
 test('audit hovers label baselines and reject executable advisory links', () => {
   const hover = buildAuditHover({
-    dep: update.dep, version: '1.120.0', baseline: true,
-    result: { status: 'checked', advisories: [
-      { id: 'GHSA-test', title: '[run](command:evil)', severity: 'high', url: 'command:evil' },
-      { id: 'PYSEC-test', title: 'Unsafe input', url: 'https://example.com/advisory', fixedVersions: ['2.0'] },
-    ] },
+    dep: update.dep,
+    version: '1.120.0',
+    baseline: true,
+    result: {
+      status: 'checked',
+      advisories: [
+        { id: 'GHSA-test', title: '[run](command:evil)', severity: 'high', url: 'command:evil' },
+        {
+          id: 'PYSEC-test',
+          title: 'Unsafe input',
+          url: 'https://example.com/advisory',
+          fixedVersions: ['2.0'],
+        },
+      ],
+    },
   });
   assert.match(hover.value, /range baseline 1\.120\.0/);
   assert.ok(hover.value.includes('\\[run\\]\\(command:evil\\)'));
@@ -289,7 +523,14 @@ test('audit hovers label baselines and reject executable advisory links', () => 
 });
 
 test('unsupported candidate audit hovers still identify the requested version and provider', () => {
-  const hover = buildAuditHover({ dep: update.dep, target: 'candidate', version: '2.0.0', baseline: false, provider: 'osv', result: { status: 'unsupported' } });
+  const hover = buildAuditHover({
+    dep: update.dep,
+    target: 'candidate',
+    version: '2.0.0',
+    baseline: false,
+    provider: 'osv',
+    result: { status: 'unsupported' },
+  });
   assert.match(hover.value, /candidate version 2\.0\.0 using osv/);
   assert.match(hover.value, /not supported/);
   assert.doesNotMatch(hover.value, /No advisories reported/);
@@ -299,17 +540,32 @@ test('audit-only declarations show advisories without resolving update details',
   const text = '  "@types/vscode": "1.120.0",';
   const document = {
     uri: { fsPath: '/project/package.json' },
-    lineAt: () => ({ text, firstNonWhitespaceCharacterIndex: 2, range: { end: { character: text.length } } }),
+    lineAt: () => ({
+      text,
+      firstNonWhitespaceCharacterIndex: 2,
+      range: { end: { character: text.length } },
+    }),
   } as unknown as TextDocument;
-  const audit: DependencyAudit = { dep: update.dep, version: '1.120.0', baseline: false,
-    result: { status: 'checked', advisories: [{ id: 'GHSA-test', title: 'Unsafe input' }] } };
+  const audit: DependencyAudit = {
+    dep: update.dep,
+    version: '1.120.0',
+    baseline: false,
+    result: { status: 'checked', advisories: [{ id: 'GHSA-test', title: 'Unsafe input' }] },
+  };
   const result = { ecosystem: 'npm', updates: [], audits: [audit] } as unknown as AnalyzeResult;
   const provider = new DependencyHoverProvider(
-    () => result, () => ({} as Settings),
-    { resolve: () => assert.fail('audit-only hover must not fetch update details') } as unknown as DetailsResolver,
+    () => result,
+    () => ({}) as Settings,
+    {
+      resolve: () => assert.fail('audit-only hover must not fetch update details'),
+    } as unknown as details.DetailsResolver
   );
   for (const character of [5, text.length]) {
-    const hover = await provider.provideHover(document, { line: 0, character } as Position, {} as CancellationToken) as unknown as Hover;
+    const hover = (await provider.provideHover(
+      document,
+      { line: 0, character } as Position,
+      {} as CancellationToken
+    )) as unknown as Hover;
     assert.match(hover.contents[0].value, /GHSA-test: Unsafe input/);
     assert.match(hover.contents[0].value, /declared version 1\.120\.0/);
   }

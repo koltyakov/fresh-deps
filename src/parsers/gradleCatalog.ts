@@ -4,7 +4,9 @@ import { mavenScheme } from '../schemes';
 import { gradleConstraint } from '../gradle';
 
 function field(value: TomlValue, key: string): TomlValue | undefined {
-  return value.kind === 'table' ? value.entries.find((entry) => entry.path.join('.') === key)?.value : undefined;
+  return value.kind === 'table'
+    ? value.entries.find((entry) => entry.path.join('.') === key)?.value
+    : undefined;
 }
 
 function string(value: TomlValue | undefined): string | undefined {
@@ -13,8 +15,11 @@ function string(value: TomlValue | undefined): string | undefined {
 
 export function parseGradleCatalog(text: string): DependencyRef[] {
   const entries = scanToml(text);
-  const versions = new Map(entries.filter((entry) => entry.path.length === 2 && entry.path[0] === 'versions')
-    .map((entry) => [entry.path[1], entry.value]));
+  const versions = new Map(
+    entries
+      .filter((entry) => entry.path.length === 2 && entry.path[0] === 'versions')
+      .map((entry) => [entry.path[1], entry.value])
+  );
   const deps: DependencyRef[] = [];
   for (const entry of entries) {
     const [section, alias] = entry.path;
@@ -33,10 +38,14 @@ export function parseGradleCatalog(text: string): DependencyRef[] {
       } else {
         const group = string(field(entry.value, 'group'));
         const artifact = string(field(entry.value, 'name'));
-        name = string(field(entry.value, 'module')) ?? (group && artifact ? `${group}:${artifact}` : undefined);
+        name =
+          string(field(entry.value, 'module')) ??
+          (group && artifact ? `${group}:${artifact}` : undefined);
       }
       version = field(entry.value, 'version');
-      const ref = string(field(entry.value, 'version.ref')) ?? (version ? string(field(version, 'ref')) : undefined);
+      const ref =
+        string(field(entry.value, 'version.ref')) ??
+        (version ? string(field(version, 'ref')) : undefined);
       if (ref) version = versions.get(ref);
     }
     let spec = string(version);
@@ -47,16 +56,37 @@ export function parseGradleCatalog(text: string): DependencyRef[] {
       const strictly = string(field(version, 'strictly'));
       const prefer = string(field(version, 'prefer'));
       const rejected = field(version, 'reject');
-      const rejects = rejected?.kind === 'array' ? rejected.items.flatMap((item) => item.kind === 'string' ? [item.text] : []) : [];
-      if ([required, strictly, prefer, ...rejects].some((value) => value && (/[+$*]/.test(value) || /^latest\./.test(value)))) continue;
+      const rejects =
+        rejected?.kind === 'array'
+          ? rejected.items.flatMap((item) => (item.kind === 'string' ? [item.text] : []))
+          : [];
+      if (
+        [required, strictly, prefer, ...rejects].some(
+          (value) => value && (/[+$*]/.test(value) || value.startsWith('latest.'))
+        )
+      )
+        continue;
       if (![required, strictly, prefer].some(Boolean)) continue;
       spec = strictly ?? required ?? prefer;
       versionScheme = gradleConstraint(required, strictly, prefer, rejects);
       if (!versionScheme.baseline(spec!)) continue;
     }
     // Rich and dynamic Gradle constraints need Gradle-specific resolution, not Maven interval matching.
-    if (!name || !/^[\w.-]+:[\w.-]+$/.test(name) || !spec || (!versionScheme && (!/^\d[\w.-]*$/.test(spec) || !mavenScheme.baseline(spec)))) continue;
-    deps.push({ name, spec, alias, line: entry.line, section, ...(versionScheme ? { versionScheme } : {}) });
+    if (
+      !name ||
+      !/^[\w.-]+:[\w.-]+$/.test(name) ||
+      !spec ||
+      (!versionScheme && (!/^\d[\w.-]*$/.test(spec) || !mavenScheme.baseline(spec)))
+    )
+      continue;
+    deps.push({
+      name,
+      spec,
+      alias,
+      line: entry.line,
+      section,
+      ...(versionScheme ? { versionScheme } : {}),
+    });
   }
   return deps;
 }

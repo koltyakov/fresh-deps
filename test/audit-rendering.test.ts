@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { DecorationRenderOptions, TextEditor } from 'vscode';
 import type { AuditResponse, DependencyUpdate } from '../src/types';
+import type * as decorations from '../src/decorations';
 
 const Module = require('node:module') as {
   _load: (id: string, parent: NodeModule | null | undefined, isMain?: boolean) => unknown;
@@ -17,19 +18,28 @@ type MockHint = {
 };
 
 const load = Module._load;
-Module._load = function (id, ...args) {
-  if (id !== 'vscode') return load.call(this, id, ...args);
+Module._load = function (moduleId, ...loadArgs) {
+  if (moduleId !== 'vscode') return load.call(this, moduleId, ...loadArgs);
   return {
-    window: { createTextEditorDecorationType: (options: DecorationRenderOptions): MockDecorationType => ({ options, dispose() {} }) },
-    ThemeColor: class { constructor(public id: string) {} },
+    window: {
+      createTextEditorDecorationType: (options: DecorationRenderOptions): MockDecorationType => ({
+        options,
+        dispose() {},
+      }),
+    },
+    ThemeColor: class {
+      constructor(public id: string) {}
+    },
     Range: class {
       args: [MockPosition, MockPosition];
-      constructor(...args: [MockPosition, MockPosition]) { this.args = args; }
+      constructor(...args: [MockPosition, MockPosition]) {
+        this.args = args;
+      }
     },
     DecorationRangeBehavior: { ClosedClosed: 0 },
   };
 };
-const { DecorationRenderer } = require('../src/decorations') as typeof import('../src/decorations');
+const { DecorationRenderer } = require('../src/decorations') as typeof decorations;
 Module._load = load;
 
 test('same-major hints take precedence over range steps and retain Go path upgrades', () => {
@@ -37,42 +47,92 @@ test('same-major hints take precedence over range steps and retain Go path upgra
   const decorations = new Map<MockDecorationType, MockHint[]>();
   const editor = {
     options: { tabSize: 2 },
-    document: { uri: { fsPath: '/project/package.json' }, lineCount: 1,
-      lineAt: () => ({ text: 'node', range: { end: { line: 0, character: 4 } } }) },
+    document: {
+      uri: { fsPath: '/project/package.json' },
+      lineCount: 1,
+      lineAt: () => ({ text: 'node', range: { end: { line: 0, character: 4 } } }),
+    },
     setDecorations: (type: MockDecorationType, values: MockHint[]) => decorations.set(type, values),
   } as unknown as TextEditor;
   const update: DependencyUpdate = {
     dep: { name: 'node', spec: '22.1.0', line: 0, section: 'volta' },
-    current: '22.1.0', latest: '26.0.0', kind: 'major', inRange: false,
-    sameMajor: '22.9.0', satisfying: '22.1.1',
+    current: '22.1.0',
+    latest: '26.0.0',
+    kind: 'major',
+    inRange: false,
+    sameMajor: '22.9.0',
+    satisfying: '22.1.1',
   };
   renderer.render(editor, [update], 'npm', []);
-  assert.equal([...decorations.values()].flat()[0].renderOptions.after.contentText, '↑ 22.9.0 → 26.0.0');
+  assert.equal(
+    [...decorations.values()].flat()[0].renderOptions.after.contentText,
+    '↑ 22.9.0 → 26.0.0'
+  );
   renderer.render(editor, [{ ...update, alternatePath: 'example.com/pkg/v26' }], 'go', []);
-  assert.equal([...decorations.values()].flat()[0].renderOptions.after.contentText, '↑ v22.9.0 → v26.0.0 (/v26)');
+  assert.equal(
+    [...decorations.values()].flat()[0].renderOptions.after.contentText,
+    '↑ v22.9.0 → v26.0.0 (/v26)'
+  );
   renderer.dispose();
 });
 
 test('GitHub commit hints show a short SHA without widening regular hint alignment', () => {
   const renderer = new DecorationRenderer();
   const decorations = new Map<MockDecorationType, MockHint[]>();
-  const lines = [`"plugin": "github:owner/repo#${'a'.repeat(40)}",`, '"typescript": "7.0.0",', '"vite": "8.0.0",'];
+  const lines = [
+    `"plugin": "github:owner/repo#${'a'.repeat(40)}",`,
+    '"typescript": "7.0.0",',
+    '"vite": "8.0.0",',
+  ];
   const editor = {
     options: { tabSize: 2 },
-    document: { uri: { fsPath: '/project/package.json' }, lineCount: lines.length,
-      lineAt: (line: number) => ({ text: lines[line], range: { end: { line, character: lines[line].length } } }) },
+    document: {
+      uri: { fsPath: '/project/package.json' },
+      lineCount: lines.length,
+      lineAt: (line: number) => ({
+        text: lines[line],
+        range: { end: { line, character: lines[line].length } },
+      }),
+    },
     setDecorations: (type: MockDecorationType, values: MockHint[]) => decorations.set(type, values),
   } as unknown as TextEditor;
-  renderer.render(editor, [{ dep: { name: 'plugin', spec: 'a'.repeat(40), githubRepository: 'owner/repo', line: 0, section: 'dependencies' },
-    current: 'a'.repeat(40), latest: 'b'.repeat(40), kind: 'patch', inRange: false, githubDefaultBranch: 'main' },
-    ...['typescript', 'vite'].map((name, i): DependencyUpdate => ({ dep: { name, spec: `${7 + i}.0.0`, line: i + 1, section: 'dependencies' },
-      current: `${7 + i}.0.0`, latest: `${7 + i}.0.1`, kind: 'patch', inRange: false }))], 'npm', []);
+  renderer.render(
+    editor,
+    [
+      {
+        dep: {
+          name: 'plugin',
+          spec: 'a'.repeat(40),
+          githubRepository: 'owner/repo',
+          line: 0,
+          section: 'dependencies',
+        },
+        current: 'a'.repeat(40),
+        latest: 'b'.repeat(40),
+        kind: 'patch',
+        inRange: false,
+        githubDefaultBranch: 'main',
+      },
+      ...['typescript', 'vite'].map((name, i): DependencyUpdate => ({
+        dep: { name, spec: `${7 + i}.0.0`, line: i + 1, section: 'dependencies' },
+        current: `${7 + i}.0.0`,
+        latest: `${7 + i}.0.1`,
+        kind: 'patch',
+        inRange: false,
+      })),
+    ],
+    'npm',
+    []
+  );
   const hints = [...decorations.values()].flat();
   assert.equal(hints[0].renderOptions.after.contentText, '↑ bbbbbbb');
   assert.equal(hints[0].renderOptions.before.margin, '0 -1ch 0 1ch');
   assert.equal(hints[0].renderOptions.after.margin, '0 0 0 4ch');
   assert.equal(hints[1].renderOptions.after.margin, '0 0 0 4ch');
-  assert.equal(hints[2].renderOptions.after.margin, `0 0 0 ${lines[1].length - lines[2].length + 4}ch`);
+  assert.equal(
+    hints[2].renderOptions.after.margin,
+    `0 0 0 ${lines[1].length - lines[2].length + 4}ch`
+  );
   renderer.dispose();
 });
 
@@ -81,19 +141,35 @@ test('availability warnings retain updates and ahead hints use informational col
   const decorations = new Map<MockDecorationType, MockHint[]>();
   const editor = {
     options: { tabSize: 2 },
-    document: { uri: { fsPath: '/project/package.json' }, lineCount: 2,
-      lineAt: (line: number) => ({ text: 'pkg', range: { end: { line, character: 3 } } }) },
+    document: {
+      uri: { fsPath: '/project/package.json' },
+      lineCount: 2,
+      lineAt: (line: number) => ({ text: 'pkg', range: { end: { line, character: 3 } } }),
+    },
     setDecorations: (type: MockDecorationType, values: MockHint[]) => decorations.set(type, values),
   } as unknown as TextEditor;
   const dep = { name: 'pkg', spec: '1.0.0', line: 0, section: 'dependencies' };
-  renderer.render(editor, [{ dep, current: '1.0.0', latest: '2.0.0', kind: 'major', inRange: false }], 'npm', [], [
-    { dep, status: 'version-missing', message: 'Missing' },
-    { dep: { ...dep, line: 1, spec: '3.0.0' }, status: 'ahead', message: 'Published' },
-  ]);
+  renderer.render(
+    editor,
+    [{ dep, current: '1.0.0', latest: '2.0.0', kind: 'major', inRange: false }],
+    'npm',
+    [],
+    [
+      { dep, status: 'version-missing', message: 'Missing' },
+      { dep: { ...dep, line: 1, spec: '3.0.0' }, status: 'ahead', message: 'Published' },
+    ]
+  );
   const visible = [...decorations].filter(([, hints]) => hints.length);
-  assert.deepEqual(visible.map(([type, hints]) => [(type.options.after!.color as { id: string }).id, hints[0].renderOptions.after.contentText]), [
-    ['editorWarning.foreground', '↑ 2.0.0 | Version not found'], ['editorInfo.foreground', 'Ahead of latest'],
-  ]);
+  assert.deepEqual(
+    visible.map(([type, hints]) => [
+      (type.options.after!.color as { id: string }).id,
+      hints[0].renderOptions.after.contentText,
+    ]),
+    [
+      ['editorWarning.foreground', '↑ 2.0.0 | Version not found'],
+      ['editorInfo.foreground', 'Ahead of latest'],
+    ]
+  );
   renderer.dispose();
 });
 
@@ -102,13 +178,22 @@ test('audit hints merge with updates and remain visible without updates', () => 
   const decorations = new Map<MockDecorationType, MockHint[]>();
   const editor = {
     options: { tabSize: 2 },
-    document: { uri: { fsPath: '/project/package.json' }, lineCount: 2, lineAt: (line: number) => ({ text: 'package', range: { end: { line, character: 7 } } }) },
+    document: {
+      uri: { fsPath: '/project/package.json' },
+      lineCount: 2,
+      lineAt: (line: number) => ({ text: 'package', range: { end: { line, character: 7 } } }),
+    },
     setDecorations: (type: MockDecorationType, values: MockHint[]) => decorations.set(type, values),
   } as unknown as TextEditor;
   const dep = { name: 'pkg', spec: '^1.0.0', line: 0, section: 'dependencies' };
   const other = { ...dep, name: 'other', spec: '1.0.0', line: 1 };
-  const updates: DependencyUpdate[] = [{ dep, current: '1.0.0', latest: '2.0.0', kind: 'major', inRange: false }];
-  const result: AuditResponse = { status: 'checked', advisories: [{ id: 'GHSA-test', title: 'Unsafe input' }] };
+  const updates: DependencyUpdate[] = [
+    { dep, current: '1.0.0', latest: '2.0.0', kind: 'major', inRange: false },
+  ];
+  const result: AuditResponse = {
+    status: 'checked',
+    advisories: [{ id: 'GHSA-test', title: 'Unsafe input' }],
+  };
   const audits = [
     { dep, version: '1.0.0', baseline: true, result },
     { dep: other, version: '1.0.0', baseline: false, result },
@@ -116,11 +201,17 @@ test('audit hints merge with updates and remain visible without updates', () => 
   renderer.render(editor, updates, 'npm', audits);
   const hints = [...decorations.values()].flat();
   assert.equal(hints.length, 2);
-  assert.match(hints[0].renderOptions.after.contentText, /2\.0\.0 \| ! 1 audit warning at baseline/);
+  assert.match(
+    hints[0].renderOptions.after.contentText,
+    /2\.0\.0 \| ! 1 audit warning at baseline/
+  );
   assert.equal(hints[1].renderOptions.after.contentText, '! 1 audit warning');
   const warningType = [...decorations].find(([, values]) => values.length)![0];
   assert.equal((warningType.options.after!.color as { id: string }).id, 'editorWarning.foreground');
-  assert.equal((warningType.options.before!.color as { id: string }).id, 'freshDeps.commentForeground');
+  assert.equal(
+    (warningType.options.before!.color as { id: string }).id,
+    'freshDeps.commentForeground'
+  );
 
   renderer.render(editor, updates, 'java', audits);
   for (const hint of [...decorations.values()].flat()) {
@@ -145,25 +236,58 @@ test('matrix hints draw unchanged entries in gray without shifting the colored u
   const decorations = new Map<MockDecorationType, MockHint[]>();
   const editor = {
     options: { tabSize: 2 },
-    document: { uri: { fsPath: '/project/.github/workflows/ci.yml' }, lineCount: 1,
-      lineAt: () => ({ text: 'node: [20.0.0, 22, 24]', range: { end: { line: 0, character: 23 } } }) },
+    document: {
+      uri: { fsPath: '/project/.github/workflows/ci.yml' },
+      lineCount: 1,
+      lineAt: () => ({
+        text: 'node: [20.0.0, 22, 24]',
+        range: { end: { line: 0, character: 23 } },
+      }),
+    },
     setDecorations: (type: MockDecorationType, values: MockHint[]) => decorations.set(type, values),
   } as unknown as TextEditor;
-  renderer.render(editor, [{
-    dep: { name: 'node', spec: '24', matrixVersions: ['20.0.0', '22', '24'], line: 0, section: 'matrix' },
-    current: '24', latest: '26', kind: 'major', inRange: false,
-    matrixUpdate: { versions: ['20.19.5', '22', '24'], newer: '26' },
-  }], 'githubActions', []);
-  const colored = [...decorations.values()].flat().filter((hint) => hint.renderOptions.after?.contentText);
+  renderer.render(
+    editor,
+    [
+      {
+        dep: {
+          name: 'node',
+          spec: '24',
+          matrixVersions: ['20.0.0', '22', '24'],
+          line: 0,
+          section: 'matrix',
+        },
+        current: '24',
+        latest: '26',
+        kind: 'major',
+        inRange: false,
+        matrixUpdate: { versions: ['20.19.5', '22', '24'], newer: '26' },
+      },
+    ],
+    'githubActions',
+    []
+  );
+  const colored = [...decorations.values()]
+    .flat()
+    .filter((hint) => hint.renderOptions.after?.contentText);
   assert.equal(colored.length, 1);
-  assert.equal(colored[0].renderOptions.after.contentText, '↑ [20.19.5, \u00a0\u00a0, \u00a0\u00a0] → 26');
+  assert.equal(
+    colored[0].renderOptions.after.contentText,
+    '↑ [20.19.5, \u00a0\u00a0, \u00a0\u00a0] → 26'
+  );
   const [grayType, gray] = [...decorations].find(([type]) => !type.options.after)!;
-  assert.equal((grayType.options.before!.color as { id: string }).id, 'freshDeps.commentForeground');
+  assert.equal(
+    (grayType.options.before!.color as { id: string }).id,
+    'freshDeps.commentForeground'
+  );
   assert.equal(grayType.options.before!.width, '0');
-  assert.deepEqual(gray.map((hint) => hint.renderOptions.before), [
-    { contentText: '22', margin: '0 -15ch 0 15ch' },
-    { contentText: '24', margin: '0 -19ch 0 19ch' },
-  ]);
+  assert.deepEqual(
+    gray.map((hint) => hint.renderOptions.before),
+    [
+      { contentText: '22', margin: '0 -15ch 0 15ch' },
+      { contentText: '24', margin: '0 -19ch 0 19ch' },
+    ]
+  );
   renderer.clear(editor);
   assert.equal([...decorations.values()].flat().length, 0);
   renderer.dispose();
@@ -178,27 +302,50 @@ test('gray markers have zero layout width and versions reserve aligned space for
     document: {
       uri: { fsPath: '/project/package.json' },
       lineCount: lines.length,
-      lineAt: (line: number) => ({ text: lines[line], range: { end: { line, character: lines[line].length } } }),
+      lineAt: (line: number) => ({
+        text: lines[line],
+        range: { end: { line, character: lines[line].length } },
+      }),
     },
     setDecorations: (type: MockDecorationType, values: MockHint[]) => decorations.set(type, values),
   } as unknown as TextEditor;
   const updates: DependencyUpdate[] = lines.map((_, line) => ({
     dep: { name: line ? 'longer' : 'pkg', spec: '1', line, section: 'dependencies' },
-    current: '1.0.0', latest: '2.0.0', kind: 'major', inRange: false,
+    current: '1.0.0',
+    latest: '2.0.0',
+    kind: 'major',
+    inRange: false,
   }));
   for (const [ecosystem, token, suffix] of [
-    ['npm', '//', ''], ['go', '//', ''], ['python', '#', ''],
-    ['rust', '#', ''], ['dotnet', '<!--', ' -->'], ['java', '<!--', ' -->'],
-    ['php', '//', ''], ['dart', '#', ''], ['gradle', '#', ''],
-    ['deno', '//', ''], ['githubActions', '#', ''],
-    ['docker', '#', ''], ['helm', '#', ''], ['swift', '//', ''], ['conan', '#', ''],
-    ['scala', '//', ''], ['conda', '#', ''], ['clojure', ';', ''],
-    ['ansible', '#', ''], ['bazel', '#', ''], ['vcpkg', '//', ''],
+    ['npm', '//', ''],
+    ['go', '//', ''],
+    ['python', '#', ''],
+    ['rust', '#', ''],
+    ['dotnet', '<!--', ' -->'],
+    ['java', '<!--', ' -->'],
+    ['php', '//', ''],
+    ['dart', '#', ''],
+    ['gradle', '#', ''],
+    ['deno', '//', ''],
+    ['githubActions', '#', ''],
+    ['docker', '#', ''],
+    ['helm', '#', ''],
+    ['swift', '//', ''],
+    ['conan', '#', ''],
+    ['scala', '//', ''],
+    ['conda', '#', ''],
+    ['clojure', ';', ''],
+    ['ansible', '#', ''],
+    ['bazel', '#', ''],
+    ['vcpkg', '//', ''],
   ] as const) {
     renderer.render(editor, updates, ecosystem, []);
     for (const [type, hints] of decorations) {
       assert.equal(type.options.before!.width, '0');
-      assert.equal((type.options.before!.color as { id: string }).id, 'freshDeps.commentForeground');
+      assert.equal(
+        (type.options.before!.color as { id: string }).id,
+        'freshDeps.commentForeground'
+      );
       for (const hint of hints) {
         const line = hint.range.args[0].line;
         const end = { line, character: lines[line].length };
@@ -206,14 +353,19 @@ test('gray markers have zero layout width and versions reserve aligned space for
         const gap = line ? 1 : 4;
         assert.equal(hint.renderOptions.before.contentText, token);
         assert.equal(hint.renderOptions.before.margin, `0 -${gap}ch 0 ${gap}ch`);
-        assert.equal(hint.renderOptions.after.contentText, `\u2191 ${ecosystem === 'go' ? 'v' : ''}2.0.0${suffix}`);
+        assert.equal(
+          hint.renderOptions.after.contentText,
+          `\u2191 ${ecosystem === 'go' ? 'v' : ''}2.0.0${suffix}`
+        );
         assert.equal(hint.renderOptions.after.margin, `0 0 0 ${gap + token.length + 1}ch`);
       }
     }
     assert.equal([...decorations.values()].flat().length, 2);
   }
   for (const [file, ecosystem, token] of [
-    ['.yarnrc.yml', 'npm', '#'], ['.config/dotnet-tools.json', 'dotnet', '//'], ['global.json', 'dotnet', '//'],
+    ['.yarnrc.yml', 'npm', '#'],
+    ['.config/dotnet-tools.json', 'dotnet', '//'],
+    ['global.json', 'dotnet', '//'],
   ] as const) {
     (editor.document.uri as unknown as { fsPath: string }).fsPath = `/project/${file}`;
     renderer.render(editor, updates, ecosystem, []);

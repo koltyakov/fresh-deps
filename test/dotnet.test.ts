@@ -5,7 +5,8 @@ import { compareNuget, nugetScheme } from '../src/nuget';
 import { computeUpdate } from '../src/versions';
 import type { DependencyRef } from '../src/types';
 
-const summary = (deps: DependencyRef[]) => deps.map((dep) => [dep.name, dep.spec, dep.section, dep.line]);
+const summary = (deps: DependencyRef[]) =>
+  deps.map((dep) => [dep.name, dep.spec, dep.section, dep.line]);
 const opts = { includePrerelease: false, showSatisfyingUpdates: true, scheme: nugetScheme };
 
 test('NuGet parser reads project package references and central versions', () => {
@@ -31,10 +32,15 @@ test('NuGet parser reads project package references and central versions', () =>
 
 test('NuGet parser reads VersionOverride, Update, and packages.config', () => {
   const project = '<PackageReference Update="Xunit" Version="2.0.0" VersionOverride="2.8.1" />';
-  assert.deepStrictEqual(summary(parseNugetManifest(project)), [['Xunit', '2.8.1', 'PackageReference', 0]]);
+  assert.deepStrictEqual(summary(parseNugetManifest(project)), [
+    ['Xunit', '2.8.1', 'PackageReference', 0],
+  ]);
 
-  const legacy = '<packages>\n  <package id="NUnit" version="3.13.3" targetFramework="net48" />\n</packages>';
-  assert.deepStrictEqual(summary(parseNugetManifest(legacy)), [['NUnit', '[3.13.3]', 'packages', 1]]);
+  const legacy =
+    '<packages>\n  <package id="NUnit" version="3.13.3" targetFramework="net48" />\n</packages>';
+  assert.deepStrictEqual(summary(parseNugetManifest(legacy)), [
+    ['NUnit', '[3.13.3]', 'packages', 1],
+  ]);
   assert.strictEqual(parseNugetManifest(legacy)[0].specRaw, '3.13.3');
 });
 
@@ -83,7 +89,12 @@ test('NuGet project minimums and installed packages.config versions produce dist
 });
 
 test('NuGet interval and floating ranges report compatible updates', () => {
-  const dep = (spec: string): DependencyRef => ({ name: 'Package', spec, section: 'PackageReference', line: 0 });
+  const dep = (spec: string): DependencyRef => ({
+    name: 'Package',
+    spec,
+    section: 'PackageReference',
+    line: 0,
+  });
   const versions = { latest: '3.1.0', all: ['2.10.0', '2.12.0', '3.1.0'] };
   const ranged = computeUpdate(dep('[2.10.0,3.0.0)'), versions, opts);
   assert.ok(ranged);

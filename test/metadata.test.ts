@@ -42,7 +42,10 @@ test('escapeMarkdown keeps registry prose from reformatting the card', () => {
   assert.strictEqual(escapeMarkdown('a | b'), 'a \\| b');
   assert.strictEqual(escapeMarkdown('multi\n  line'), 'multi line');
   // A URL in a description has to survive intact, and so does ordinary punctuation.
-  assert.strictEqual(escapeMarkdown('see https://github.com/a/b#readme.'), 'see https://github.com/a/b#readme.');
+  assert.strictEqual(
+    escapeMarkdown('see https://github.com/a/b#readme.'),
+    'see https://github.com/a/b#readme.'
+  );
   assert.strictEqual(escapeMarkdown('Apache-2.0'), 'Apache-2.0');
   assert.strictEqual(escapeMarkdown('$(warning) x'), '\\$(warning) x');
 });
@@ -76,7 +79,10 @@ test('npm metadata tolerates the older license shapes and no dist', () => {
 test('repositoryOf turns every git spelling into a browsable URL', () => {
   assert.strictEqual(repositoryOf('git+https://github.com/a/b.git'), 'https://github.com/a/b');
   assert.strictEqual(repositoryOf({ url: 'git://github.com/a/b.git' }), 'https://github.com/a/b');
-  assert.strictEqual(repositoryOf({ url: 'git+ssh://git@github.com/a/b.git' }), 'https://github.com/a/b');
+  assert.strictEqual(
+    repositoryOf({ url: 'git+ssh://git@github.com/a/b.git' }),
+    'https://github.com/a/b'
+  );
   assert.strictEqual(repositoryOf({ url: 'git@github.com:a/b.git' }), 'https://github.com/a/b');
   assert.strictEqual(repositoryOf('a/b'), undefined);
   assert.strictEqual(repositoryOf(undefined), undefined);
@@ -115,14 +121,23 @@ test('PyPI metadata prefers the modern licence field and drops pasted licence te
   const meta = pypiMetaOf({
     summary: 'Python HTTP for Humans.',
     license: 'Apache-2.0',
-    project_urls: { Source: 'https://github.com/psf/requests', Documentation: 'https://requests.readthedocs.io' },
+    project_urls: {
+      Source: 'https://github.com/psf/requests',
+      Documentation: 'https://requests.readthedocs.io',
+    },
   });
   assert.strictEqual(meta.description, 'Python HTTP for Humans.');
   assert.strictEqual(meta.license, 'Apache-2.0');
   assert.strictEqual(meta.repository, 'https://github.com/psf/requests');
   assert.strictEqual(meta.homepage, 'https://requests.readthedocs.io');
-  assert.strictEqual(pypiMetaOf({ license: 'MIT License\n\nCopyright (c) 2026 ...'.repeat(3) }).license, undefined);
-  assert.strictEqual(pypiMetaOf({ license: 'MIT', license_expression: 'MIT OR Apache-2.0' }).license, 'MIT OR Apache-2.0');
+  assert.strictEqual(
+    pypiMetaOf({ license: 'MIT License\n\nCopyright (c) 2026 ...'.repeat(3) }).license,
+    undefined
+  );
+  assert.strictEqual(
+    pypiMetaOf({ license: 'MIT', license_expression: 'MIT OR Apache-2.0' }).license,
+    'MIT OR Apache-2.0'
+  );
 });
 
 test('crates.io ignores yanked releases and keeps metadata for the latest stable version', () => {

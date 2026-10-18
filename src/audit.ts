@@ -14,18 +14,31 @@ export class AuditCache {
     return Date.now() - entry.at < lifetime ? entry.result : undefined;
   }
 
-  resolve(key: string, fetch: () => Promise<AuditResponse>, signal?: AbortSignal): Promise<AuditResponse> {
+  resolve(
+    key: string,
+    fetch: () => Promise<AuditResponse>,
+    signal?: AbortSignal
+  ): Promise<AuditResponse> {
     const generation = this.generation;
-    return this.pending.resolve(key, async (requestSignal) => {
-      let result: AuditResponse;
-      try { result = await fetch(); }
-      catch (error) {
-        requestSignal.throwIfAborted();
-        result = { status: 'failed', error: error instanceof Error ? error.message : String(error) };
-      }
-      if (!requestSignal.aborted && generation === this.generation) this.entries.set(key, { at: Date.now(), result });
-      return result;
-    }, signal);
+    return this.pending.resolve(
+      key,
+      async (requestSignal) => {
+        let result: AuditResponse;
+        try {
+          result = await fetch();
+        } catch (error) {
+          requestSignal.throwIfAborted();
+          result = {
+            status: 'failed',
+            error: error instanceof Error ? error.message : String(error),
+          };
+        }
+        if (!requestSignal.aborted && generation === this.generation)
+          this.entries.set(key, { at: Date.now(), result });
+        return result;
+      },
+      signal
+    );
   }
 
   clear(): void {

@@ -18,10 +18,15 @@ export function parseBazelProject(text: string, fsPath: string): DependencyRef[]
         if (!path.startsWith(root + sep)) return false;
         const content = readProjectFile(path);
         if (content === undefined || !expand(content, path, anchor ?? line)) return false;
-      } else { lines.push(value); anchors.push(anchor ?? line); }
+      } else {
+        lines.push(value);
+        anchors.push(anchor ?? line);
+      }
     }
     active.delete(filename);
     return true;
   };
-  return expand(text, resolve(fsPath)) ? parseBazel(lines.join('\n')).map((dep) => ({ ...dep, line: anchors[dep.line] })) : [];
+  return expand(text, resolve(fsPath))
+    ? parseBazel(lines.join('\n')).map((dep) => ({ ...dep, line: anchors[dep.line] }))
+    : [];
 }

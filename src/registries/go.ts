@@ -111,9 +111,17 @@ export class GoClient {
     const exclusion = proxyExclusion(modulePath);
     if (exclusion || !this.proxy) return { error: exclusion ?? 'GOPROXY is off' };
     const tag = version.startsWith('v') ? version : `v${version}`;
-    const info = await fetchJson<LatestInfo>(`${this.proxy}/${escapeModulePath(modulePath)}/@v/${encodeURIComponent(tag)}.info`, { timeoutMs: this.options.timeoutMs });
+    const info = await fetchJson<LatestInfo>(
+      `${this.proxy}/${escapeModulePath(modulePath)}/@v/${encodeURIComponent(tag)}.info`,
+      { timeoutMs: this.options.timeoutMs }
+    );
     if (!info) return { published: [], allComplete: true };
-    if (!info.Version || !semver.valid(info.Version, { loose: true }) || !semver.eq(info.Version, tag, { loose: true })) return { error: 'Invalid Go version info response' };
+    if (
+      !info.Version ||
+      !semver.valid(info.Version, { loose: true }) ||
+      !semver.eq(info.Version, tag, { loose: true })
+    )
+      return { error: 'Invalid Go version info response' };
     return { published: [info.Version], allComplete: true };
   }
 
@@ -254,7 +262,7 @@ export function majorLayout(modulePath: string): MajorLayout {
 /** Picks the first HTTP proxy out of GOPROXY, honouring `off`. */
 export function resolveProxy(override?: string): string | undefined {
   const raw = (override || goEnv('GOPROXY') || DEFAULT_PROXY).trim();
-  if (raw === '' ) {
+  if (raw === '') {
     return DEFAULT_PROXY;
   }
   for (const entry of raw.split(/[,|]/).map((e) => e.trim())) {
